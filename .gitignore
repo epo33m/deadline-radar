@@ -19,6 +19,12 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+bun-debug.log*
+
+# package managers other than Bun (this repo uses Bun)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
 
 # vercel / typescript
 .vercel
