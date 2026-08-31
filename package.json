@@ -1,0 +1,11 @@
+{
+  "name": "deadline-radar",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "bun@1.4.0",
+  "scripts": {
+    "dev": "echo \"App not scaffolded yet\"",
+    "build": "echo \"App not scaffolded yet\"",
+    "test": "echo \"No tests yet\""
+  }
+}

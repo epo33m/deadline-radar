@@ -15,12 +15,15 @@ Personal academic task tracker that helps students monitor coursework and meet d
 
 | Layer | Choice |
 |---|---|
+| Package manager | Bun |
 | Framework | Next.js (App Router) |
 | Language | TypeScript |
 | Styling | Tailwind CSS + shadcn/ui |
 | Validation | Zod |
 | Backend | Supabase (PostgreSQL, Auth, Storage) |
 | Email | Resend |
+
+Use `bun` / `bunx` for install, scripts, and package adds. Do not use npm, npx, yarn, or pnpm in this repo.
 
 ## Documentation
 
@@ -31,6 +34,9 @@ Personal academic task tracker that helps students monitor coursework and meet d
 | [docs/DOMAIN.md](docs/DOMAIN.md) | Domain model and business rules |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture |
 | [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | Schema, triggers, and RLS |
+| [docs/agents/](docs/agents/) | Agent issue tracker, triage labels, domain-doc layout |
+
+Product docs under `docs/` are the source of truth. Engineering work follows the Matt Pocock skills wired in `AGENTS.md`.
 
 ## Status
 
