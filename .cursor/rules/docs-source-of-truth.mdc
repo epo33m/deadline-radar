@@ -1,0 +1,20 @@
+---
+description: Product and architecture docs under docs/ are the source of truth
+alwaysApply: true
+---
+
+# Docs source of truth
+
+Before product, domain, architecture, or data-model decisions, read the relevant file under `docs/`:
+
+- `docs/product.md` — product requirements
+- `docs/MVP.md` — MVP scope and acceptance
+- `docs/DOMAIN.md` — domain model and business rules
+- `docs/ARCHITECTURE.md` — system architecture
+- `docs/DATA-MODEL.md` — schema, triggers, RLS
+
+Treat those documents as authoritative. Do not invent conflicting requirements.
+
+If code or a proposal conflicts with the docs, surface the conflict explicitly; do not silently override.
+
+For `CONTEXT.md` / ADR consumer rules (when those files exist), see `docs/agents/domain.md`.

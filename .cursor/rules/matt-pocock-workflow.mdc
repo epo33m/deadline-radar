@@ -1,0 +1,22 @@
+---
+description: Matt Pocock engineering skills are the mandatory workflow for this repo
+alwaysApply: true
+---
+
+# Matt Pocock workflow
+
+Before freelancing a parallel process, read and follow the matching skill under `.agents/skills/`:
+
+| Situation | Skill |
+| --- | --- |
+| Ambiguous plan / decision | `/grilling` (or `/grill-with-docs` when docs matter) |
+| Spec from idea | `/to-spec` / `/to-questionnaire` |
+| Break into tickets | `/to-tickets` |
+| Triage / label work | `/triage` |
+| Implement from spec | `/implement` or `/implement-spec` |
+| Bug diagnosis | `/diagnosing-bugs` |
+| TDD feature work | `/tdd` |
+| Code review vs standards/spec | `/code-review` |
+| Domain language / ADR | `/domain-modeling` |
+
+Issue tracker, triage labels, and domain-doc layout: see `AGENTS.md` → Agent skills and `docs/agents/`.
