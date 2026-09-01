@@ -14,9 +14,13 @@ describe("toDatetimeLocalValue", () => {
 });
 
 describe("formatDeadline", () => {
-  test("returns a non-empty localized string for a valid ISO date", () => {
-    const formatted = formatDeadline("2026-09-15T23:59:00.000Z");
-    expect(formatted.length).toBeGreaterThan(0);
-    expect(formatted).not.toBe("2026-09-15T23:59:00.000Z");
+  test("formats deterministically for a fixed locale and timezone", () => {
+    expect(formatDeadline("2026-09-15T23:59:00.000Z", "UTC")).toBe(
+      "Sep 15, 2026 at 11:59 PM",
+    );
+  });
+
+  test("returns the raw ISO string for invalid input", () => {
+    expect(formatDeadline("not-a-date")).toBe("not-a-date");
   });
 });

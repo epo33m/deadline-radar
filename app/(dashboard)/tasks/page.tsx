@@ -29,8 +29,11 @@ export default async function TasksPage() {
     redirect("/login");
   }
 
-  const [{ data: courses, error: coursesError }, { data: tasks, error: tasksError }] =
-    await Promise.all([
+  const [
+    { data: courses, error: coursesError },
+    { data: tasks, error: tasksError },
+    { data: profile },
+  ] = await Promise.all([
       supabase
         .from("courses")
         .select("id, name, code, color")
@@ -47,6 +50,11 @@ export default async function TasksPage() {
         .is("deleted_at", null)
         .order("deadline", { ascending: true })
         .returns<TaskRow[]>(),
+      supabase
+        .from("profiles")
+        .select("timezone")
+        .eq("id", user.id)
+        .maybeSingle(),
     ]);
 
   if (coursesError || tasksError) {
@@ -60,6 +68,8 @@ export default async function TasksPage() {
       </section>
     );
   }
+
+  const timeZone = profile?.timezone ?? "UTC";
 
   const listItems: TaskListItem[] = (tasks ?? []).map((task) => {
     const course = Array.isArray(task.courses) ? task.courses[0] : task.courses;
@@ -102,7 +112,7 @@ export default async function TasksPage() {
 
       <div className="space-y-4">
         <h2 className="font-display text-xl font-semibold">Your tasks</h2>
-        <TaskList tasks={listItems} />
+        <TaskList tasks={listItems} timeZone={timeZone} />
       </div>
     </section>
   );

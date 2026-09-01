@@ -234,7 +234,7 @@ export function formatMonthHeading(
   timeZone: string,
 ): string {
   const date = fromZonedTime(year, month, 15, 12, 0, 0, timeZone);
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat("en-US", {
     timeZone,
     month: "long",
     year: "numeric",

@@ -26,12 +26,19 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  const { data: tasks, error } = await supabase
-    .from("tasks")
-    .select("id, title, deadline, status, updated_at, courses(name, color)")
-    .eq("user_id", user.id)
-    .is("deleted_at", null)
-    .returns<TaskRow[]>();
+  const [{ data: tasks, error }, { data: profile }] = await Promise.all([
+    supabase
+      .from("tasks")
+      .select("id, title, deadline, status, updated_at, courses(name, color)")
+      .eq("user_id", user.id)
+      .is("deleted_at", null)
+      .returns<TaskRow[]>(),
+    supabase
+      .from("profiles")
+      .select("timezone")
+      .eq("id", user.id)
+      .maybeSingle(),
+  ]);
 
   if (error) {
     return (
@@ -44,6 +51,8 @@ export default async function DashboardPage() {
       </section>
     );
   }
+
+  const timeZone = profile?.timezone ?? "UTC";
 
   const dashboardTasks: DashboardTask[] = (tasks ?? []).map((task) => {
     const course = Array.isArray(task.courses) ? task.courses[0] : task.courses;
@@ -70,7 +79,7 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      <DashboardSummariesPanel summaries={summaries} />
+      <DashboardSummariesPanel summaries={summaries} timeZone={timeZone} />
     </section>
   );
 }
