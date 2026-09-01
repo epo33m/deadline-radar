@@ -18,3 +18,14 @@ export function formatDeadline(iso: string, timeZone = "UTC"): string {
     timeZone,
   }).format(date);
 }
+
+/** Format a deadline date without time for compact lists. */
+export function formatDeadlineDate(iso: string, timeZone = "UTC"): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return new Intl.DateTimeFormat(DEADLINE_DISPLAY_LOCALE, {
+    month: "short",
+    day: "numeric",
+    timeZone,
+  }).format(date);
+}
