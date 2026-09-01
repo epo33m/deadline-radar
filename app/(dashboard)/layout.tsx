@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { logout } from "@/app/actions/auth";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 import { Button } from "@/components/ui/button";
 
 const nav = [
@@ -34,11 +35,14 @@ export default function DashboardShellLayout({
               </Link>
             ))}
           </nav>
-          <form action={logout}>
-            <Button type="submit" variant="outline" size="sm">
-              Sign out
-            </Button>
-          </form>
+          <div className="flex items-center gap-2">
+            <NotificationBell />
+            <form action={logout}>
+              <Button type="submit" variant="outline" size="sm">
+                Sign out
+              </Button>
+            </form>
+          </div>
         </div>
       </header>
       <div className="mx-auto max-w-5xl px-6 py-8">{children}</div>

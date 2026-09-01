@@ -43,7 +43,7 @@ Product docs under `docs/` are the source of truth. Engineering work follows the
 
 ```bash
 bun install
-cp .env.example .env.local   # fill NEXT_PUBLIC_SUPABASE_URL + ANON_KEY
+cp .env.example .env.local   # fill Supabase + Resend + CRON_SECRET as needed
 ```
 
 Apply migrations in the Supabase SQL Editor (in order):
@@ -52,6 +52,7 @@ Apply migrations in the Supabase SQL Editor (in order):
 2. `supabase/migrations/20260901010000_courses.sql`
 3. `supabase/migrations/20260901020000_tasks.sql`
 4. `supabase/migrations/20260901030000_attachments.sql`
+5. `supabase/migrations/20260901040000_notification_deliveries.sql`
 
 In Supabase Auth settings for local MVP: disable **Confirm email**, and set Site URL to `http://localhost:3000`.
 
@@ -60,6 +61,12 @@ bun run dev
 bun test
 ```
 
+Trigger reminder evaluation locally (no `CRON_SECRET` required outside production):
+
+```bash
+curl http://localhost:3000/api/cron/evaluate-reminders
+```
+
 ## Status
 
-MVP tickets in progress. Task attachments is issue #8.
+MVP tickets in progress. Reminder delivery is issue #9.
