@@ -4,7 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { TaskDetailPanel } from "@/components/tasks/task-detail";
 import { createClient } from "@/lib/supabase/server";
 import type { Course } from "@/types/course";
-import type { ReminderThreshold, Task } from "@/types/task";
+import type { Attachment, ReminderThreshold, Task } from "@/types/task";
 
 type TaskDetailRow = Task & {
   courses:
@@ -65,12 +65,23 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
     notFound();
   }
 
-  const { data: thresholds, error: thresholdsError } = await supabase
-    .from("reminder_thresholds")
-    .select("id, task_id, days_before, is_default, created_at")
-    .eq("task_id", task.id)
-    .order("days_before", { ascending: false })
-    .returns<ReminderThreshold[]>();
+  const [
+    { data: thresholds, error: thresholdsError },
+    { data: attachments, error: attachmentsError },
+  ] = await Promise.all([
+    supabase
+      .from("reminder_thresholds")
+      .select("id, task_id, days_before, is_default, created_at")
+      .eq("task_id", task.id)
+      .order("days_before", { ascending: false })
+      .returns<ReminderThreshold[]>(),
+    supabase
+      .from("attachments")
+      .select("id, task_id, type, name, storage_path, url, created_at")
+      .eq("task_id", task.id)
+      .order("created_at", { ascending: true })
+      .returns<Attachment[]>(),
+  ]);
 
   const course = Array.isArray(task.courses) ? task.courses[0] : task.courses;
 
@@ -106,6 +117,13 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
         </p>
       ) : null}
 
+      {attachmentsError ? (
+        <p className="text-sm text-destructive" role="alert">
+          Could not load attachments. Apply the attachments migration in
+          Supabase if you have not already.
+        </p>
+      ) : null}
+
       <TaskDetailPanel
         task={{
           ...task,
@@ -115,6 +133,7 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
         }}
         courses={courseOptions}
         thresholds={thresholds ?? []}
+        attachments={attachments ?? []}
       />
     </section>
   );
