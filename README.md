@@ -43,10 +43,20 @@ Product docs under `docs/` are the source of truth. Engineering work follows the
 
 ```bash
 bun install
-cp .env.example .env.local   # fill in Supabase keys when ready
+cp .env.example .env.local   # fill NEXT_PUBLIC_SUPABASE_URL + ANON_KEY
+```
+
+Apply the profiles migration in the Supabase SQL Editor:
+
+`supabase/migrations/20260901000000_profiles.sql`
+
+In Supabase Auth settings for local MVP: disable **Confirm email**, and set Site URL to `http://localhost:3000`.
+
+```bash
 bun run dev
+bun test
 ```
 
 ## Status
 
-Baseline docs locked at v0.1. App shell scaffolded (Next.js + Tailwind + shadcn/ui); feature tickets follow from issue #3 onward.
+MVP tickets in progress. Auth/profile/timezone is issue #4.
