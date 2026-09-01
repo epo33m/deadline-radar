@@ -27,12 +27,12 @@ describe("formatRelativeDeadline", () => {
   test("returns in N days for upcoming deadlines", () => {
     expect(
       formatRelativeDeadline("2026-09-17T10:00:00.000Z", TZ, NOW),
-    ).toBe("In 2 days");
+    ).toBe("in 2 days");
   });
 
   test("returns singular upcoming copy for tomorrow", () => {
     expect(
       formatRelativeDeadline("2026-09-16T08:00:00.000Z", TZ, NOW),
-    ).toBe("In 1 day");
+    ).toBe("in 1 day");
   });
 });

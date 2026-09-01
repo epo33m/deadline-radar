@@ -1,28 +1,29 @@
 import Link from "next/link";
 import { Check } from "lucide-react";
 
-import { formatDeadline } from "@/lib/datetime";
+import { formatDeadline, formatDeadlineDate } from "@/lib/datetime";
 import { formatRelativeDeadline } from "@/lib/dashboard/deadline-relative";
 import type { DashboardTask } from "@/lib/dashboard/summaries";
 
+import { StatusPill } from "./status-pill";
+import { SectionEmptyState, type SectionTone } from "./section-empty-state";
+import { TaskCompleteCheckbox } from "./task-complete-checkbox";
+
 type TaskSummaryListProps = {
   tasks: DashboardTask[];
-  emptyMessage: string;
+  emptyTone: SectionTone;
   timeZone: string;
   showCompletedAt?: boolean;
-  emphasizeRelative?: boolean;
 };
 
 function TaskSummaryRow({
   task,
   timeZone,
   showCompletedAt,
-  emphasizeRelative,
 }: {
   task: DashboardTask;
   timeZone: string;
   showCompletedAt?: boolean;
-  emphasizeRelative?: boolean;
 }) {
   const relativeLabel = showCompletedAt
     ? null
@@ -30,26 +31,22 @@ function TaskSummaryRow({
 
   return (
     <li className="border-b border-hairline py-3 last:border-b-0">
-      <div className="flex min-w-0 items-start justify-between gap-4">
+      <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div className="flex min-w-0 items-start gap-3">
           {showCompletedAt ? (
-            <Check
-              className="mt-0.5 size-4 shrink-0 text-ink-muted-48"
-              aria-hidden="true"
-            />
-          ) : (
             <span
-              aria-hidden
-              className="mt-1 size-3 shrink-0 rounded-full border border-hairline"
-              style={{
-                backgroundColor: task.course_color ?? "transparent",
-              }}
-            />
+              className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-success/10 text-success"
+              aria-hidden="true"
+            >
+              <Check className="size-3" />
+            </span>
+          ) : (
+            <TaskCompleteCheckbox taskId={task.id} taskTitle={task.title} />
           )}
           <div className="min-w-0 space-y-1">
             <Link
               href={`/tasks/${task.id}`}
-              className="font-medium text-ink hover:text-primary"
+              className="font-medium text-ink hover:text-primary focus-visible:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus"
             >
               {task.title}
             </Link>
@@ -61,16 +58,23 @@ function TaskSummaryRow({
             </p>
           </div>
         </div>
-        {relativeLabel && emphasizeRelative !== false ? (
-          <span
-            className={`shrink-0 text-sm ${
+        {showCompletedAt ? (
+          <StatusPill tone="completed" className="self-start sm:shrink-0">
+            Completed {formatDeadlineDate(task.updated_at, timeZone)}
+          </StatusPill>
+        ) : relativeLabel ? (
+          <StatusPill
+            className="self-start sm:shrink-0"
+            tone={
               relativeLabel.includes("overdue")
-                ? "font-medium text-destructive"
-                : "text-ink-muted-48"
-            }`}
+                ? "overdue"
+                : relativeLabel.startsWith("in ")
+                  ? "due-soon"
+                  : "due-soon"
+            }
           >
             {relativeLabel}
-          </span>
+          </StatusPill>
         ) : null}
       </div>
     </li>
@@ -79,13 +83,14 @@ function TaskSummaryRow({
 
 export function TaskSummaryList({
   tasks,
-  emptyMessage,
+  emptyTone,
   timeZone,
   showCompletedAt,
-  emphasizeRelative,
 }: TaskSummaryListProps) {
   if (tasks.length === 0) {
-    return <p className="text-sm text-ink-muted-48">{emptyMessage}</p>;
+    return (
+      <SectionEmptyState tone={emptyTone} />
+    );
   }
 
   return (
@@ -96,7 +101,6 @@ export function TaskSummaryList({
           task={task}
           timeZone={timeZone}
           showCompletedAt={showCompletedAt}
-          emphasizeRelative={emphasizeRelative}
         />
       ))}
     </ul>

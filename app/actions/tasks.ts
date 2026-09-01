@@ -108,6 +108,8 @@ async function assertOwnedActiveTask(
 }
 
 function revalidateTaskPaths(taskId?: string) {
+  revalidatePath("/dashboard");
+  revalidatePath("/calendar");
   revalidatePath("/tasks");
   if (taskId) {
     revalidatePath(`/tasks/${taskId}`);
@@ -222,6 +224,44 @@ export async function updateTask(
   }
   if (!data) {
     return { error: "Task not found." };
+  }
+
+  revalidateTaskPaths(id);
+  return {};
+}
+
+export async function completeTask(
+  _prev: TaskActionState,
+  formData: FormData,
+): Promise<TaskActionState> {
+  const id = formData.get("id");
+  if (typeof id !== "string" || id.length === 0) {
+    return { error: "Task id is required." };
+  }
+
+  const { supabase, user, error: authError } = await requireUser();
+  if (authError || !user) {
+    return { error: authError ?? "You must be signed in." };
+  }
+
+  const { data, error } = await supabase
+    .from("tasks")
+    .update({
+      status: "done",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .is("deleted_at", null)
+    .neq("status", "done")
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    return { error: error.message };
+  }
+  if (!data) {
+    return { error: "Task not found or already completed." };
   }
 
   revalidateTaskPaths(id);

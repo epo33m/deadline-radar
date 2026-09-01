@@ -35,6 +35,6 @@ export function formatRelativeDeadline(
   }
 
   if (diff === 0) return "Due today";
-  if (diff === 1) return "In 1 day";
-  return `In ${diff} days`;
+  if (diff === 1) return "in 1 day";
+  return `in ${diff} days`;
 }
