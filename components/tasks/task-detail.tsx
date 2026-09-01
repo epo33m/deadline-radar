@@ -7,6 +7,7 @@ import {
   type TaskActionState,
 } from "@/app/actions/tasks";
 import { TaskForm } from "@/components/tasks/task-form";
+import { ThresholdManager } from "@/components/tasks/threshold-manager";
 import { Button } from "@/components/ui/button";
 import { formatDeadline } from "@/lib/datetime";
 import type { TaskStatus } from "@/lib/validation/task";
@@ -59,10 +60,6 @@ export function TaskDetailPanel({
   courses,
   thresholds,
 }: TaskDetailPanelProps) {
-  const sortedThresholds = [...thresholds].sort(
-    (a, b) => b.days_before - a.days_before,
-  );
-
   return (
     <div className="space-y-10">
       <div className="space-y-2">
@@ -83,38 +80,7 @@ export function TaskDetailPanel({
         ) : null}
       </div>
 
-      <div className="space-y-4">
-        <h2 className="font-display text-xl font-semibold">Reminder thresholds</h2>
-        <p className="text-sm text-ink-muted-48">
-          Default H-7 / H-3 / H-1 / H-0 are created with the task. Thresholds
-          already past at creation are kept but not fired retroactively by the
-          scheduler.
-        </p>
-        {sortedThresholds.length === 0 ? (
-          <p className="text-sm text-ink-muted-48">
-            No thresholds found. Confirm the tasks migration is applied.
-          </p>
-        ) : (
-          <ul className="border-t border-hairline">
-            {sortedThresholds.map((threshold) => (
-              <li
-                key={threshold.id}
-                className="flex items-center justify-between border-b border-hairline py-3 text-sm last:border-b-0"
-              >
-                <span className="font-medium text-ink">
-                  H-{threshold.days_before}
-                </span>
-                <span className="text-ink-muted-48">
-                  {threshold.is_default ? "Default" : "Custom"} ·{" "}
-                  {threshold.days_before === 0
-                    ? "At deadline"
-                    : `${threshold.days_before} day${threshold.days_before === 1 ? "" : "s"} before`}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      <ThresholdManager taskId={task.id} thresholds={thresholds} />
 
       <div className="space-y-4">
         <h2 className="font-display text-xl font-semibold">Edit task</h2>

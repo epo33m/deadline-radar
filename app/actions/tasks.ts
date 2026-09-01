@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
-import { taskSchema } from "@/lib/validation/task";
+import {
+  reminderThresholdSchema,
+  taskSchema,
+} from "@/lib/validation/task";
 
 export type TaskActionState = {
   error?: string;
@@ -30,6 +33,13 @@ function parseTaskForm(formData: FormData) {
     description: formData.get("description") ?? undefined,
     estimated_duration: formData.get("estimated_duration") ?? undefined,
   });
+}
+
+function isUniqueViolation(error: { code?: string; message: string }): boolean {
+  return (
+    error.code === "23505" ||
+    /duplicate key|unique constraint/i.test(error.message)
+  );
 }
 
 async function requireUser() {
@@ -71,6 +81,28 @@ async function assertOwnedCourse(
     return options.requireActive
       ? "Course not found or is no longer active."
       : "Course not found.";
+  }
+  return null;
+}
+
+async function assertOwnedActiveTask(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  taskId: string,
+) {
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("id")
+    .eq("id", taskId)
+    .eq("user_id", userId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (error) {
+    return error.message;
+  }
+  if (!data) {
+    return "Task not found.";
   }
   return null;
 }
@@ -231,4 +263,188 @@ export async function softDeleteTask(
 
   revalidatePath("/tasks");
   redirect("/tasks");
+}
+
+export async function addReminderThreshold(
+  _prev: TaskActionState,
+  formData: FormData,
+): Promise<TaskActionState> {
+  const taskId = formData.get("task_id");
+  if (typeof taskId !== "string" || taskId.length === 0) {
+    return { error: "Task id is required." };
+  }
+
+  const parsed = reminderThresholdSchema.safeParse({
+    days_before: formData.get("days_before"),
+  });
+  if (!parsed.success) {
+    const fieldErrors = parsed.error.flatten().fieldErrors;
+    return {
+      error: firstIssueMessage(fieldErrors) ?? "Invalid threshold",
+      fieldErrors,
+    };
+  }
+
+  const { supabase, user, error: authError } = await requireUser();
+  if (authError || !user) {
+    return { error: authError ?? "You must be signed in." };
+  }
+
+  const taskError = await assertOwnedActiveTask(supabase, user.id, taskId);
+  if (taskError) {
+    return { error: taskError };
+  }
+
+  const { error } = await supabase.from("reminder_thresholds").insert({
+    task_id: taskId,
+    days_before: parsed.data.days_before,
+    is_default: false,
+  });
+
+  if (error) {
+    if (isUniqueViolation(error)) {
+      return {
+        error:
+          "A threshold with that days-before value already exists on this task.",
+        fieldErrors: {
+          days_before: [
+            "A threshold with that days-before value already exists on this task.",
+          ],
+        },
+      };
+    }
+    return { error: error.message };
+  }
+
+  revalidateTaskPaths(taskId);
+  return {};
+}
+
+export async function updateReminderThreshold(
+  _prev: TaskActionState,
+  formData: FormData,
+): Promise<TaskActionState> {
+  const id = formData.get("id");
+  const taskId = formData.get("task_id");
+  if (typeof id !== "string" || id.length === 0) {
+    return { error: "Threshold id is required." };
+  }
+  if (typeof taskId !== "string" || taskId.length === 0) {
+    return { error: "Task id is required." };
+  }
+
+  const parsed = reminderThresholdSchema.safeParse({
+    days_before: formData.get("days_before"),
+  });
+  if (!parsed.success) {
+    const fieldErrors = parsed.error.flatten().fieldErrors;
+    return {
+      error: firstIssueMessage(fieldErrors) ?? "Invalid threshold",
+      fieldErrors,
+    };
+  }
+
+  const { supabase, user, error: authError } = await requireUser();
+  if (authError || !user) {
+    return { error: authError ?? "You must be signed in." };
+  }
+
+  const taskError = await assertOwnedActiveTask(supabase, user.id, taskId);
+  if (taskError) {
+    return { error: taskError };
+  }
+
+  const { data: existing, error: existingError } = await supabase
+    .from("reminder_thresholds")
+    .select("id, days_before")
+    .eq("id", id)
+    .eq("task_id", taskId)
+    .maybeSingle();
+
+  if (existingError) {
+    return { error: existingError.message };
+  }
+  if (!existing) {
+    return { error: "Threshold not found." };
+  }
+
+  if (existing.days_before === parsed.data.days_before) {
+    revalidateTaskPaths(taskId);
+    return {};
+  }
+
+  // Changing days_before customizes the threshold; clear is_default.
+  const { data, error } = await supabase
+    .from("reminder_thresholds")
+    .update({
+      days_before: parsed.data.days_before,
+      is_default: false,
+    })
+    .eq("id", id)
+    .eq("task_id", taskId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    if (isUniqueViolation(error)) {
+      return {
+        error:
+          "A threshold with that days-before value already exists on this task.",
+        fieldErrors: {
+          days_before: [
+            "A threshold with that days-before value already exists on this task.",
+          ],
+        },
+      };
+    }
+    return { error: error.message };
+  }
+  if (!data) {
+    return { error: "Threshold not found." };
+  }
+
+  revalidateTaskPaths(taskId);
+  return {};
+}
+
+export async function removeReminderThreshold(
+  _prev: TaskActionState,
+  formData: FormData,
+): Promise<TaskActionState> {
+  const id = formData.get("id");
+  const taskId = formData.get("task_id");
+  if (typeof id !== "string" || id.length === 0) {
+    return { error: "Threshold id is required." };
+  }
+  if (typeof taskId !== "string" || taskId.length === 0) {
+    return { error: "Task id is required." };
+  }
+
+  const { supabase, user, error: authError } = await requireUser();
+  if (authError || !user) {
+    return { error: authError ?? "You must be signed in." };
+  }
+
+  const taskError = await assertOwnedActiveTask(supabase, user.id, taskId);
+  if (taskError) {
+    return { error: taskError };
+  }
+
+  const { data, error } = await supabase
+    .from("reminder_thresholds")
+    .delete()
+    .eq("id", id)
+    .eq("task_id", taskId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    return { error: error.message };
+  }
+  if (!data) {
+    return { error: "Threshold not found." };
+  }
+
+  revalidateTaskPaths(taskId);
+  return {};
 }

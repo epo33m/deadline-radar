@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { taskSchema, taskStatusSchema } from "./task";
+import {
+  reminderThresholdSchema,
+  taskSchema,
+  taskStatusSchema,
+} from "./task";
 
 const validBase = {
   title: "Essay draft",
@@ -134,5 +138,42 @@ describe("taskSchema", () => {
       const result = taskSchema.safeParse({ ...validBase, status });
       expect(result.success).toBe(true);
     }
+  });
+});
+
+describe("reminderThresholdSchema", () => {
+  test("accepts days_before of 0 and positive integers", () => {
+    expect(reminderThresholdSchema.safeParse({ days_before: "0" }).success).toBe(
+      true,
+    );
+    expect(reminderThresholdSchema.safeParse({ days_before: "14" }).success).toBe(
+      true,
+    );
+    expect(reminderThresholdSchema.safeParse({ days_before: 5 }).success).toBe(
+      true,
+    );
+  });
+
+  test("parses string days_before to a number", () => {
+    const result = reminderThresholdSchema.safeParse({ days_before: "7" });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.days_before).toBe(7);
+    }
+  });
+
+  test("rejects negative, fractional, and non-numeric days_before", () => {
+    expect(
+      reminderThresholdSchema.safeParse({ days_before: "-1" }).success,
+    ).toBe(false);
+    expect(
+      reminderThresholdSchema.safeParse({ days_before: "1.5" }).success,
+    ).toBe(false);
+    expect(
+      reminderThresholdSchema.safeParse({ days_before: "two" }).success,
+    ).toBe(false);
+    expect(reminderThresholdSchema.safeParse({ days_before: "" }).success).toBe(
+      false,
+    );
   });
 });
