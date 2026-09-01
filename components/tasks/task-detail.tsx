@@ -6,13 +6,14 @@ import {
   softDeleteTask,
   type TaskActionState,
 } from "@/app/actions/tasks";
+import { AttachmentManager } from "@/components/tasks/attachment-manager";
 import { TaskForm } from "@/components/tasks/task-form";
 import { ThresholdManager } from "@/components/tasks/threshold-manager";
 import { Button } from "@/components/ui/button";
 import { formatDeadline } from "@/lib/datetime";
 import type { TaskStatus } from "@/lib/validation/task";
 import type { CourseListItem } from "@/types/course";
-import type { ReminderThreshold, TaskDetail } from "@/types/task";
+import type { Attachment, ReminderThreshold, TaskDetail } from "@/types/task";
 
 const initialState: TaskActionState = {};
 
@@ -26,6 +27,7 @@ type TaskDetailPanelProps = {
   task: TaskDetail;
   courses: CourseListItem[];
   thresholds: ReminderThreshold[];
+  attachments: Attachment[];
 };
 
 function SoftDeleteButton({ taskId }: { taskId: string }) {
@@ -59,6 +61,7 @@ export function TaskDetailPanel({
   task,
   courses,
   thresholds,
+  attachments,
 }: TaskDetailPanelProps) {
   return (
     <div className="space-y-10">
@@ -81,6 +84,8 @@ export function TaskDetailPanel({
       </div>
 
       <ThresholdManager taskId={task.id} thresholds={thresholds} />
+
+      <AttachmentManager taskId={task.id} attachments={attachments} />
 
       <div className="space-y-4">
         <h2 className="font-display text-xl font-semibold">Edit task</h2>

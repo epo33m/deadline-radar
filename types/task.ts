@@ -22,6 +22,16 @@ export type ReminderThreshold = {
   created_at: string;
 };
 
+export type Attachment = {
+  id: string;
+  task_id: string;
+  type: "file" | "link";
+  name: string;
+  storage_path: string | null;
+  url: string | null;
+  created_at: string;
+};
+
 /** Active task fields used by list UI. */
 export type TaskListItem = Pick<
   Task,
@@ -41,4 +51,5 @@ export type TaskDetail = Task & {
   course_color?: string | null;
   course_code?: string | null;
   reminder_thresholds?: ReminderThreshold[];
+  attachments?: Attachment[];
 };
