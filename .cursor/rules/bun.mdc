@@ -1,0 +1,11 @@
+---
+description: Bun is the only package manager and script runner for this repo
+alwaysApply: true
+---
+
+# Bun
+
+- Install and add packages with `bun add` / `bun install`.
+- Run scripts with `bun run` and one-off binaries with `bunx`.
+- Prefer Bun APIs and tooling when scaffolding or configuring the app.
+- Do not use npm, npx, yarn, or pnpm for this project.
