@@ -27,7 +27,9 @@
 ### 2.2 Course
 - Purely organizational, scoped to its owner.
 - **Rule:** `name` is required, cannot be empty.
-- **Open question:** should the course name be unique per user? (Recommendation: yes, to avoid confusing duplicates — needs confirmation.)
+- **Rule:** Course identity is the course `id` (uuid). Names are **not** unique per user — duplicate names are allowed.
+- **Rule — soft delete:** removing a course sets `deleted_at`; it is excluded from active lists and from new task assignment. Rows are not hard-deleted in the MVP.
+- **Open question:** how long should soft-deleted courses be retained before purge (if ever)? No retention period or automatic purge is defined yet — needs a future decision.
 
 ### 2.3 Task
 - Must have a `course_id` (must belong to the same user) and a `deadline`.
@@ -86,7 +88,8 @@
 
 | Field | Rule |
 |---|---|
-| `Course.name` | required, cannot be empty |
+| `Course.name` | required, cannot be empty; not unique per user (identity is `id`) |
+| `Course` delete | soft delete via `deleted_at` (no hard delete in MVP) |
 | `Task.title` | required, cannot be empty |
 | `Task.course_id` | required, must belong to the same user |
 | `Task.deadline` | required (datetime) |
@@ -104,5 +107,5 @@
 ## 7. Open Domain Questions
 - [ ] Maximum retries for a `failed` email delivery? (suggestion: 3x)
 - [ ] Confirm: does reopening a task from `done` reactivate reminders for thresholds that haven't passed yet?
-- [ ] Should course names be unique per user, or are duplicates allowed?
+- [ ] Data retention for soft-deleted courses: how long to keep `deleted_at IS NOT NULL` rows, and should there be an automatic purge? (No retention period or purge policy yet.) Tracked in #16.
 - [ ] Confirm the threshold trigger-time rule: same hour/minute as `deadline`, in the Profile's timezone — does this match your expectations?

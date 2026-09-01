@@ -46,9 +46,10 @@ bun install
 cp .env.example .env.local   # fill NEXT_PUBLIC_SUPABASE_URL + ANON_KEY
 ```
 
-Apply the profiles migration in the Supabase SQL Editor:
+Apply migrations in the Supabase SQL Editor (in order):
 
-`supabase/migrations/20260901000000_profiles.sql`
+1. `supabase/migrations/20260901000000_profiles.sql`
+2. `supabase/migrations/20260901010000_courses.sql`
 
 In Supabase Auth settings for local MVP: disable **Confirm email**, and set Site URL to `http://localhost:3000`.
 
@@ -59,4 +60,4 @@ bun test
 
 ## Status
 
-MVP tickets in progress. Auth/profile/timezone is issue #4.
+MVP tickets in progress. Course CRUD is issue #5.

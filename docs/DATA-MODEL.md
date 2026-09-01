@@ -56,14 +56,18 @@ create table profiles (
 create table courses (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references profiles(id) on delete cascade,
-  name text not null,
+  name text not null check (char_length(trim(name)) > 0),
   code text,
   color text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  deleted_at timestamptz
 );
 
 create index idx_courses_user_id on courses(user_id);
+create index idx_courses_user_id_active on courses(user_id) where deleted_at is null;
 ```
+
+> Soft delete: set `deleted_at` instead of removing the row. Active queries filter `deleted_at is null`. Course `name` is not unique per user; identity is `id`. Retention / purge of soft-deleted rows is an open domain question (see `DOMAIN.md` §7).
 
 ### tasks
 
@@ -197,8 +201,12 @@ alter table attachments enable row level security;
 create policy "profiles_select_own" on profiles for select using (id = auth.uid());
 create policy "profiles_update_own" on profiles for update using (id = auth.uid());
 
--- courses: scoped directly via user_id
-create policy "courses_all_own" on courses for all using (user_id = auth.uid());
+-- courses: owner scoped; soft delete via UPDATE deleted_at (no DELETE policy)
+create policy "courses_select_own" on courses for select using (user_id = auth.uid());
+create policy "courses_insert_own" on courses for insert with check (user_id = auth.uid());
+create policy "courses_update_own" on courses for update
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
 
 -- tasks: scoped directly via user_id
 create policy "tasks_all_own" on tasks for all using (user_id = auth.uid());
@@ -226,4 +234,5 @@ create policy "deliveries_update_read_own" on notification_deliveries for update
 ## 6. Open Data Model Questions
 - [ ] Final data type for `estimated_duration` (integer minutes vs free text) — see `product.md` §10.
 - [ ] Is `retry_count` on `notification_deliveries` enough, or is a `last_error` (text) column needed for debugging Resend failures?
-- [ ] Is soft-delete (a `deleted_at` column) needed for `tasks`/`courses`, or is hard delete sufficient for MVP?
+- [ ] Soft-delete retention / automatic purge for `courses.deleted_at` (and later `tasks` if soft-deleted) — no policy yet; see `DOMAIN.md` §7.
+- [ ] Is soft-delete needed for `tasks` in MVP, or is hard delete sufficient for tasks only?
