@@ -33,6 +33,7 @@ Use `bun` / `bunx` for install, scripts, and package adds. Do not use npm, npx, 
 | [docs/MVP.md](docs/MVP.md) | MVP scope and core flows |
 | [docs/DOMAIN.md](docs/DOMAIN.md) | Domain model and business rules |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture |
+| [docs/diagrams/mvp-architecture.html](docs/diagrams/mvp-architecture.html) | Interactive MVP architecture map (Archify) |
 | [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | Schema, triggers, and RLS |
 | [docs/agents/](docs/agents/) | Agent issue tracker, triage labels, domain-doc layout |
 

@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Deadline Radar MVP",
+    "locale": "en",
+    "output": "mvp-architecture.html",
+    "quality_profile": "showcase",
+    "viewBox": [1100, 720],
+    "views": [
+      {
+        "id": "primary-path",
+        "label": "Primary app path",
+        "focus": ["browser", "nextjs", "auth", "postgres"],
+        "note": "Student UI and server actions talk to Supabase Auth and Postgres under RLS."
+      },
+      {
+        "id": "reminders",
+        "label": "Reminder delivery",
+        "focus": ["cron", "nextjs", "postgres", "resend"],
+        "note": "Hourly cron evaluates due thresholds; email via Resend; in-app via client polling."
+      },
+      {
+        "id": "attachments",
+        "label": "Attachments",
+        "focus": ["browser", "nextjs", "storage"],
+        "note": "Private file uploads land in Supabase Storage with signed URL access."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "browser",
+      "type": "external",
+      "label": "Browser",
+      "sublabel": "Student",
+      "pos": [60, 300],
+      "size": [130, 64]
+    },
+    {
+      "id": "nextjs",
+      "type": "frontend",
+      "label": "Next.js App",
+      "sublabel": "App Router + RSC",
+      "tag": "Zod + shadcn",
+      "pos": [300, 292],
+      "size": [170, 80]
+    },
+    {
+      "id": "auth",
+      "type": "security",
+      "label": "Supabase Auth",
+      "sublabel": "email / password",
+      "pos": [600, 120],
+      "size": [160, 64]
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "Postgres",
+      "sublabel": "RLS + triggers",
+      "pos": [600, 300],
+      "size": [160, 64]
+    },
+    {
+      "id": "storage",
+      "type": "cloud",
+      "label": "Storage",
+      "sublabel": "attachments bucket",
+      "pos": [600, 480],
+      "size": [160, 64]
+    },
+    {
+      "id": "cron",
+      "type": "backend",
+      "label": "Vercel Cron",
+      "sublabel": "evaluate-reminders",
+      "tag": "hourly",
+      "pos": [300, 500],
+      "size": [170, 72]
+    },
+    {
+      "id": "resend",
+      "type": "external",
+      "label": "Resend",
+      "sublabel": "reminder email",
+      "pos": [900, 120],
+      "size": [130, 64]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Supabase",
+      "wraps": ["auth", "postgres", "storage"]
+    }
+  ],
+  "connections": [
+    {
+      "id": "browser-to-nextjs",
+      "from": "browser",
+      "to": "nextjs",
+      "label": "HTTPS",
+      "variant": "emphasis"
+    },
+    {
+      "id": "nextjs-to-auth",
+      "from": "nextjs",
+      "to": "auth",
+      "label": "session",
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "left"
+    },
+    {
+      "id": "nextjs-to-postgres",
+      "from": "nextjs",
+      "to": "postgres",
+      "label": "CRUD + RLS",
+      "labelDy": -28
+    },
+    {
+      "id": "nextjs-to-storage",
+      "from": "nextjs",
+      "to": "storage",
+      "label": "upload",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "labelDy": 36
+    },
+    {
+      "id": "cron-to-nextjs",
+      "from": "cron",
+      "to": "nextjs",
+      "label": "invoke",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelDx": 48
+    },
+    {
+      "id": "nextjs-to-resend",
+      "from": "nextjs",
+      "to": "resend",
+      "label": "send email",
+      "fromSide": "top",
+      "toSide": "top",
+      "via": [[385, 80], [965, 80]],
+      "labelAt": [640, 68]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "App",
+      "items": [
+        "Next.js App Router with server actions",
+        "Browser polls for in-app notifications"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Data",
+      "items": [
+        "Postgres holds profiles, courses, tasks, thresholds, deliveries",
+        "Private attachments bucket with signed URLs"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Reminders",
+      "items": [
+        "Vercel Cron hourly; job uses service_role to evaluate thresholds",
+        "Email via Resend; dual-channel notification_deliveries"
+      ]
+    }
+  ]
+}
