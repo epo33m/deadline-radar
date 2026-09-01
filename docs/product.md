@@ -120,6 +120,7 @@ auth.users
 | code | text (nullable) |
 | color | text (nullable) |
 | created_at | timestamp |
+| deleted_at | timestamp (nullable; soft delete) |
 
 **tasks**
 | Field | Type |
