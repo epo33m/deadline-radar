@@ -35,7 +35,7 @@
 - Must have a `course_id` (must belong to the same user) and a `deadline`.
 - Status lifecycle: `todo` ↔ `in_progress` ↔ `done` — **free to move in any direction** (MVP does not enforce a strict workflow order).
 - **Rule — past deadline:** a user may create a task with a deadline that has already passed (e.g. backfilling an old assignment). The system does not forbid this, but see the reminder rule in §4 regarding thresholds that have already passed.
-- **Rule — deleting a task:** cascades delete to its `reminder_thresholds`, `notification_deliveries`, and `attachments` (including the file in storage — see `ARCHITECTURE.md`).
+- **Rule — soft delete:** removing a task sets `deleted_at`; it is excluded from active lists. Rows are not hard-deleted in the MVP (same pattern as courses). Hard delete would cascade to `reminder_thresholds`, `notification_deliveries`, and `attachments` (including storage files — see `ARCHITECTURE.md`); soft delete leaves those child rows in place until a future purge decision.
 
 ### 2.4 Reminder Threshold
 - **4 rows** auto-generated when a task is created: `H-7, H-3, H-1, H-0` (relative to `deadline`).
@@ -91,9 +91,10 @@
 | `Course.name` | required, cannot be empty; not unique per user (identity is `id`) |
 | `Course` delete | soft delete via `deleted_at` (no hard delete in MVP) |
 | `Task.title` | required, cannot be empty |
-| `Task.course_id` | required, must belong to the same user |
+| `Task.course_id` | required, must belong to the same user; new tasks require an active (not soft-deleted) course |
 | `Task.deadline` | required (datetime) |
-| `Task.estimated_duration` | optional (unit/format still **TBD**, see `product.md` §10) |
+| `Task.estimated_duration` | optional integer minutes (free-text alternate still open in `product.md` §10) |
+| `Task` delete | soft delete via `deleted_at` (no hard delete in MVP) |
 | `Attachment.type=file` | `storage_path` required, `url` empty |
 | `Attachment.type=link` | `url` required (valid URL), `storage_path` empty |
 | `ReminderThreshold.days_before` | integer ≥ 0, unique per task |
@@ -107,5 +108,5 @@
 ## 7. Open Domain Questions
 - [ ] Maximum retries for a `failed` email delivery? (suggestion: 3x)
 - [ ] Confirm: does reopening a task from `done` reactivate reminders for thresholds that haven't passed yet?
-- [ ] Data retention for soft-deleted courses: how long to keep `deleted_at IS NOT NULL` rows, and should there be an automatic purge? (No retention period or purge policy yet.) Tracked in #16.
+- [ ] Data retention for soft-deleted courses and tasks: how long to keep `deleted_at IS NOT NULL` rows, and should there be an automatic purge? (No retention period or purge policy yet.) Course retention tracked in #16.
 - [ ] Confirm the threshold trigger-time rule: same hour/minute as `deadline`, in the Profile's timezone — does this match your expectations?

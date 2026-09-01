@@ -50,6 +50,7 @@ Apply migrations in the Supabase SQL Editor (in order):
 
 1. `supabase/migrations/20260901000000_profiles.sql`
 2. `supabase/migrations/20260901010000_courses.sql`
+3. `supabase/migrations/20260901020000_tasks.sql`
 
 In Supabase Auth settings for local MVP: disable **Confirm email**, and set Site URL to `http://localhost:3000`.
 
@@ -60,4 +61,4 @@ bun test
 
 ## Status
 
-MVP tickets in progress. Course CRUD is issue #5.
+MVP tickets in progress. Task CRUD + default thresholds is issue #6.

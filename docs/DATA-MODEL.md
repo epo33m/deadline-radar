@@ -80,16 +80,20 @@ create table tasks (
   description text,
   deadline timestamptz not null,
   status task_status not null default 'todo',
-  estimated_duration integer, -- unit: TBD, see product.md §10 (candidate: minutes)
+  estimated_duration integer, -- unit: minutes (product.md §10 still lists free text as an alternate)
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz
 );
 
 create index idx_tasks_user_id on tasks(user_id);
 create index idx_tasks_course_id on tasks(course_id);
 create index idx_tasks_deadline on tasks(deadline);
 create index idx_tasks_status on tasks(status);
+create index idx_tasks_user_id_active on tasks(user_id) where deleted_at is null;
 ```
+
+> Soft delete: set `deleted_at` instead of removing the row. Active queries filter `deleted_at is null`. Hard DELETE is denied under RLS (same pattern as courses). Retention / purge of soft-deleted rows is an open domain question (see `DOMAIN.md` §7).
 
 ### reminder_thresholds
 
@@ -208,11 +212,24 @@ create policy "courses_update_own" on courses for update
   using (user_id = auth.uid())
   with check (user_id = auth.uid());
 
--- tasks: scoped directly via user_id
-create policy "tasks_all_own" on tasks for all using (user_id = auth.uid());
+-- tasks: owner scoped; soft delete via UPDATE deleted_at (no DELETE policy)
+create policy "tasks_select_own" on tasks for select using (user_id = auth.uid());
+create policy "tasks_insert_own" on tasks for insert with check (user_id = auth.uid());
+create policy "tasks_update_own" on tasks for update
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
 
 -- reminder_thresholds: scoped via a join to tasks
-create policy "thresholds_all_own" on reminder_thresholds for all using (
+create policy "thresholds_select_own" on reminder_thresholds for select using (
+  task_id in (select id from tasks where user_id = auth.uid())
+);
+create policy "thresholds_insert_own" on reminder_thresholds for insert with check (
+  task_id in (select id from tasks where user_id = auth.uid())
+);
+create policy "thresholds_update_own" on reminder_thresholds for update
+  using (task_id in (select id from tasks where user_id = auth.uid()))
+  with check (task_id in (select id from tasks where user_id = auth.uid()));
+create policy "thresholds_delete_own" on reminder_thresholds for delete using (
   task_id in (select id from tasks where user_id = auth.uid())
 );
 
@@ -232,7 +249,6 @@ create policy "deliveries_update_read_own" on notification_deliveries for update
 ```
 
 ## 6. Open Data Model Questions
-- [ ] Final data type for `estimated_duration` (integer minutes vs free text) — see `product.md` §10.
+- [ ] Final data type for `estimated_duration` (integer minutes vs free text) — see `product.md` §10. Schema currently uses integer minutes.
 - [ ] Is `retry_count` on `notification_deliveries` enough, or is a `last_error` (text) column needed for debugging Resend failures?
-- [ ] Soft-delete retention / automatic purge for `courses.deleted_at` (and later `tasks` if soft-deleted) — no policy yet; see `DOMAIN.md` §7.
-- [ ] Is soft-delete needed for `tasks` in MVP, or is hard delete sufficient for tasks only?
+- [ ] Soft-delete retention / automatic purge for `courses.deleted_at` and `tasks.deleted_at` — no policy yet; see `DOMAIN.md` §7.
