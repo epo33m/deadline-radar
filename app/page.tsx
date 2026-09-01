@@ -10,11 +10,10 @@ export default function HomePage() {
           Deadline Radar
         </p>
         <h1 className="font-display text-4xl font-semibold tracking-tight text-ink">
-          App shell is ready
+          Stay ahead of every deadline
         </h1>
         <p className="text-lg text-ink-muted-48">
-          Next.js, Tailwind, and design tokens are wired. Auth and dashboard
-          routes are placeholders for later MVP tickets.
+          Track coursework, set reminder thresholds, and see what is due next.
         </p>
         <div className="flex flex-wrap gap-3">
           <Button
@@ -22,15 +21,15 @@ export default function HomePage() {
             render={<Link href="/login" />}
             className="rounded-full px-[22px] py-[11px] text-[17px]"
           >
-            Login
+            Sign in
           </Button>
           <Button
             variant="outline"
             nativeButton={false}
-            render={<Link href="/dashboard" />}
+            render={<Link href="/register" />}
             className="rounded-full px-[22px] py-[11px] text-[17px]"
           >
-            Dashboard
+            Create account
           </Button>
         </div>
       </div>
