@@ -103,13 +103,19 @@ export function CalendarMonthView({
           {formatMonthHeading(month, timeZone)}
         </h2>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" render={<Link href="/calendar" />}>
+          <Button
+            variant="outline"
+            size="sm"
+            nativeButton={false}
+            render={<Link href="/calendar" />}
+          >
             Today
           </Button>
           <Button
             variant="outline"
             size="icon-sm"
             aria-label="Previous month"
+            nativeButton={false}
             render={
               <Link href={`/calendar?month=${formatMonthParam(previous)}`} />
             }
@@ -120,6 +126,7 @@ export function CalendarMonthView({
             variant="outline"
             size="icon-sm"
             aria-label="Next month"
+            nativeButton={false}
             render={<Link href={`/calendar?month=${formatMonthParam(next)}`} />}
           >
             <ChevronRight />

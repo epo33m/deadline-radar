@@ -28,6 +28,7 @@ type TaskDetailPanelProps = {
   courses: CourseListItem[];
   thresholds: ReminderThreshold[];
   attachments: Attachment[];
+  timeZone: string;
 };
 
 function SoftDeleteButton({ taskId }: { taskId: string }) {
@@ -62,6 +63,7 @@ export function TaskDetailPanel({
   courses,
   thresholds,
   attachments,
+  timeZone,
 }: TaskDetailPanelProps) {
   return (
     <div className="space-y-10">
@@ -69,7 +71,8 @@ export function TaskDetailPanel({
         <p className="text-sm text-ink-muted-48">
           {task.course_name ?? "Course"}
           {task.course_code ? ` · ${task.course_code}` : ""} ·{" "}
-          {STATUS_LABEL[task.status]} · Due {formatDeadline(task.deadline)}
+          {STATUS_LABEL[task.status]} · Due{" "}
+          {formatDeadline(task.deadline, timeZone)}
         </p>
         {task.description ? (
           <p className="whitespace-pre-wrap text-ink">{task.description}</p>

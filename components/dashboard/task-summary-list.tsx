@@ -13,15 +13,18 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
 type TaskSummaryListProps = {
   tasks: DashboardTask[];
   emptyMessage: string;
+  timeZone: string;
   /** When set, show completion time instead of deadline (recently completed). */
   showCompletedAt?: boolean;
 };
 
 function TaskSummaryRow({
   task,
+  timeZone,
   showCompletedAt,
 }: {
   task: DashboardTask;
+  timeZone: string;
   showCompletedAt?: boolean;
 }) {
   return (
@@ -44,8 +47,8 @@ function TaskSummaryRow({
           <p className="text-sm text-ink-muted-48">
             {task.course_name ?? "Course"} ·{" "}
             {showCompletedAt
-              ? `Completed ${formatDeadline(task.updated_at)}`
-              : `Due ${formatDeadline(task.deadline)}`}{" "}
+              ? `Completed ${formatDeadline(task.updated_at, timeZone)}`
+              : `Due ${formatDeadline(task.deadline, timeZone)}`}{" "}
             · {STATUS_LABEL[task.status]}
           </p>
         </div>
@@ -57,6 +60,7 @@ function TaskSummaryRow({
 export function TaskSummaryList({
   tasks,
   emptyMessage,
+  timeZone,
   showCompletedAt,
 }: TaskSummaryListProps) {
   if (tasks.length === 0) {
@@ -69,6 +73,7 @@ export function TaskSummaryList({
         <TaskSummaryRow
           key={task.id}
           task={task}
+          timeZone={timeZone}
           showCompletedAt={showCompletedAt}
         />
       ))}

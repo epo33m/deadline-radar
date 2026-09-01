@@ -28,8 +28,11 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
     redirect("/login");
   }
 
-  const [{ data: task, error: taskError }, { data: courses, error: coursesError }] =
-    await Promise.all([
+  const [
+    { data: task, error: taskError },
+    { data: courses, error: coursesError },
+    { data: profile },
+  ] = await Promise.all([
       supabase
         .from("tasks")
         .select(
@@ -47,6 +50,11 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
         .is("deleted_at", null)
         .order("created_at", { ascending: true })
         .returns<Pick<Course, "id" | "name" | "code" | "color">[]>(),
+      supabase
+        .from("profiles")
+        .select("timezone")
+        .eq("id", user.id)
+        .maybeSingle(),
     ]);
 
   if (taskError || coursesError) {
@@ -64,6 +72,8 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
   if (!task) {
     notFound();
   }
+
+  const timeZone = profile?.timezone ?? "UTC";
 
   const [
     { data: thresholds, error: thresholdsError },
@@ -134,6 +144,7 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
         courses={courseOptions}
         thresholds={thresholds ?? []}
         attachments={attachments ?? []}
+        timeZone={timeZone}
       />
     </section>
   );

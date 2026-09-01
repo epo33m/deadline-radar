@@ -8,6 +8,7 @@ import { TaskSummaryList } from "./task-summary-list";
 
 type DashboardSummariesProps = {
   summaries: DashboardSummaries;
+  timeZone: string;
 };
 
 function SummarySection({
@@ -30,7 +31,10 @@ function SummarySection({
   );
 }
 
-export function DashboardSummariesPanel({ summaries }: DashboardSummariesProps) {
+export function DashboardSummariesPanel({
+  summaries,
+  timeZone,
+}: DashboardSummariesProps) {
   return (
     <div className="space-y-10">
       <SummarySection
@@ -40,6 +44,7 @@ export function DashboardSummariesPanel({ summaries }: DashboardSummariesProps) 
         <TaskSummaryList
           tasks={summaries.overdue}
           emptyMessage="No overdue tasks."
+          timeZone={timeZone}
         />
       </SummarySection>
 
@@ -50,6 +55,7 @@ export function DashboardSummariesPanel({ summaries }: DashboardSummariesProps) 
         <TaskSummaryList
           tasks={summaries.approaching}
           emptyMessage="No tasks due in the next week."
+          timeZone={timeZone}
         />
       </SummarySection>
 
@@ -60,6 +66,7 @@ export function DashboardSummariesPanel({ summaries }: DashboardSummariesProps) 
         <TaskSummaryList
           tasks={summaries.recentlyCompleted}
           emptyMessage="No recently completed tasks."
+          timeZone={timeZone}
           showCompletedAt
         />
       </SummarySection>

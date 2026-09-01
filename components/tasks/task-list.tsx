@@ -22,6 +22,7 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
 
 type TaskListProps = {
   tasks: TaskListItem[];
+  timeZone: string;
 };
 
 function SoftDeleteButton({ taskId }: { taskId: string }) {
@@ -51,7 +52,13 @@ function SoftDeleteButton({ taskId }: { taskId: string }) {
   );
 }
 
-function TaskRow({ task }: { task: TaskListItem }) {
+function TaskRow({
+  task,
+  timeZone,
+}: {
+  task: TaskListItem;
+  timeZone: string;
+}) {
   return (
     <li className="border-b border-hairline py-4 last:border-b-0">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -71,7 +78,8 @@ function TaskRow({ task }: { task: TaskListItem }) {
               {task.title}
             </Link>
             <p className="text-sm text-ink-muted-48">
-              {task.course_name ?? "Course"} · {formatDeadline(task.deadline)} ·{" "}
+              {task.course_name ?? "Course"} ·{" "}
+              {formatDeadline(task.deadline, timeZone)} ·{" "}
               {STATUS_LABEL[task.status]}
             </p>
           </div>
@@ -82,7 +90,7 @@ function TaskRow({ task }: { task: TaskListItem }) {
   );
 }
 
-export function TaskList({ tasks }: TaskListProps) {
+export function TaskList({ tasks, timeZone }: TaskListProps) {
   if (tasks.length === 0) {
     return (
       <p className="text-sm text-ink-muted-48">
@@ -94,7 +102,7 @@ export function TaskList({ tasks }: TaskListProps) {
   return (
     <ul className="border-t border-hairline">
       {tasks.map((task) => (
-        <TaskRow key={task.id} task={task} />
+        <TaskRow key={task.id} task={task} timeZone={timeZone} />
       ))}
     </ul>
   );
