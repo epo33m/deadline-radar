@@ -33,7 +33,9 @@ next-env.d.ts
 
 # OS / IDE
 .DS_Store
-.cursor/
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
 
 # supabase local
 supabase/.temp/
