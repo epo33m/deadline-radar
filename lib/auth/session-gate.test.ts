@@ -24,6 +24,9 @@ describe("resolveSessionGate", () => {
     expect(
       resolveSessionGate({ hasSession: false, pathname: "/register" }),
     ).toEqual({ action: "allow" });
+    expect(
+      resolveSessionGate({ hasSession: false, pathname: "/forgot-password" }),
+    ).toEqual({ action: "allow" });
   });
 
   test("redirects authenticated users away from auth pages to /dashboard", () => {

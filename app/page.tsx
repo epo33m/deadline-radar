@@ -20,7 +20,7 @@ export default function HomePage() {
 
         <Link
           href="/login"
-          className="mt-[17px] inline-flex items-center justify-center rounded-full bg-primary px-[22px] py-[11px] font-sans text-[17px] font-normal leading-[1.47] tracking-[-0.374px] text-on-primary no-underline transition-transform hover:bg-primary/90 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-focus"
+          className="mt-[17px] inline-flex items-center justify-center rounded-full bg-ink px-[22px] py-[11px] font-sans text-[17px] font-normal leading-[1.47] tracking-[-0.374px] text-on-dark no-underline transition-transform hover:bg-ink-muted-80 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink-muted-80"
         >
           Sign in
         </Link>

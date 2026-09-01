@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { loginSchema, registerSchema } from "./auth";
+import {
+  forgotPasswordSchema,
+  loginSchema,
+  registerSchema,
+  resetPasswordSchema,
+} from "./auth";
 
 describe("registerSchema", () => {
   test("accepts a valid email and password of at least 6 characters", () => {
@@ -32,6 +37,11 @@ describe("registerSchema", () => {
       password: "secret1",
     });
     expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.flatten().fieldErrors.email?.[0]).toBe(
+        "Email is required",
+      );
+    }
   });
 });
 
@@ -56,6 +66,48 @@ describe("loginSchema", () => {
     const result = loginSchema.safeParse({
       email: "student@example.com",
       password: "",
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("forgotPasswordSchema", () => {
+  test("accepts a valid email", () => {
+    const result = forgotPasswordSchema.safeParse({
+      email: "student@example.com",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  test("rejects an invalid email", () => {
+    const result = forgotPasswordSchema.safeParse({ email: "bad" });
+    expect(result.success).toBe(false);
+  });
+
+  test("rejects an empty email", () => {
+    const result = forgotPasswordSchema.safeParse({ email: "" });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.flatten().fieldErrors.email?.[0]).toBe(
+        "Email is required",
+      );
+    }
+  });
+});
+
+describe("resetPasswordSchema", () => {
+  test("accepts matching passwords of at least 6 characters", () => {
+    const result = resetPasswordSchema.safeParse({
+      password: "secret1",
+      confirmPassword: "secret1",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  test("rejects mismatched passwords", () => {
+    const result = resetPasswordSchema.safeParse({
+      password: "secret1",
+      confirmPassword: "secret2",
     });
     expect(result.success).toBe(false);
   });
