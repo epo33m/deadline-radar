@@ -95,12 +95,7 @@ function AddFileForm({ taskId }: { taskId: string }) {
   }, [pending, state.error]);
 
   return (
-    <form
-      ref={formRef}
-      action={formAction}
-      className="space-y-3"
-      encType="multipart/form-data"
-    >
+    <form ref={formRef} action={formAction} className="space-y-3">
       <input type="hidden" name="task_id" value={taskId} />
       <div className="flex flex-wrap items-end gap-3">
         <div className="space-y-2">
