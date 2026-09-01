@@ -19,6 +19,7 @@ export type DashboardTask = {
 };
 
 export type DashboardSummaries = {
+  all: DashboardTask[];
   approaching: DashboardTask[];
   overdue: DashboardTask[];
   recentlyCompleted: DashboardTask[];
@@ -32,6 +33,7 @@ export function categorizeDashboardTasks(
   const approachingCutoffMs = nowMs + APPROACHING_WINDOW_DAYS * MS_PER_DAY;
   const recentCutoffMs = nowMs - RECENTLY_COMPLETED_WINDOW_DAYS * MS_PER_DAY;
 
+  const all: DashboardTask[] = [];
   const approaching: DashboardTask[] = [];
   const overdue: DashboardTask[] = [];
   const recentlyCompleted: DashboardTask[] = [];
@@ -50,12 +52,18 @@ export function categorizeDashboardTasks(
       continue;
     }
 
+    all.push(task);
+
     if (deadlineMs < nowMs) {
       overdue.push(task);
     } else if (deadlineMs <= approachingCutoffMs) {
       approaching.push(task);
     }
   }
+
+  all.sort(
+    (a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime(),
+  );
 
   approaching.sort(
     (a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime(),
@@ -67,5 +75,5 @@ export function categorizeDashboardTasks(
     (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
   );
 
-  return { approaching, overdue, recentlyCompleted };
+  return { all, approaching, overdue, recentlyCompleted };
 }

@@ -18,7 +18,7 @@ function task(
 }
 
 describe("categorizeDashboardTasks", () => {
-  test("puts active tasks past deadline in overdue", () => {
+  test("puts active tasks past deadline in overdue and all", () => {
     const summaries = categorizeDashboardTasks(
       [
         task({
@@ -32,11 +32,12 @@ describe("categorizeDashboardTasks", () => {
     );
 
     expect(summaries.overdue.map((t) => t.id)).toEqual(["1"]);
+    expect(summaries.all.map((t) => t.id)).toEqual(["1"]);
     expect(summaries.approaching).toHaveLength(0);
     expect(summaries.recentlyCompleted).toHaveLength(0);
   });
 
-  test("puts active tasks within the approaching window in approaching", () => {
+  test("puts active tasks within the approaching window in approaching and all", () => {
     const withinWindow = new Date(NOW);
     withinWindow.setUTCDate(withinWindow.getUTCDate() + APPROACHING_WINDOW_DAYS);
 
@@ -53,10 +54,11 @@ describe("categorizeDashboardTasks", () => {
     );
 
     expect(summaries.approaching.map((t) => t.id)).toEqual(["2"]);
+    expect(summaries.all.map((t) => t.id)).toEqual(["2"]);
     expect(summaries.overdue).toHaveLength(0);
   });
 
-  test("excludes active tasks beyond the approaching window", () => {
+  test("excludes active tasks beyond the approaching window from approaching but includes them in all", () => {
     const beyondWindow = new Date(NOW);
     beyondWindow.setUTCDate(
       beyondWindow.getUTCDate() + APPROACHING_WINDOW_DAYS + 1,
@@ -76,9 +78,10 @@ describe("categorizeDashboardTasks", () => {
 
     expect(summaries.approaching).toHaveLength(0);
     expect(summaries.overdue).toHaveLength(0);
+    expect(summaries.all.map((t) => t.id)).toEqual(["3"]);
   });
 
-  test("puts recently completed tasks in recentlyCompleted", () => {
+  test("puts recently completed tasks in recentlyCompleted but not all", () => {
     const summaries = categorizeDashboardTasks(
       [
         task({
@@ -93,6 +96,7 @@ describe("categorizeDashboardTasks", () => {
     );
 
     expect(summaries.recentlyCompleted.map((t) => t.id)).toEqual(["4"]);
+    expect(summaries.all).toHaveLength(0);
     expect(summaries.approaching).toHaveLength(0);
     expect(summaries.overdue).toHaveLength(0);
   });
@@ -112,6 +116,7 @@ describe("categorizeDashboardTasks", () => {
     );
 
     expect(summaries.recentlyCompleted).toHaveLength(0);
+    expect(summaries.all).toHaveLength(0);
   });
 
   test("does not put done tasks in overdue even when deadline passed", () => {
@@ -129,10 +134,11 @@ describe("categorizeDashboardTasks", () => {
     );
 
     expect(summaries.overdue).toHaveLength(0);
+    expect(summaries.all).toHaveLength(0);
     expect(summaries.recentlyCompleted.map((t) => t.id)).toEqual(["6"]);
   });
 
-  test("sorts approaching by soonest deadline first", () => {
+  test("sorts approaching and all by soonest deadline first", () => {
     const summaries = categorizeDashboardTasks(
       [
         task({
@@ -152,5 +158,6 @@ describe("categorizeDashboardTasks", () => {
     );
 
     expect(summaries.approaching.map((t) => t.id)).toEqual(["a", "b"]);
+    expect(summaries.all.map((t) => t.id)).toEqual(["a", "b"]);
   });
 });
