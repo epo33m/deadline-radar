@@ -1,6 +1,17 @@
+import type { LucideIcon } from "lucide-react";
+import {
+  Bell,
+  BookOpen,
+  Calendar,
+  CheckSquare,
+  Home,
+  Settings,
+} from "lucide-react";
+
 export type NavItem = {
   href: string;
   label: string;
+  icon: LucideIcon;
 };
 
 export type NavGroup = {
@@ -11,26 +22,26 @@ export type NavGroup = {
 export const APP_NAV_GROUPS: NavGroup[] = [
   {
     label: "Overview",
-    items: [{ href: "/dashboard", label: "Overview" }],
+    items: [{ href: "/dashboard", label: "Overview", icon: Home }],
   },
   {
     label: "Learn",
     items: [
-      { href: "/courses", label: "Courses" },
-      { href: "/tasks", label: "Tasks" },
+      { href: "/courses", label: "Courses", icon: BookOpen },
+      { href: "/tasks", label: "Tasks", icon: CheckSquare },
     ],
   },
   {
     label: "Plan",
-    items: [{ href: "/calendar", label: "Calendar" }],
+    items: [{ href: "/calendar", label: "Calendar", icon: Calendar }],
   },
   {
     label: "System",
-    items: [{ href: "/notifications", label: "Notifications" }],
+    items: [{ href: "/notifications", label: "Notifications", icon: Bell }],
   },
   {
     label: "Settings",
-    items: [{ href: "/settings", label: "Settings" }],
+    items: [{ href: "/settings", label: "Settings", icon: Settings }],
   },
 ];
 

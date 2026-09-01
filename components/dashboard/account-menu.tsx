@@ -5,7 +5,6 @@ import { ChevronDown } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { logout } from "@/app/actions/auth";
-import { NotificationBell } from "@/components/notifications/notification-bell";
 
 type AccountMenuProps = {
   accountLabel: string;
@@ -16,6 +15,7 @@ export function AccountMenu({ accountLabel, userEmail }: AccountMenuProps) {
   const menuId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  const initial = accountLabel.charAt(0).toUpperCase() || "A";
 
   useEffect(() => {
     if (!open) return;
@@ -42,24 +42,28 @@ export function AccountMenu({ accountLabel, userEmail }: AccountMenuProps) {
   }, [open]);
 
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className="relative min-w-0 flex-1">
       <button
         type="button"
         aria-expanded={open}
         aria-haspopup="menu"
         aria-controls={menuId}
+        aria-label={`Account menu for ${accountLabel}`}
         onClick={() => setOpen((current) => !current)}
-        className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-ink transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus"
+        className="inline-flex w-full min-w-0 items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-ink transition-colors hover:bg-sidebar-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-muted-80"
       >
-        <span>{accountLabel}</span>
-        <ChevronDown className="size-4 text-ink-muted-48" aria-hidden="true" />
+        <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-ink">
+          {initial}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-left">{accountLabel}</span>
+        <ChevronDown className="size-4 shrink-0 text-ink-muted-48" aria-hidden="true" />
       </button>
 
       {open ? (
         <div
           id={menuId}
           role="menu"
-          className="absolute top-full right-0 z-50 mt-1 min-w-[12rem] rounded-xl border border-hairline bg-canvas py-1 shadow-sm"
+          className="absolute top-full right-0 left-0 z-50 mt-1 min-w-[12rem] rounded-xl border border-hairline bg-canvas py-1 shadow-sm"
         >
           <div className="border-b border-hairline px-3 py-2">
             <p className="text-sm font-medium text-ink">Account</p>
@@ -87,59 +91,5 @@ export function AccountMenu({ accountLabel, userEmail }: AccountMenuProps) {
         </div>
       ) : null}
     </div>
-  );
-}
-
-type AppTopBarProps = {
-  accountLabel: string;
-  userEmail: string;
-  onOpenMobileNav?: () => void;
-};
-
-export function AppTopBar({
-  accountLabel,
-  userEmail,
-  onOpenMobileNav,
-}: AppTopBarProps) {
-  return (
-    <header className="sticky top-0 z-30 border-b border-hairline bg-canvas/95 backdrop-blur-sm">
-      <div className="flex h-14 items-center gap-3 px-4 lg:px-8">
-        {onOpenMobileNav ? (
-          <button
-            type="button"
-            onClick={onOpenMobileNav}
-            className="inline-flex size-9 items-center justify-center rounded-lg text-ink-muted-48 hover:bg-muted hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus lg:hidden"
-            aria-label="Open navigation"
-          >
-            <span className="flex flex-col gap-1" aria-hidden="true">
-              <span className="block h-0.5 w-4 rounded-full bg-current" />
-              <span className="block h-0.5 w-4 rounded-full bg-current" />
-              <span className="block h-0.5 w-4 rounded-full bg-current" />
-            </span>
-          </button>
-        ) : null}
-
-        <Link
-          href="/dashboard"
-          className="font-display text-sm font-semibold text-ink lg:hidden"
-        >
-          Deadline Radar
-        </Link>
-
-        <div className="hidden flex-1 lg:block">
-          <Link
-            href="/dashboard"
-            className="font-display text-sm font-semibold text-ink"
-          >
-            Deadline Radar
-          </Link>
-        </div>
-
-        <div className="ml-auto flex items-center gap-2">
-          <NotificationBell />
-          <AccountMenu accountLabel={accountLabel} userEmail={userEmail} />
-        </div>
-      </div>
-    </header>
   );
 }

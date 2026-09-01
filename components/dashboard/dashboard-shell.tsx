@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { Menu } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { AppSidebar } from "@/components/dashboard/app-sidebar";
-import { AppTopBar } from "@/components/dashboard/app-top-bar";
 import { cn } from "@/lib/utils";
 
 type DashboardShellProps = {
@@ -17,41 +17,80 @@ export function DashboardShell({
   userEmail,
   children,
 }: DashboardShellProps) {
+  const [desktopSidebarExpanded, setDesktopSidebarExpanded] = useState(true);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(min-width: 1024px)");
+
+    function handleChange(event: MediaQueryListEvent | MediaQueryList) {
+      if (event.matches) {
+        setMobileNavOpen(false);
+      }
+    }
+
+    handleChange(mediaQuery);
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, []);
+
+  function closeMobileNav() {
+    setMobileNavOpen(false);
+  }
+
   return (
-    <div className="min-h-screen bg-canvas text-ink">
-      <div className="flex min-h-screen">
-        <AppSidebar className="hidden lg:flex" />
+    <div className="min-h-svh bg-canvas text-ink">
+      <div className="flex min-h-svh">
+        <AppSidebar
+          variant="desktop"
+          expanded={desktopSidebarExpanded}
+          onToggleExpanded={() =>
+            setDesktopSidebarExpanded((current) => !current)
+          }
+          accountLabel={accountLabel}
+          userEmail={userEmail}
+          className="hidden lg:flex"
+        />
 
         {mobileNavOpen ? (
           <button
             type="button"
-            aria-label="Close navigation"
+            aria-label="Close menu"
             className="fixed inset-0 z-40 bg-ink/20 lg:hidden"
-            onClick={() => setMobileNavOpen(false)}
+            onClick={closeMobileNav}
           />
         ) : null}
 
         <AppSidebar
-          aria-hidden={!mobileNavOpen}
+          variant="mobile"
+          expanded
+          onClose={closeMobileNav}
+          onNavigate={closeMobileNav}
+          accountLabel={accountLabel}
+          userEmail={userEmail}
           className={cn(
-            "fixed inset-y-0 left-0 z-50 transition-transform lg:hidden",
+            "fixed inset-y-0 left-0 z-50 lg:hidden",
             mobileNavOpen ? "translate-x-0" : "-translate-x-full",
           )}
-          onNavigate={() => setMobileNavOpen(false)}
         />
 
-        <div className="flex min-w-0 flex-1 flex-col">
-          <AppTopBar
-            accountLabel={accountLabel}
-            userEmail={userEmail}
-            onOpenMobileNav={() => setMobileNavOpen(true)}
-          />
-          <main className="flex-1 px-4 py-6 lg:px-8 lg:py-8">
+        <main className="min-w-0 flex-1">
+          <div className="sticky top-0 z-30 flex h-14 items-center border-b border-hairline bg-canvas px-4 lg:hidden">
+            <button
+              type="button"
+              onClick={() => setMobileNavOpen(true)}
+              aria-label="Open menu"
+              aria-expanded={mobileNavOpen}
+              className="inline-flex size-9 items-center justify-center rounded-lg text-ink-muted-48 transition-colors hover:bg-muted hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus"
+            >
+              <Menu className="size-5" aria-hidden="true" />
+            </button>
+          </div>
+
+          <div className="px-4 py-6 lg:px-8 lg:py-8">
             <div className="mx-auto w-full max-w-6xl">{children}</div>
-          </main>
-        </div>
+          </div>
+        </main>
       </div>
     </div>
   );
