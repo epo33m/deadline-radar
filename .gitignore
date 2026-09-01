@@ -35,7 +35,8 @@ next-env.d.ts
 .DS_Store
 .cursor/*
 !.cursor/rules/
-!.cursor/rules/**
+.cursor/rules/**
+!.cursor/rules/github-no-cursor-meta.mdc
 
 # supabase local
 supabase/.temp/
