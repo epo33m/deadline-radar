@@ -132,9 +132,10 @@ auth.users
 | description | text (nullable) |
 | deadline | timestamptz |
 | status | enum: `todo` \| `in_progress` \| `done` |
-| estimated_duration | **TBD unit** — candidates: integer minutes, or free text (e.g. "2h") |
+| estimated_duration | integer minutes (nullable); free text still an open alternate in §10 |
 | created_at | timestamp |
 | updated_at | timestamp |
+| deleted_at | timestamp (nullable; soft delete) |
 
 **reminder_thresholds**
 | Field | Type |
