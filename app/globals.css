@@ -12,7 +12,7 @@
   --card-foreground: #1d1d1f;
   --popover: #ffffff;
   --popover-foreground: #1d1d1f;
-  --primary: #0066cc;
+  --primary: #0071e3;
   --primary-foreground: #ffffff;
   --secondary: #f5f5f7;
   --secondary-foreground: #1d1d1f;
@@ -21,23 +21,24 @@
   --accent: #fafafc;
   --accent-foreground: #1d1d1f;
   --destructive: #ff3b30;
+  --warning: #ff9500;
   --border: #e0e0e0;
   --input: #e0e0e0;
-  --ring: #0066cc;
-  --chart-1: #0066cc;
-  --chart-2: #0071e3;
+  --ring: #0071e3;
+  --chart-1: #0071e3;
+  --chart-2: #0088ff;
   --chart-3: #2997ff;
   --chart-4: #7a7a7a;
   --chart-5: #333333;
   --radius: 0.6875rem;
   --sidebar: #f5f5f7;
   --sidebar-foreground: #1d1d1f;
-  --sidebar-primary: #0066cc;
+  --sidebar-primary: #0071e3;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #fafafc;
   --sidebar-accent-foreground: #1d1d1f;
   --sidebar-border: #e0e0e0;
-  --sidebar-ring: #0066cc;
+  --sidebar-ring: #0071e3;
 }
 
 @theme inline {
@@ -56,6 +57,7 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-warning: var(--warning);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -74,7 +76,7 @@
   --color-sidebar-ring: var(--sidebar-ring);
 
   /* Named DESIGN.md tokens for app chrome */
-  --color-primary-focus: #0071e3;
+  --color-primary-focus: #0088ff;
   --color-primary-on-dark: #2997ff;
   --color-ink: #1d1d1f;
   --color-body: #1d1d1f;
