@@ -39,6 +39,14 @@ Use `bun` / `bunx` for install, scripts, and package adds. Do not use npm, npx, 
 
 Product docs under `docs/` are the source of truth. Engineering work follows the Matt Pocock skills wired in `AGENTS.md`.
 
+## Getting started
+
+```bash
+bun install
+cp .env.example .env.local   # fill in Supabase keys when ready
+bun run dev
+```
+
 ## Status
 
-Baseline docs locked at v0.1. Implementation has not started.
+Baseline docs locked at v0.1. App shell scaffolded (Next.js + Tailwind + shadcn/ui); feature tickets follow from issue #3 onward.

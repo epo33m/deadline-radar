@@ -29,7 +29,6 @@ pnpm-lock.yaml
 # vercel / typescript
 .vercel
 *.tsbuildinfo
-next-env.d.ts
 
 # OS / IDE
 .DS_Store
