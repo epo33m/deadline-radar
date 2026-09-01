@@ -52,7 +52,7 @@ function clientFieldErrors<T extends z.ZodType>(
   const fieldErrors = parsed.error.flatten().fieldErrors;
   const result: Partial<Record<string, string>> = {};
   for (const [key, messages] of Object.entries(fieldErrors)) {
-    if (messages?.[0]) result[key] = messages[0];
+    if (Array.isArray(messages) && messages[0]) result[key] = messages[0];
   }
   return result;
 }

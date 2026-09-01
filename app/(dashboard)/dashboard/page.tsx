@@ -1,10 +1,15 @@
 import { redirect } from "next/navigation";
 
 import { DashboardSummariesPanel } from "@/components/dashboard/dashboard-summaries";
+import { OverviewMiniCalendar } from "@/components/dashboard/overview-mini-calendar";
+import { OverviewStatsGrid } from "@/components/dashboard/overview-stats-grid";
+import { UpcomingDeadlinesPanel } from "@/components/dashboard/upcoming-deadlines-panel";
+import { getOverviewGreeting } from "@/lib/dashboard/greeting";
 import {
   categorizeDashboardTasks,
   type DashboardTask,
 } from "@/lib/dashboard/summaries";
+import { computeOverviewStats } from "@/lib/dashboard/overview-stats";
 import { createClient } from "@/lib/supabase/server";
 import type { Course } from "@/types/course";
 import type { Task } from "@/types/task";
@@ -43,9 +48,9 @@ export default async function DashboardPage() {
   if (error) {
     return (
       <section className="space-y-2">
-        <h1 className="font-display text-3xl font-semibold">Dashboard</h1>
+        <h1 className="font-display text-3xl font-semibold">Overview</h1>
         <p className="text-sm text-destructive" role="alert">
-          Could not load dashboard summaries. Apply the tasks migration in
+          Could not load overview summaries. Apply the tasks migration in
           Supabase if you have not already.
         </p>
       </section>
@@ -53,6 +58,7 @@ export default async function DashboardPage() {
   }
 
   const timeZone = profile?.timezone ?? "UTC";
+  const now = new Date();
 
   const dashboardTasks: DashboardTask[] = (tasks ?? []).map((task) => {
     const course = Array.isArray(task.courses) ? task.courses[0] : task.courses;
@@ -67,19 +73,46 @@ export default async function DashboardPage() {
     };
   });
 
-  const summaries = categorizeDashboardTasks(dashboardTasks);
+  const summaries = categorizeDashboardTasks(dashboardTasks, now);
+  const stats = computeOverviewStats(dashboardTasks, now);
+  const greeting = getOverviewGreeting(now, timeZone);
+
+  const calendarTasks = dashboardTasks
+    .filter((task) => task.status !== "done")
+    .map((task) => ({
+      id: task.id,
+      title: task.title,
+      deadline: task.deadline,
+      status: task.status,
+      course_name: task.course_name,
+      course_color: task.course_color,
+    }));
 
   return (
     <section className="space-y-8">
       <div className="space-y-2">
-        <h1 className="font-display text-3xl font-semibold">Dashboard</h1>
-        <p className="text-ink-muted-48">
-          Your tasks at a glance: overdue, approaching deadline, and recently
-          completed.
+        <h1 className="font-display text-3xl font-semibold text-ink sm:text-4xl">
+          Overview
+        </h1>
+        <p className="text-lg text-ink-muted-48">{greeting}</p>
+        <p className="text-sm text-ink-muted-48">
+          Here&apos;s what&apos;s happening with your tasks.
         </p>
       </div>
 
-      <DashboardSummariesPanel summaries={summaries} timeZone={timeZone} />
+      <OverviewStatsGrid stats={stats} />
+
+      <div className="grid gap-10 xl:grid-cols-[minmax(0,1fr)_18rem]">
+        <DashboardSummariesPanel summaries={summaries} timeZone={timeZone} />
+
+        <aside className="space-y-10">
+          <OverviewMiniCalendar tasks={calendarTasks} timeZone={timeZone} now={now} />
+          <UpcomingDeadlinesPanel
+            tasks={summaries.approaching}
+            timeZone={timeZone}
+          />
+        </aside>
+      </div>
     </section>
   );
 }
