@@ -1,13 +1,20 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
-import { loginSchema, registerSchema } from "@/lib/validation/auth";
+import {
+  forgotPasswordSchema,
+  loginSchema,
+  registerSchema,
+  resetPasswordSchema,
+} from "@/lib/validation/auth";
 import { timezoneSchema } from "@/lib/timezone";
 
 export type AuthActionState = {
   error?: string;
+  success?: string;
   fieldErrors?: Partial<Record<string, string[]>>;
 };
 
@@ -19,6 +26,17 @@ function firstIssueMessage(
     if (messages?.[0]) return messages[0];
   }
   return undefined;
+}
+
+async function getRequestOrigin(): Promise<string> {
+  const headerStore = await headers();
+  const host =
+    headerStore.get("x-forwarded-host") ?? headerStore.get("host");
+  if (!host) {
+    throw new Error("Unable to determine request origin.");
+  }
+  const protocol = headerStore.get("x-forwarded-proto") ?? "http";
+  return `${protocol}://${host}`;
 }
 
 export async function register(
@@ -96,6 +114,67 @@ export async function login(
   }
 
   redirect("/dashboard");
+}
+
+export async function requestPasswordReset(
+  _prev: AuthActionState,
+  formData: FormData,
+): Promise<AuthActionState> {
+  const parsed = forgotPasswordSchema.safeParse({
+    email: formData.get("email"),
+  });
+
+  if (!parsed.success) {
+    const fieldErrors = parsed.error.flatten().fieldErrors;
+    return {
+      error: firstIssueMessage(fieldErrors) ?? "Invalid email",
+      fieldErrors,
+    };
+  }
+
+  const supabase = await createClient();
+  const origin = await getRequestOrigin();
+  const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email, {
+    redirectTo: `${origin}/auth/confirm?next=/reset-password`,
+  });
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  return {
+    success: "Check your email for a link to reset your password.",
+  };
+}
+
+export async function updatePassword(
+  _prev: AuthActionState,
+  formData: FormData,
+): Promise<AuthActionState> {
+  const parsed = resetPasswordSchema.safeParse({
+    password: formData.get("password"),
+    confirmPassword: formData.get("confirmPassword"),
+  });
+
+  if (!parsed.success) {
+    const fieldErrors = parsed.error.flatten().fieldErrors;
+    return {
+      error: firstIssueMessage(fieldErrors) ?? "Invalid password details",
+      fieldErrors,
+    };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.updateUser({
+    password: parsed.data.password,
+  });
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  await supabase.auth.signOut();
+  redirect("/login");
 }
 
 export async function logout() {

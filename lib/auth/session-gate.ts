@@ -7,7 +7,7 @@ const PROTECTED_PREFIXES = [
   "/settings",
 ] as const;
 
-const AUTH_PATHS = ["/login", "/register"] as const;
+const AUTH_PATHS = ["/login", "/register", "/forgot-password"] as const;
 
 export type SessionGateInput = {
   hasSession: boolean;
