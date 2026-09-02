@@ -3,8 +3,7 @@ const PROTECTED_PREFIXES = [
   "/courses",
   "/tasks",
   "/calendar",
-  "/notifications",
-  "/settings",
+  "/preferences",
 ] as const;
 
 const AUTH_PATHS = ["/login", "/register", "/forgot-password"] as const;

@@ -52,8 +52,16 @@ function isFieldInfoMenuOpen() {
   return Boolean(document.querySelector("[data-field-info-menu]"));
 }
 
+function isTimezonePickerMenuOpen() {
+  return Boolean(document.querySelector("[data-timezone-picker-menu]"));
+}
+
 function isDialogOverlayMenuOpen() {
-  return isColorPickerMenuOpen() || isFieldInfoMenuOpen();
+  return (
+    isColorPickerMenuOpen() ||
+    isFieldInfoMenuOpen() ||
+    isTimezonePickerMenuOpen()
+  );
 }
 
 export function Dialog({

@@ -125,7 +125,7 @@ export async function markNotificationRead(
     return { error: updateError.message };
   }
 
-  revalidatePath("/notifications");
+  revalidatePath("/preferences/notifications");
   revalidatePath("/dashboard");
   return {};
 }
@@ -148,7 +148,7 @@ export async function markAllNotificationsRead(
     return { error: updateError.message };
   }
 
-  revalidatePath("/notifications");
+  revalidatePath("/preferences/notifications");
   revalidatePath("/dashboard");
   return {};
 }

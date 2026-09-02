@@ -4,6 +4,7 @@ import { Menu } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { AppSidebar } from "@/components/dashboard/app-sidebar";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 import { cn } from "@/lib/utils";
 
 type DashboardShellProps = {
@@ -75,19 +76,23 @@ export function DashboardShell({
         />
 
         <main className="min-w-0 flex-1">
-          <div className="sticky top-0 z-30 flex h-14 items-center border-b border-hairline bg-canvas px-4 lg:hidden">
+          <div className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-hairline bg-canvas px-4 sm:px-6 lg:px-8">
             <button
               type="button"
               onClick={() => setMobileNavOpen(true)}
               aria-label="Open menu"
               aria-expanded={mobileNavOpen}
-              className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-ink-muted-48 transition-colors hover:bg-muted hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus"
+              className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-ink-muted-48 transition-colors hover:bg-muted hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus lg:invisible lg:pointer-events-none"
             >
               <Menu className="size-5" aria-hidden="true" />
             </button>
+
+            <div className="flex items-center justify-end">
+              <NotificationBell />
+            </div>
           </div>
 
-          <div className="px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:pt-[5.625rem] lg:pb-8">
+          <div className="px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
             <div className="mx-auto w-full max-w-6xl">{children}</div>
           </div>
         </main>

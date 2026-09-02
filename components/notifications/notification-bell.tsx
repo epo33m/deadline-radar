@@ -38,12 +38,12 @@ export function NotificationBell() {
 
   return (
     <Link
-      href="/notifications"
+      href="/preferences/notifications"
       aria-label={
         unread > 0 ? `Notifications, ${unread} unread` : "Notifications"
       }
       onClick={() => router.refresh()}
-      className="relative inline-flex size-8 items-center justify-center rounded-lg text-ink-muted-48 hover:bg-muted hover:text-ink"
+      className="relative inline-flex size-11 items-center justify-center rounded-lg text-ink-muted-48 transition-colors hover:bg-muted hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus"
     >
       <Bell className="size-4" />
       {unread > 0 ? (

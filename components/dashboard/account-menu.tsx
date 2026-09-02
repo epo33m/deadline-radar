@@ -72,12 +72,12 @@ export function AccountMenu({ accountLabel, userEmail }: AccountMenuProps) {
             ) : null}
           </div>
           <Link
-            href="/settings"
+            href="/preferences"
             role="menuitem"
             onClick={() => setOpen(false)}
             className="block px-3 py-2 text-sm text-ink hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
           >
-            Settings
+            Preferences
           </Link>
           <form action={logout}>
             <button

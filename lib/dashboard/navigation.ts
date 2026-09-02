@@ -1,11 +1,10 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  Bell,
   BookOpen,
   Calendar,
   CheckSquare,
   Home,
-  Settings,
+  SlidersHorizontal,
 } from "lucide-react";
 
 export type NavItem = {
@@ -37,11 +36,9 @@ export const APP_NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "System",
-    items: [{ href: "/notifications", label: "Notifications", icon: Bell }],
-  },
-  {
-    label: "Settings",
-    items: [{ href: "/settings", label: "Settings", icon: Settings }],
+    items: [
+      { href: "/preferences", label: "Preferences", icon: SlidersHorizontal },
+    ],
   },
 ];
 

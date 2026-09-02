@@ -35,8 +35,9 @@ Main pages (indicative, may change during implementation):
 - `/courses` — course CRUD
 - `/tasks`, `/tasks/[id]` — task list & detail/edit (incl. threshold & attachment management)
 - `/calendar` — calendar view
-- `/notifications` — in-app notification history
-- `/settings` — profile & timezone
+- `/preferences` — account and time zone
+- `/preferences/notifications` — in-app notification history (opened from the header bell)
+- Header bell — unread count + link to `/preferences/notifications`
 
 Server Components for data fetching (via the Supabase server client), Client Components for interactive parts (forms, calendar widget, bell icon dropdown). Form validation uses Zod schemas shared between the client and server actions.
 
@@ -104,14 +105,15 @@ Server Components for data fetching (via the Supabase server client), Client Com
   /(dashboard)/tasks
   /(dashboard)/tasks/[id]
   /(dashboard)/calendar
-  /(dashboard)/notifications
-  /(dashboard)/settings
+  /(dashboard)/preferences
+  /(dashboard)/preferences/notifications
   /api/cron/evaluate-reminders/route.ts
 /components
   /ui        (shadcn/ui components)
   /tasks
   /courses
   /notifications
+  /preferences
 /lib
   /supabase  (client.ts, server.ts)
   /validation (zod schemas)
