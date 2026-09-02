@@ -2,10 +2,8 @@
 
 import {
   Check,
-  ChevronDown,
+  ChevronsUpDown,
   CircleAlert,
-  Globe2,
-  Info,
   LoaderCircle,
   Search,
 } from "lucide-react";
@@ -36,6 +34,7 @@ import { cn } from "@/lib/utils";
 
 type TimezoneFormProps = {
   initialTimezone: string;
+  onTimezoneChange?: (timezone: string) => void;
 };
 
 type MenuPosition = {
@@ -54,7 +53,7 @@ const MENU_MARGIN = 16;
 const MENU_MAX_HEIGHT = 380;
 const MOBILE_SHEET_BREAKPOINT = 640;
 const SAVED_FEEDBACK_MS = 2500;
-const SAVE_ERROR_MESSAGE = "Couldn't save your timezone.\nPlease try again.";
+const SAVE_ERROR_MESSAGE = "Couldn't save your time zone.\nPlease try again.";
 
 function measureMenuPosition(trigger: HTMLButtonElement): MenuPosition {
   const viewportWidth = window.innerWidth;
@@ -106,16 +105,18 @@ function measureMenuPosition(trigger: HTMLButtonElement): MenuPosition {
   };
 }
 
-export function TimezoneForm({ initialTimezone }: TimezoneFormProps) {
+export function TimezoneForm({
+  initialTimezone,
+  onTimezoneChange,
+}: TimezoneFormProps) {
   const menuId = useId();
   const searchId = useId();
   const statusId = useId();
-  const descriptionId = useId();
-  const autoInfoId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const savedTimerRef = useRef<number | null>(null);
+  const onTimezoneChangeRef = useRef(onTimezoneChange);
 
   const catalog = useMemo(() => listTimeZones(), []);
   const [mode, setMode] = useState<TimezoneMode>("manual");
@@ -132,6 +133,12 @@ export function TimezoneForm({ initialTimezone }: TimezoneFormProps) {
     zone: string;
   } | null>(null);
 
+  const isAutomatic = mode === "automatic";
+
+  useEffect(() => {
+    onTimezoneChangeRef.current = onTimezoneChange;
+  }, [onTimezoneChange]);
+
   useEffect(() => {
     modeRef.current = mode;
   }, [mode]);
@@ -139,6 +146,10 @@ export function TimezoneForm({ initialTimezone }: TimezoneFormProps) {
   useEffect(() => {
     timezoneRef.current = timezone;
   }, [timezone]);
+
+  useEffect(() => {
+    setTimezone(initialTimezone);
+  }, [initialTimezone]);
 
   useEffect(() => {
     setMode(readStoredTimezoneMode());
@@ -156,12 +167,6 @@ export function TimezoneForm({ initialTimezone }: TimezoneFormProps) {
     () => searchTimeZones(query, catalog),
     [catalog, query],
   );
-
-  const triggerLabel = mode === "automatic" ? "Automatic" : timezone;
-  const helpingCopy =
-    mode === "automatic"
-      ? "Uses your browser timezone to schedule reminders."
-      : "Used to schedule reminders at your local time.";
 
   const closeMenu = useCallback(() => {
     setOpen(false);
@@ -208,6 +213,7 @@ export function TimezoneForm({ initialTimezone }: TimezoneFormProps) {
 
         pendingRetryRef.current = null;
         setStatus("saved");
+        onTimezoneChangeRef.current?.(resolved);
         savedTimerRef.current = window.setTimeout(() => {
           setStatus("idle");
           savedTimerRef.current = null;
@@ -303,6 +309,7 @@ export function TimezoneForm({ initialTimezone }: TimezoneFormProps) {
   }, [open, closeMenu]);
 
   function toggleMenu() {
+    if (isAutomatic) return;
     if (open) {
       closeMenu();
       return;
@@ -310,9 +317,13 @@ export function TimezoneForm({ initialTimezone }: TimezoneFormProps) {
     setOpen(true);
   }
 
-  function selectAutomatic() {
-    persistTimezone("automatic", detectBrowserTimeZone());
-    closeMenu();
+  function setAutomaticEnabled(enabled: boolean) {
+    if (enabled) {
+      if (open) closeMenu();
+      persistTimezone("automatic", detectBrowserTimeZone());
+      return;
+    }
+    persistTimezone("manual", timezoneRef.current || detectBrowserTimeZone());
   }
 
   function selectZone(zone: string) {
@@ -325,13 +336,14 @@ export function TimezoneForm({ initialTimezone }: TimezoneFormProps) {
   const showError = status === "error" && !showSaving;
 
   const menu =
-    open && menuPosition
+    open && !isAutomatic && menuPosition
       ? createPortal(
           <div
             ref={menuRef}
             id={menuId}
+            data-timezone-picker-menu=""
             role="listbox"
-            aria-label="Timezone options"
+            aria-label="Time zone options"
             style={{
               ...(menuPosition.variant === "sheet"
                 ? {
@@ -354,7 +366,7 @@ export function TimezoneForm({ initialTimezone }: TimezoneFormProps) {
           >
             <div className="border-b border-hairline px-3 py-2.5">
               <label htmlFor={searchId} className="sr-only">
-                Search timezone
+                Search time zones
               </label>
               <div className="relative">
                 <Search
@@ -368,7 +380,7 @@ export function TimezoneForm({ initialTimezone }: TimezoneFormProps) {
                   type="search"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Search timezone..."
+                  placeholder="Search time zones..."
                   autoComplete="off"
                   className="h-10 w-full rounded-lg border border-hairline bg-canvas pr-3 pl-9 text-[15px] text-ink outline-none placeholder:text-ink-muted-48 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                 />
@@ -376,35 +388,8 @@ export function TimezoneForm({ initialTimezone }: TimezoneFormProps) {
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-1">
-              <button
-                type="button"
-                role="option"
-                aria-selected={mode === "automatic"}
-                onClick={selectAutomatic}
-                className={cn(
-                  "flex min-h-11 w-full items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none",
-                  mode === "automatic" && "bg-muted/70",
-                )}
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[15px] font-medium text-ink">
-                    Automatic
-                  </span>
-                  <span className="mt-0.5 block text-[13px] text-ink-muted-48">
-                    Use browser timezone
-                  </span>
-                </span>
-                {mode === "automatic" ? (
-                  <Check
-                    className="mt-0.5 size-4 shrink-0 text-primary"
-                    aria-hidden="true"
-                    strokeWidth={2.25}
-                  />
-                ) : null}
-              </button>
-
               {filteredZones.map((zone) => {
-                const selected = mode === "manual" && timezone === zone;
+                const selected = timezone === zone;
                 return (
                   <button
                     key={zone}
@@ -438,7 +423,7 @@ export function TimezoneForm({ initialTimezone }: TimezoneFormProps) {
 
               {filteredZones.length === 0 ? (
                 <p className="px-3 py-4 text-[14px] text-ink-muted-48">
-                  No timezones match “{query.trim()}”.
+                  No time zones match “{query.trim()}”.
                 </p>
               ) : null}
             </div>
@@ -448,71 +433,75 @@ export function TimezoneForm({ initialTimezone }: TimezoneFormProps) {
       : null;
 
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(12rem,20rem)] sm:items-start sm:gap-x-6 sm:gap-y-1">
-        <label
-          htmlFor="timezone-trigger"
-          className="text-[15px] font-medium tracking-[-0.2px] text-ink sm:pt-1"
-        >
-          Timezone
-        </label>
-
-        <button
-          ref={triggerRef}
-          id="timezone-trigger"
-          type="button"
-          aria-haspopup="listbox"
-          aria-expanded={open}
-          aria-controls={menuId}
-          aria-describedby={`${descriptionId}${mode === "automatic" ? ` ${autoInfoId}` : ""}${status !== "idle" ? ` ${statusId}` : ""}`}
-          aria-invalid={showError || undefined}
-          onClick={toggleMenu}
-          className={cn(
-            "relative flex h-11 w-full items-center gap-2.5 rounded-xl border bg-canvas px-3 text-left text-[15px] text-ink transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 sm:row-span-2 sm:self-start",
-            showError
-              ? "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/20"
-              : "border-hairline hover:bg-muted/40",
-          )}
-        >
-          <Globe2
-            className="size-4 shrink-0 text-ink-muted-48"
-            aria-hidden="true"
-            strokeWidth={1.75}
-          />
-          <span className="min-w-0 flex-1 truncate">{triggerLabel}</span>
-          <ChevronDown
-            className="size-4 shrink-0 text-ink-muted-48"
-            aria-hidden="true"
-            strokeWidth={1.75}
-          />
-        </button>
-
-        <p
-          id={descriptionId}
-          className="text-[13px] leading-relaxed text-ink-muted-48 sm:order-none"
-        >
-          {helpingCopy}
-        </p>
-      </div>
-
-      {mode === "automatic" ? (
-        <div
-          id={autoInfoId}
-          className="flex gap-2.5 rounded-xl border border-primary/15 bg-primary/5 px-3 py-2.5 text-[13px] leading-relaxed text-ink-muted-80"
-        >
-          <Info
-            className="mt-0.5 size-4 shrink-0 text-primary"
-            aria-hidden="true"
-            strokeWidth={1.75}
-          />
-          <p>
-            Deadline Radar will use your browser&apos;s timezone to schedule
-            reminders.
+    <div className="w-full space-y-3 text-left">
+      <ul className="list-none divide-y divide-hairline">
+        <li className="flex min-h-12 items-center justify-between gap-4 py-3">
+          <p className="min-w-0 text-[15px] font-medium tracking-[-0.2px] text-ink">
+            Set Automatically
           </p>
-        </div>
-      ) : null}
+          <button
+            type="button"
+            role="switch"
+            aria-checked={isAutomatic}
+            aria-label="Set Automatically"
+            disabled={showSaving}
+            onClick={() => setAutomaticEnabled(!isAutomatic)}
+            className={cn(
+              "relative h-7 w-12 shrink-0 rounded-full transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50",
+              isAutomatic ? "bg-primary" : "bg-hairline",
+            )}
+          >
+            <span
+              aria-hidden="true"
+              className={cn(
+                "absolute top-0.5 left-0.5 size-6 rounded-full bg-canvas shadow-sm transition-transform",
+                isAutomatic && "translate-x-5",
+              )}
+            />
+          </button>
+        </li>
 
-      <div id={statusId} aria-live="polite">
+        <li className="flex min-h-12 items-center justify-between gap-4 py-3">
+          <p
+            id="manual-timezone-label"
+            className={cn(
+              "min-w-0 text-[15px] font-medium tracking-[-0.2px]",
+              isAutomatic ? "text-ink-muted-48" : "text-ink",
+            )}
+          >
+            Time Zone
+          </p>
+          <button
+            ref={triggerRef}
+            id="timezone-trigger"
+            type="button"
+            aria-labelledby="manual-timezone-label"
+            aria-haspopup="listbox"
+            aria-expanded={open}
+            aria-controls={menuId}
+            aria-invalid={showError || undefined}
+            disabled={isAutomatic || showSaving}
+            onClick={toggleMenu}
+            className={cn(
+              "flex min-w-0 max-w-[50%] items-center gap-1.5 rounded-lg text-left text-[15px] outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed",
+              showError
+                ? "text-destructive"
+                : isAutomatic
+                  ? "text-ink-muted-48"
+                  : "text-ink-muted-80",
+            )}
+          >
+            <span className="truncate">{timezone}</span>
+            <ChevronsUpDown
+              className="size-4 shrink-0 text-ink-muted-48"
+              aria-hidden="true"
+              strokeWidth={1.75}
+            />
+          </button>
+        </li>
+      </ul>
+
+      <div id={statusId} aria-live="polite" className="px-0">
         {showSaving ? (
           <p className="flex items-center gap-2 text-[13px] text-primary">
             <LoaderCircle

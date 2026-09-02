@@ -7,7 +7,7 @@ describe("resolveSessionGate", () => {
       resolveSessionGate({ hasSession: false, pathname: "/dashboard" }),
     ).toEqual({ action: "redirect", to: "/login" });
     expect(
-      resolveSessionGate({ hasSession: false, pathname: "/settings" }),
+      resolveSessionGate({ hasSession: false, pathname: "/preferences" }),
     ).toEqual({ action: "redirect", to: "/login" });
     expect(
       resolveSessionGate({ hasSession: false, pathname: "/tasks/abc" }),

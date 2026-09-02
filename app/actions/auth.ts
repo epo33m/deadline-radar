@@ -77,7 +77,7 @@ export async function register(
       .from("profiles")
       .update({ timezone })
       .eq("id", data.session.user.id);
-    redirect("/settings");
+    redirect("/preferences");
   }
 
   return {
