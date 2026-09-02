@@ -190,7 +190,7 @@ export async function updateTimezone(
   const parsed = timezoneSchema.safeParse(formData.get("timezone"));
   if (!parsed.success) {
     const message =
-      parsed.error.issues[0]?.message ?? "Enter a valid IANA timezone";
+      parsed.error.issues[0]?.message ?? "Enter a valid timezone";
     return {
       error: message,
       fieldErrors: { timezone: [message] },
