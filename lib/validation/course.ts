@@ -12,10 +12,10 @@ const optionalTrimmedNullable = z
   });
 
 const optionalHexColor = z
-  .string()
+  .union([z.string(), z.null()])
   .optional()
   .transform((value, ctx) => {
-    if (value === undefined) return null;
+    if (value === undefined || value === null) return null;
     const trimmed = value.trim();
     if (trimmed.length === 0) return null;
     if (!HEX_COLOR.test(trimmed)) {
@@ -38,7 +38,3 @@ export const courseSchema = z.object({
 });
 
 export type CourseInput = z.infer<typeof courseSchema>;
-
-export function isHexColor(value: string): boolean {
-  return HEX_COLOR.test(value);
-}

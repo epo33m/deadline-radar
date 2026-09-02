@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { AddCourseForm } from "@/components/courses/course-form";
-import { CourseList } from "@/components/courses/course-list";
+import { CoursesManagement } from "@/components/courses/courses-management";
 import { createClient } from "@/lib/supabase/server";
 import type { Course } from "@/types/course";
 
@@ -35,25 +34,5 @@ export default async function CoursesPage() {
     );
   }
 
-  return (
-    <section className="space-y-8">
-      <div className="space-y-2">
-        <h1 className="font-display text-3xl font-semibold">Courses</h1>
-        <p className="text-ink-muted-48">
-          Create and manage courses to organize tasks. Names do not need to be
-          unique.
-        </p>
-      </div>
-
-      <div className="space-y-4">
-        <h2 className="font-display text-xl font-semibold">Add course</h2>
-        <AddCourseForm />
-      </div>
-
-      <div className="space-y-4">
-        <h2 className="font-display text-xl font-semibold">Your courses</h2>
-        <CourseList courses={courses ?? []} />
-      </div>
-    </section>
-  );
+  return <CoursesManagement courses={courses ?? []} />;
 }

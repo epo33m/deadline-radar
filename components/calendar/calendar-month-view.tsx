@@ -11,6 +11,7 @@ import {
   type CalendarMonth,
   type CalendarTask,
 } from "@/lib/calendar/month";
+import { getCourseColorFill } from "@/lib/courses/colors";
 
 type CalendarMonthViewProps = {
   month: CalendarMonth;
@@ -34,7 +35,9 @@ function CalendarTaskChip({ task }: { task: CalendarTask }) {
       <span
         aria-hidden
         className="size-2 shrink-0 rounded-sm border border-hairline"
-        style={{ backgroundColor: task.course_color ?? "transparent" }}
+        style={{
+          backgroundColor: getCourseColorFill(task.course_color) ?? "transparent",
+        }}
       />
       <span className="truncate">{task.title}</span>
     </Link>
