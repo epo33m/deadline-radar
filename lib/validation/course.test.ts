@@ -43,6 +43,17 @@ describe("courseSchema", () => {
     }
   });
 
+  test("accepts null color when clearing to None", () => {
+    const result = courseSchema.safeParse({
+      name: "Physics",
+      color: null,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.color).toBeNull();
+    }
+  });
+
   test("accepts a trimmed code and a #RRGGBB color", () => {
     const result = courseSchema.safeParse({
       name: "Chemistry",

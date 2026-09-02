@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
+import { normalizeCourseColorForStorage } from "@/lib/courses/colors";
 import { courseSchema } from "@/lib/validation/course";
 
 export type CourseActionState = {
@@ -21,10 +22,16 @@ function firstIssueMessage(
 }
 
 function parseCourseForm(formData: FormData) {
+  const colorRaw = formData.get("color");
+  const color =
+    typeof colorRaw === "string"
+      ? normalizeCourseColorForStorage(colorRaw)
+      : "";
+
   return courseSchema.safeParse({
     name: formData.get("name"),
     code: formData.get("code") ?? undefined,
-    color: formData.get("color") ?? undefined,
+    color: color.length > 0 ? color : null,
   });
 }
 

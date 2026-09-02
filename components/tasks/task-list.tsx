@@ -8,6 +8,7 @@ import {
   type TaskActionState,
 } from "@/app/actions/tasks";
 import { Button } from "@/components/ui/button";
+import { getCourseColorFill } from "@/lib/courses/colors";
 import { formatDeadline } from "@/lib/datetime";
 import type { TaskStatus } from "@/lib/validation/task";
 import type { TaskListItem } from "@/types/task";
@@ -67,7 +68,8 @@ function TaskRow({
             aria-hidden
             className="mt-1 size-3 shrink-0 rounded-sm border border-hairline"
             style={{
-              backgroundColor: task.course_color ?? "transparent",
+              backgroundColor:
+                getCourseColorFill(task.course_color) ?? "transparent",
             }}
           />
           <div className="min-w-0 space-y-1">
