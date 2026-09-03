@@ -1,0 +1,461 @@
+"use client";
+
+import Link from "next/link";
+import { Check, Circle, Plus, Search } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
+
+import { AddTaskForm } from "@/components/tasks/task-form";
+import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { formatDeadline } from "@/lib/datetime";
+import { formatRelativeDeadline } from "@/lib/dashboard/deadline-relative";
+import {
+  filterTasksByStatusView,
+  groupTasksByHorizon,
+  resolveTasksEmptyState,
+  type TasksStatusView,
+} from "@/lib/tasks/global-tasks";
+import { cn } from "@/lib/utils";
+import type { CourseListItem } from "@/types/course";
+import type { TaskListItem } from "@/types/task";
+
+const STATUS_VIEWS: { id: TasksStatusView; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "upcoming", label: "Upcoming" },
+  { id: "late", label: "Late" },
+  { id: "done", label: "Done" },
+];
+
+type RowTone = "late" | "upcoming" | "done";
+
+type TasksCollectionProps = {
+  courses: CourseListItem[];
+  tasks: TaskListItem[];
+  timeZone: string;
+};
+
+function matchesSearch(task: TaskListItem, query: string): boolean {
+  if (!query) return true;
+  const haystack = `${task.title} ${task.course_name ?? ""}`.toLowerCase();
+  return haystack.includes(query);
+}
+
+function TaskRow({
+  task,
+  timeZone,
+  tone,
+}: {
+  task: TaskListItem;
+  timeZone: string;
+  tone: RowTone;
+}) {
+  const completed = tone === "done";
+  const relativeLabel = completed
+    ? "Completed"
+    : formatRelativeDeadline(task.deadline, timeZone);
+  const metaLine = completed
+    ? `${task.course_name ?? "Course"} · Completed ${formatDeadline(task.deadline, timeZone)}`
+    : `${task.course_name ?? "Course"} · Due ${formatDeadline(task.deadline, timeZone)}`;
+  const indicatorLabel =
+    tone === "late" ? "Late" : tone === "upcoming" ? "Upcoming" : "Done";
+
+  return (
+    <li className="border-b border-hairline last:border-b-0">
+      <Link
+        href={`/tasks/${task.id}`}
+        className="flex min-h-12 w-full items-start gap-3 py-3.5 outline-none transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:gap-3.5 sm:py-4"
+      >
+        <span className="mt-0.5 shrink-0" aria-hidden="true">
+          {completed ? (
+            <Check className="size-5 text-success" strokeWidth={2.25} />
+          ) : (
+            <Circle
+              className={cn(
+                "size-5",
+                tone === "late" ? "text-destructive" : "text-warning",
+              )}
+              strokeWidth={2}
+            />
+          )}
+        </span>
+        <span className="sr-only">{indicatorLabel}. </span>
+        <div className="min-w-0 flex-1 space-y-0.5">
+          <p
+            className={cn(
+              "truncate text-[17px] font-medium leading-snug tracking-[-0.2px]",
+              completed ? "text-ink-muted-80" : "text-ink",
+            )}
+          >
+            {task.title}
+          </p>
+          <p className="truncate text-[13px] leading-snug text-ink-muted-48 sm:text-sm">
+            {metaLine}
+          </p>
+        </div>
+        <p
+          className={cn(
+            "shrink-0 pt-0.5 text-right text-[13px] leading-snug sm:text-sm",
+            tone === "late"
+              ? "text-destructive"
+              : tone === "upcoming"
+                ? "text-ink-muted-80"
+                : "text-ink-muted-48",
+          )}
+        >
+          {relativeLabel}
+        </p>
+        <span className="sr-only">Open {task.title}</span>
+      </Link>
+    </li>
+  );
+}
+
+function TaskGroup({
+  title,
+  tone,
+  tasks,
+  timeZone,
+}: {
+  title: string;
+  tone: RowTone;
+  tasks: TaskListItem[];
+  timeZone: string;
+}) {
+  if (tasks.length === 0) return null;
+
+  const titleClass =
+    tone === "late"
+      ? "text-destructive"
+      : tone === "done"
+        ? "text-ink-muted-48"
+        : "text-warning";
+
+  return (
+    <section className="space-y-2" aria-label={title}>
+      <h3
+        className={cn(
+          "font-display text-[13px] font-semibold tracking-[0.06em] uppercase sm:text-sm",
+          titleClass,
+        )}
+      >
+        {title}
+      </h3>
+      <ul className="list-none border-t border-hairline">
+        {tasks.map((task) => (
+          <TaskRow
+            key={task.id}
+            task={task}
+            timeZone={timeZone}
+            tone={tone}
+          />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function EmptyPanel({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col items-center px-2 py-10 text-center sm:px-4 sm:py-14">
+      <h2 className="font-display text-xl font-semibold text-ink sm:text-[22px]">
+        {title}
+      </h2>
+      <p className="mt-2 max-w-sm text-[15px] leading-relaxed text-ink-muted-48">
+        {description}
+      </p>
+      {action ? <div className="mt-6">{action}</div> : null}
+    </div>
+  );
+}
+
+export function TasksCollection({
+  courses,
+  tasks,
+  timeZone,
+}: TasksCollectionProps) {
+  const [view, setView] = useState<TasksStatusView>("all");
+  const [query, setQuery] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
+
+  const normalizedQuery = query.trim().toLowerCase();
+
+  const searchedTasks = useMemo(
+    () => tasks.filter((task) => matchesSearch(task, normalizedQuery)),
+    [tasks, normalizedQuery],
+  );
+
+  const filteredTasks = useMemo(
+    () => filterTasksByStatusView(searchedTasks, view),
+    [searchedTasks, view],
+  );
+
+  const emptyState = resolveTasksEmptyState({
+    courseCount: courses.length,
+    taskCount: tasks.length,
+    filteredCount: filteredTasks.length,
+  });
+
+  const lateTasks = useMemo(
+    () => filterTasksByStatusView(searchedTasks, "late"),
+    [searchedTasks],
+  );
+  const upcomingOpenTasks = useMemo(
+    () => filterTasksByStatusView(searchedTasks, "upcoming"),
+    [searchedTasks],
+  );
+  const doneTasks = useMemo(
+    () => filterTasksByStatusView(searchedTasks, "done"),
+    [searchedTasks],
+  );
+  const horizons = useMemo(
+    () => groupTasksByHorizon(upcomingOpenTasks, timeZone),
+    [upcomingOpenTasks, timeZone],
+  );
+
+  const openAdd = () => setAddOpen(true);
+  const showChrome = emptyState !== "no-courses" && emptyState !== "no-tasks";
+
+  return (
+    <section className="mx-auto w-full max-w-3xl space-y-6 sm:space-y-8">
+      <header className="flex items-start justify-between gap-3 sm:gap-4">
+        <div className="min-w-0 flex-1 space-y-2 sm:space-y-3">
+          <h1 className="font-display text-[32px] font-semibold leading-[1.07] tracking-[-0.28px] text-ink sm:text-[36px] lg:text-[44px]">
+            Tasks
+          </h1>
+          <p className="max-w-xl text-[15px] font-normal leading-[1.47] tracking-[-0.374px] text-ink-muted-48 sm:text-[17px]">
+            All your tasks across courses.
+          </p>
+        </div>
+
+        {courses.length > 0 ? (
+          <Button
+            type="button"
+            onClick={openAdd}
+            aria-label="Add task"
+            className="mt-0.5 hidden min-h-11 gap-1.5 rounded-full px-5 lg:inline-flex"
+          >
+            <Plus className="size-4" strokeWidth={2} aria-hidden="true" />
+            Add task
+          </Button>
+        ) : null}
+      </header>
+
+      {showChrome ? (
+        <div className="space-y-4">
+          <div
+            role="tablist"
+            aria-label="Task status"
+            className="flex flex-wrap gap-1.5"
+          >
+            {STATUS_VIEWS.map((item) => {
+              const selected = view === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  onClick={() => setView(item.id)}
+                  className={cn(
+                    "min-h-9 rounded-full px-3.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    selected
+                      ? "bg-ink text-canvas"
+                      : "bg-muted/60 text-ink-muted-80 hover:bg-muted hover:text-ink",
+                  )}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="relative">
+            <Search
+              className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-muted-48"
+              aria-hidden="true"
+              strokeWidth={2}
+            />
+            <Input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search tasks…"
+              aria-label="Search tasks"
+              className="h-11 rounded-xl pl-9 text-[15px] md:text-[15px]"
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {emptyState === "no-courses" ? (
+        <EmptyPanel
+          title="No courses yet"
+          description="Create a course first to start adding tasks."
+          action={
+            <Button
+              nativeButton={false}
+              render={<Link href="/courses" />}
+              className="min-h-11 gap-1.5 rounded-full px-5"
+            >
+              <Plus className="size-4" strokeWidth={2} aria-hidden="true" />
+              Create course
+            </Button>
+          }
+        />
+      ) : null}
+
+      {emptyState === "no-tasks" ? (
+        <EmptyPanel
+          title="No tasks yet"
+          description="Add a task to start tracking your deadlines."
+          action={
+            <Button
+              type="button"
+              onClick={openAdd}
+              className="min-h-11 rounded-full px-5"
+            >
+              <Plus className="size-4" strokeWidth={2} aria-hidden="true" />
+              Add task
+            </Button>
+          }
+        />
+      ) : null}
+
+      {emptyState === "no-results" ? (
+        <EmptyPanel
+          title="No tasks found"
+          description="Try changing your search or filters."
+        />
+      ) : null}
+
+      {emptyState === "ready" ? (
+        <div className="space-y-8 pb-20 lg:pb-0">
+          {view === "all" ? (
+            <>
+              <TaskGroup
+                title="Late"
+                tone="late"
+                tasks={lateTasks}
+                timeZone={timeZone}
+              />
+              <TaskGroup
+                title="Today"
+                tone="upcoming"
+                tasks={horizons.today}
+                timeZone={timeZone}
+              />
+              <TaskGroup
+                title="Upcoming"
+                tone="upcoming"
+                tasks={horizons.upcoming}
+                timeZone={timeZone}
+              />
+              <TaskGroup
+                title="Later"
+                tone="upcoming"
+                tasks={horizons.later}
+                timeZone={timeZone}
+              />
+              <TaskGroup
+                title="Done"
+                tone="done"
+                tasks={doneTasks}
+                timeZone={timeZone}
+              />
+            </>
+          ) : null}
+
+          {view === "upcoming" ? (
+            <>
+              <TaskGroup
+                title="Today"
+                tone="upcoming"
+                tasks={horizons.today}
+                timeZone={timeZone}
+              />
+              <TaskGroup
+                title="Upcoming"
+                tone="upcoming"
+                tasks={horizons.upcoming}
+                timeZone={timeZone}
+              />
+              <TaskGroup
+                title="Later"
+                tone="upcoming"
+                tasks={horizons.later}
+                timeZone={timeZone}
+              />
+            </>
+          ) : null}
+
+          {view === "late" ? (
+            <TaskGroup
+              title="Late"
+              tone="late"
+              tasks={filteredTasks}
+              timeZone={timeZone}
+            />
+          ) : null}
+
+          {view === "done" ? (
+            <TaskGroup
+              title="Done"
+              tone="done"
+              tasks={filteredTasks}
+              timeZone={timeZone}
+            />
+          ) : null}
+
+          <p className="pb-2 text-center text-sm text-ink-muted-48">
+            That&apos;s all for now.
+          </p>
+        </div>
+      ) : null}
+
+      {courses.length > 0 ? (
+        <Button
+          type="button"
+          onClick={openAdd}
+          aria-label="Add task"
+          className="fixed right-4 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-40 size-14 rounded-full p-0 shadow-lg lg:hidden"
+        >
+          <Plus className="size-5" strokeWidth={2} aria-hidden="true" />
+        </Button>
+      ) : null}
+
+      <Dialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        title={courses.length === 0 ? "No courses yet" : "Add task"}
+      >
+        {courses.length === 0 ? (
+          <div className="w-full space-y-4 text-left">
+            <p className="text-[15px] leading-relaxed text-ink-muted-48">
+              Create a course first to start adding tasks.
+            </p>
+            <Button
+              nativeButton={false}
+              render={<Link href="/courses" />}
+              className="min-h-11 w-full rounded-full px-5"
+            >
+              Create course
+            </Button>
+          </div>
+        ) : (
+          <div className="w-full text-left">
+            <AddTaskForm courses={courses} returnTo="/tasks" />
+          </div>
+        )}
+      </Dialog>
+    </section>
+  );
+}
