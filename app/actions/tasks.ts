@@ -107,13 +107,24 @@ async function assertOwnedActiveTask(
   return null;
 }
 
-function revalidateTaskPaths(taskId?: string) {
+function revalidateTaskPaths(taskId?: string, courseId?: string) {
   revalidatePath("/dashboard");
   revalidatePath("/calendar");
   revalidatePath("/tasks");
+  revalidatePath("/courses");
   if (taskId) {
     revalidatePath(`/tasks/${taskId}`);
   }
+  if (courseId) {
+    revalidatePath(`/courses/${courseId}`);
+  }
+}
+
+function safeReturnPath(value: FormDataEntryValue | null): string | null {
+  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
+    return null;
+  }
+  return value;
 }
 
 export async function createTask(
@@ -165,8 +176,9 @@ export async function createTask(
     return { error: "Could not create task." };
   }
 
-  revalidateTaskPaths(data.id);
-  redirect(`/tasks/${data.id}`);
+  revalidateTaskPaths(data.id, parsed.data.course_id);
+  const returnTo = safeReturnPath(formData.get("return_to"));
+  redirect(returnTo ?? `/tasks/${data.id}`);
 }
 
 export async function updateTask(
@@ -216,7 +228,7 @@ export async function updateTask(
     .eq("id", id)
     .eq("user_id", user.id)
     .is("deleted_at", null)
-    .select("id")
+    .select("id, course_id")
     .maybeSingle();
 
   if (error) {
@@ -226,7 +238,7 @@ export async function updateTask(
     return { error: "Task not found." };
   }
 
-  revalidateTaskPaths(id);
+  revalidateTaskPaths(id, data.course_id);
   return {};
 }
 
@@ -254,7 +266,7 @@ export async function completeTask(
     .eq("user_id", user.id)
     .is("deleted_at", null)
     .neq("status", "done")
-    .select("id")
+    .select("id, course_id")
     .maybeSingle();
 
   if (error) {
@@ -264,7 +276,7 @@ export async function completeTask(
     return { error: "Task not found or already completed." };
   }
 
-  revalidateTaskPaths(id);
+  revalidateTaskPaths(id, data.course_id);
   return {};
 }
 
@@ -291,7 +303,7 @@ export async function softDeleteTask(
     .eq("id", id)
     .eq("user_id", user.id)
     .is("deleted_at", null)
-    .select("id")
+    .select("id, course_id")
     .maybeSingle();
 
   if (error) {
@@ -301,7 +313,7 @@ export async function softDeleteTask(
     return { error: "Task not found." };
   }
 
-  revalidatePath("/tasks");
+  revalidateTaskPaths(id, data.course_id);
   redirect("/tasks");
 }
 

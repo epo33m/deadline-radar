@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { normalizeCourseColorForStorage } from "@/lib/courses/colors";
@@ -126,6 +127,7 @@ export async function updateCourse(
   }
 
   revalidatePath("/courses");
+  revalidatePath(`/courses/${id}`);
   return {};
 }
 
@@ -159,6 +161,9 @@ export async function softDeleteCourse(
     return { error: "Course not found." };
   }
 
+  // Navigate away before refreshing the deleted course route — revalidating
+  // `/courses/[id]` while the client is still there races with notFound() and
+  // can thrash App Router history updates (replaceState rate limit).
   revalidatePath("/courses");
-  return {};
+  redirect("/courses");
 }
