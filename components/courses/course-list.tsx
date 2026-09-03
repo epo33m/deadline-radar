@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { BookOpen, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -71,11 +72,19 @@ function CourseRow({
       )}
       style={hasColor ? { backgroundColor: fillColor ?? undefined } : undefined}
     >
-      <div className="min-w-0 flex-1">
+      <Link
+        href={`/courses/${course.id}`}
+        className="min-w-0 flex-1 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
         <p className="truncate text-[17px] font-medium leading-snug text-ink dark:text-body-on-dark">
           {course.name}
         </p>
-      </div>
+        {course.code ? (
+          <p className="mt-0.5 truncate text-sm text-ink-muted-48 dark:text-body-on-dark/70">
+            {course.code}
+          </p>
+        ) : null}
+      </Link>
       <CourseActionsMenu
         course={course}
         onEdit={onEdit}

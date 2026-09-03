@@ -37,6 +37,10 @@ type TaskFormProps = {
   onSuccess?: () => void;
   submitLabel: string;
   defaultStatus?: TaskStatus;
+  /** When set, course is fixed and not shown as a selectable field. */
+  lockedCourseId?: string;
+  /** After create, redirect here instead of the new task detail page. */
+  returnTo?: string;
 };
 
 export function TaskForm({
@@ -45,12 +49,14 @@ export function TaskForm({
   onSuccess,
   submitLabel,
   defaultStatus = "todo",
+  lockedCourseId,
+  returnTo,
 }: TaskFormProps) {
   const action = task ? updateTask : createTask;
   const [state, formAction, pending] = useActionState(action, initialState);
   const [title, setTitle] = useState(task?.title ?? "");
   const [courseId, setCourseId] = useState(
-    task?.course_id ?? courses[0]?.id ?? "",
+    lockedCourseId ?? task?.course_id ?? courses[0]?.id ?? "",
   );
   const [deadline, setDeadline] = useState(
     task?.deadline ? toDatetimeLocalValue(task.deadline) : "",
@@ -82,6 +88,7 @@ export function TaskForm({
   return (
     <form action={formAction} className="flex max-w-lg flex-col gap-4">
       {task ? <input type="hidden" name="id" value={task.id} /> : null}
+      {returnTo ? <input type="hidden" name="return_to" value={returnTo} /> : null}
       <div className="space-y-2">
         <Label htmlFor={fieldId("title")}>Title</Label>
         <Input
@@ -93,25 +100,29 @@ export function TaskForm({
           aria-invalid={Boolean(state.fieldErrors?.title)}
         />
       </div>
-      <div className="space-y-2">
-        <Label htmlFor={fieldId("course_id")}>Course</Label>
-        <select
-          id={fieldId("course_id")}
-          name="course_id"
-          value={courseId}
-          onChange={(event) => setCourseId(event.target.value)}
-          required
-          className="flex h-9 w-full rounded-md border border-hairline bg-canvas px-3 text-sm text-ink outline-none focus-visible:border-primary"
-          aria-invalid={Boolean(state.fieldErrors?.course_id)}
-        >
-          {courses.map((course) => (
-            <option key={course.id} value={course.id}>
-              {course.name}
-              {course.code ? ` (${course.code})` : ""}
-            </option>
-          ))}
-        </select>
-      </div>
+      {lockedCourseId ? (
+        <input type="hidden" name="course_id" value={lockedCourseId} />
+      ) : (
+        <div className="space-y-2">
+          <Label htmlFor={fieldId("course_id")}>Course</Label>
+          <select
+            id={fieldId("course_id")}
+            name="course_id"
+            value={courseId}
+            onChange={(event) => setCourseId(event.target.value)}
+            required
+            className="flex h-9 w-full rounded-md border border-hairline bg-canvas px-3 text-sm text-ink outline-none focus-visible:border-primary"
+            aria-invalid={Boolean(state.fieldErrors?.course_id)}
+          >
+            {courses.map((course) => (
+              <option key={course.id} value={course.id}>
+                {course.name}
+                {course.code ? ` (${course.code})` : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       <div className="space-y-2">
         <Label htmlFor={fieldId("deadline")}>Deadline</Label>
         <Input
@@ -184,12 +195,22 @@ export function TaskForm({
 }
 
 /** Remounts on success so the create form clears without setState-in-effect. */
-export function AddTaskForm({ courses }: { courses: CourseListItem[] }) {
+export function AddTaskForm({
+  courses,
+  lockedCourseId,
+  returnTo,
+}: {
+  courses: CourseListItem[];
+  lockedCourseId?: string;
+  returnTo?: string;
+}) {
   const [formKey, setFormKey] = useState(0);
   return (
     <TaskForm
       key={formKey}
       courses={courses}
+      lockedCourseId={lockedCourseId}
+      returnTo={returnTo}
       submitLabel="Add task"
       onSuccess={() => setFormKey((current) => current + 1)}
     />

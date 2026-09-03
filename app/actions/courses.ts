@@ -126,6 +126,7 @@ export async function updateCourse(
   }
 
   revalidatePath("/courses");
+  revalidatePath(`/courses/${id}`);
   return {};
 }
 
@@ -160,5 +161,6 @@ export async function softDeleteCourse(
   }
 
   revalidatePath("/courses");
+  revalidatePath(`/courses/${id}`);
   return {};
 }
