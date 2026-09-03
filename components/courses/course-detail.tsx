@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import { Check, Circle, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   useActionState,
   useEffect,
@@ -17,7 +16,6 @@ import {
   type CourseActionState,
 } from "@/app/actions/courses";
 import { CourseForm } from "@/components/courses/course-form";
-import { StatusPill } from "@/components/dashboard/status-pill";
 import { AddTaskForm } from "@/components/tasks/task-form";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,16 +26,16 @@ import {
 } from "@/components/ui/dialog";
 import { getCourseColorFill } from "@/lib/courses/colors";
 import {
-  orderCourseTasks,
-  summarizeCourseTasks,
-  type CourseTaskSummary,
+  formatCourseDetailSummaryLine,
+  groupCourseTasks,
+  summarizeCourseDetail,
+  type CourseTask,
 } from "@/lib/courses/course-tasks";
 import { formatDeadline } from "@/lib/datetime";
 import { formatRelativeDeadline } from "@/lib/dashboard/deadline-relative";
 import type { TaskStatus } from "@/lib/validation/task";
 import { cn } from "@/lib/utils";
 import type { CourseListItem } from "@/types/course";
-import type { TaskListItem } from "@/types/task";
 
 const initialState: CourseActionState = {};
 
@@ -47,11 +45,17 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
   done: "Done",
 };
 
+type CourseDetailTask = CourseTask & {
+  updated_at?: string;
+};
+
 type CourseDetailProps = {
   course: CourseListItem;
-  tasks: TaskListItem[];
+  tasks: CourseDetailTask[];
   timeZone: string;
 };
+
+type TaskGroupTone = "late" | "upcoming" | "done";
 
 type ActionsMenuPosition = {
   top: number;
@@ -227,26 +231,15 @@ function DeleteCourseDialog({
   course,
   open,
   onOpenChange,
-  onDeleted,
 }: {
   course: CourseListItem;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onDeleted?: () => void;
 }) {
   const [state, formAction, pending] = useActionState(
     softDeleteCourse,
     initialState,
   );
-
-  const wasPending = useRef(false);
-  useEffect(() => {
-    if (wasPending.current && !pending && !state.error) {
-      onOpenChange(false);
-      onDeleted?.();
-    }
-    wasPending.current = pending;
-  }, [pending, state.error, onOpenChange, onDeleted]);
 
   return (
     <Dialog
@@ -297,97 +290,157 @@ function DeleteCourseDialog({
 function CourseTaskRow({
   task,
   timeZone,
+  tone,
 }: {
-  task: TaskListItem;
+  task: CourseDetailTask;
   timeZone: string;
+  tone: TaskGroupTone;
 }) {
-  const relativeLabel =
-    task.status === "done"
-      ? null
-      : formatRelativeDeadline(task.deadline, timeZone);
+  const completed = tone === "done";
+  const relativeLabel = completed
+    ? "Completed"
+    : formatRelativeDeadline(task.deadline, timeZone);
+  const completedAt = task.updated_at ?? task.deadline;
+  const metaLine = completed
+    ? `${STATUS_LABEL.done} · ${formatDeadline(completedAt, timeZone)}`
+    : `${STATUS_LABEL[task.status]} · ${formatDeadline(task.deadline, timeZone)}`;
+
+  const indicatorLabel =
+    tone === "late" ? "Late" : tone === "upcoming" ? "Upcoming" : "Done";
 
   return (
-    <li className="border-b border-hairline py-4 last:border-b-0">
-      <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-        <div className="min-w-0 space-y-1">
-          <Link
-            href={`/tasks/${task.id}`}
-            className="font-medium text-ink hover:text-primary focus-visible:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus"
+    <li className="border-b border-hairline last:border-b-0">
+      <Link
+        href={`/tasks/${task.id}`}
+        className="flex min-h-12 w-full items-start gap-3 py-3.5 outline-none transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:gap-3.5 sm:py-4"
+      >
+        <span className="mt-0.5 shrink-0" aria-hidden="true">
+          {completed ? (
+            <Check
+              className="size-5 text-success"
+              strokeWidth={2.25}
+            />
+          ) : (
+            <Circle
+              className={cn(
+                "size-5",
+                tone === "late" ? "text-destructive" : "text-warning",
+              )}
+              strokeWidth={2}
+            />
+          )}
+        </span>
+        <span className="sr-only">{indicatorLabel}. </span>
+        <div className="min-w-0 flex-1 space-y-0.5">
+          <p
+            className={cn(
+              "truncate text-[17px] font-medium leading-snug tracking-[-0.2px]",
+              completed ? "text-ink-muted-80" : "text-ink",
+            )}
           >
             {task.title}
-          </Link>
-          <p className="text-sm text-ink-muted-48">
-            Due {formatDeadline(task.deadline, timeZone)} ·{" "}
-            {STATUS_LABEL[task.status]}
+          </p>
+          <p className="truncate text-[13px] leading-snug text-ink-muted-48 sm:text-sm">
+            {metaLine}
           </p>
         </div>
-        {relativeLabel ? (
-          <StatusPill
-            className="self-start sm:shrink-0"
-            tone={relativeLabel.includes("overdue") ? "overdue" : "due-soon"}
-          >
-            {relativeLabel}
-          </StatusPill>
-        ) : task.status === "done" ? (
-          <StatusPill tone="completed" className="self-start sm:shrink-0">
-            Done
-          </StatusPill>
-        ) : null}
-      </div>
+        <p
+          className={cn(
+            "shrink-0 pt-0.5 text-right text-[13px] leading-snug sm:text-sm",
+            tone === "late"
+              ? "text-destructive"
+              : tone === "upcoming"
+                ? "text-ink-muted-80"
+                : "text-ink-muted-48",
+          )}
+        >
+          {relativeLabel}
+        </p>
+        <span className="sr-only">Open {task.title}</span>
+      </Link>
     </li>
   );
 }
 
-function formatSummaryLine(summary: CourseTaskSummary): string | null {
-  const parts: string[] = [];
-  if (summary.overdue > 0) {
-    parts.push(`${summary.overdue} overdue`);
-  }
-  if (summary.dueThisWeek > 0) {
-    parts.push(`${summary.dueThisWeek} due this week`);
-  }
-  if (summary.completed > 0) {
-    parts.push(`${summary.completed} completed`);
-  }
-  return parts.length > 0 ? parts.join(" · ") : null;
+function CourseTaskGroup({
+  title,
+  tone,
+  tasks,
+  timeZone,
+}: {
+  title: string;
+  tone: TaskGroupTone;
+  tasks: CourseDetailTask[];
+  timeZone: string;
+}) {
+  if (tasks.length === 0) return null;
+
+  const titleClass =
+    tone === "late"
+      ? "text-destructive"
+      : tone === "done"
+        ? "text-ink-muted-48"
+        : "text-warning";
+
+  return (
+    <section className="space-y-2" aria-label={title}>
+      <h3
+        className={cn(
+          "font-display text-[13px] font-semibold tracking-[0.06em] uppercase sm:text-sm",
+          titleClass,
+        )}
+      >
+        {title}
+      </h3>
+      <ul className="list-none border-t border-hairline">
+        {tasks.map((task) => (
+          <CourseTaskRow
+            key={task.id}
+            task={task}
+            timeZone={timeZone}
+            tone={tone}
+          />
+        ))}
+      </ul>
+    </section>
+  );
 }
 
 export function CourseDetail({ course, tasks, timeZone }: CourseDetailProps) {
-  const router = useRouter();
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  const ordered = orderCourseTasks(tasks);
-  const active = ordered.filter((task) => task.status !== "done");
-  const completed = ordered.filter((task) => task.status === "done");
-  const summaryLine = formatSummaryLine(summarizeCourseTasks(tasks));
+  const groups = groupCourseTasks(tasks);
+  const summaryLine = formatCourseDetailSummaryLine(
+    summarizeCourseDetail(tasks),
+  );
   const fillColor = getCourseColorFill(course.color);
   const coursePath = `/courses/${course.id}`;
+  const openAdd = () => setAddOpen(true);
+  const openEdit = () => setEditOpen(true);
 
   return (
-    <section className="space-y-6 sm:space-y-8">
+    <section className="mx-auto w-full max-w-3xl space-y-6 sm:space-y-8">
       <p className="text-sm">
         <Link
           href="/courses"
-          className="text-ink-muted-48 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="text-primary hover:text-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          ← Courses
+          ‹ Courses
         </Link>
       </p>
 
       <header className="flex items-start justify-between gap-3 sm:gap-4">
-        <div className="min-w-0 flex-1 space-y-2 sm:space-y-3">
+        <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-start gap-3">
             <span
               aria-hidden
               className={cn(
-                "mt-2 size-3 shrink-0 rounded-full border border-hairline",
+                "mt-2.5 size-3.5 shrink-0 rounded-md border border-hairline sm:mt-3 sm:size-4",
                 !fillColor && "bg-transparent",
               )}
-              style={
-                fillColor ? { backgroundColor: fillColor } : undefined
-              }
+              style={fillColor ? { backgroundColor: fillColor } : undefined}
             />
             <div className="min-w-0 space-y-1">
               <h1 className="font-display text-[32px] font-semibold leading-[1.07] tracking-[-0.28px] text-ink sm:text-[36px] lg:text-[44px]">
@@ -400,90 +453,94 @@ export function CourseDetail({ course, tasks, timeZone }: CourseDetailProps) {
               ) : null}
             </div>
           </div>
-          <p className="max-w-xl text-[15px] font-normal leading-[1.47] tracking-[-0.374px] text-ink-muted-48 sm:text-[17px]">
-            Organize and track coursework for this course.
-          </p>
         </div>
 
-        <CourseActionsMenu
-          course={course}
-          onEdit={() => setEditOpen(true)}
-          onDelete={() => setDeleteOpen(true)}
-        />
-      </header>
-
-      <div className="flex flex-wrap items-center gap-3">
-        <Button
-          type="button"
-          onClick={() => setAddOpen(true)}
-          className="min-h-11 rounded-full px-5"
-        >
-          <Plus className="size-4" strokeWidth={2} aria-hidden="true" />
-          Add task
-        </Button>
-        {summaryLine ? (
-          <p className="text-sm text-ink-muted-48" aria-live="polite">
-            {summaryLine}
-          </p>
-        ) : null}
-      </div>
-
-      {ordered.length === 0 ? (
-        <div className="flex min-h-[min(20rem,calc(100svh-18rem))] flex-col items-center justify-center px-2 py-12 text-center sm:px-4">
-          <h2 className="font-display text-xl font-semibold text-ink sm:text-[22px]">
-            No tasks yet
-          </h2>
-          <p className="mt-2 max-w-sm text-[15px] leading-relaxed text-ink-muted-48">
-            Add a task to track deadlines and reminders for this course.
-          </p>
+        <div className="mt-1 flex shrink-0 items-center gap-0.5 sm:mt-1.5 sm:gap-1">
           <Button
             type="button"
-            onClick={() => setAddOpen(true)}
-            className="mt-6 min-h-11 rounded-full px-5"
+            variant="ghost"
+            onClick={openEdit}
+            className="min-h-11 gap-1.5 rounded-full px-3 text-ink"
           >
-            <Plus className="size-4" strokeWidth={2} aria-hidden="true" />
-            Add task
+            <Pencil className="size-4" strokeWidth={2} aria-hidden="true" />
+            Edit
           </Button>
+          <CourseActionsMenu
+            course={course}
+            onEdit={openEdit}
+            onDelete={() => setDeleteOpen(true)}
+          />
+        </div>
+      </header>
+
+      {summaryLine ? (
+        <p className="text-sm text-ink-muted-48" aria-live="polite">
+          {summaryLine}
+        </p>
+      ) : null}
+
+      {tasks.length === 0 ? (
+        <div className="space-y-6">
+          <h2 className="font-display text-[19px] font-semibold tracking-[-0.2px] text-ink sm:text-[21px]">
+            Tasks
+          </h2>
+          <div className="flex flex-col items-center px-2 py-10 text-center sm:px-4 sm:py-14">
+            <h3 className="font-display text-xl font-semibold text-ink sm:text-[22px]">
+              No tasks yet
+            </h3>
+            <p className="mt-2 max-w-sm text-[15px] leading-relaxed text-ink-muted-48">
+              Add a task to start tracking deadlines for {course.name}.
+            </p>
+            <Button
+              type="button"
+              onClick={openAdd}
+              className="mt-6 min-h-11 rounded-full px-5"
+            >
+              <Plus className="size-4" strokeWidth={2} aria-hidden="true" />
+              Add task
+            </Button>
+          </div>
         </div>
       ) : (
-        <div className="space-y-8">
-          <div className="space-y-3">
+        <div className="space-y-6 sm:space-y-8">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="font-display text-[19px] font-semibold tracking-[-0.2px] text-ink sm:text-[21px]">
               Tasks
             </h2>
-            {active.length === 0 ? (
-              <p className="text-sm text-ink-muted-48">
-                No active tasks. Completed work is listed below.
-              </p>
-            ) : (
-              <ul className="border-t border-hairline">
-                {active.map((task) => (
-                  <CourseTaskRow
-                    key={task.id}
-                    task={task}
-                    timeZone={timeZone}
-                  />
-                ))}
-              </ul>
-            )}
+            <Button
+              type="button"
+              onClick={openAdd}
+              className="min-h-11 rounded-full px-5"
+            >
+              <Plus className="size-4" strokeWidth={2} aria-hidden="true" />
+              Add task
+            </Button>
           </div>
 
-          {completed.length > 0 ? (
-            <div className="space-y-3">
-              <h2 className="font-display text-[19px] font-semibold tracking-[-0.2px] text-ink-muted-48 sm:text-[21px]">
-                Completed
-              </h2>
-              <ul className="border-t border-hairline opacity-80">
-                {completed.map((task) => (
-                  <CourseTaskRow
-                    key={task.id}
-                    task={task}
-                    timeZone={timeZone}
-                  />
-                ))}
-              </ul>
-            </div>
-          ) : null}
+          <div className="space-y-8">
+            <CourseTaskGroup
+              title="Late"
+              tone="late"
+              tasks={groups.late}
+              timeZone={timeZone}
+            />
+            <CourseTaskGroup
+              title="Upcoming"
+              tone="upcoming"
+              tasks={groups.upcoming}
+              timeZone={timeZone}
+            />
+            <CourseTaskGroup
+              title="Done"
+              tone="done"
+              tasks={groups.done}
+              timeZone={timeZone}
+            />
+          </div>
+
+          <p className="pb-2 text-center text-sm text-ink-muted-48">
+            That&apos;s all for now.
+          </p>
         </div>
       )}
 
@@ -497,11 +554,7 @@ export function CourseDetail({ course, tasks, timeZone }: CourseDetailProps) {
         </div>
       </Dialog>
 
-      <Dialog
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        title="Edit course"
-      >
+      <Dialog open={editOpen} onOpenChange={setEditOpen} title="Edit course">
         <CourseForm
           course={course}
           submitLabel="Save changes"
@@ -515,7 +568,6 @@ export function CourseDetail({ course, tasks, timeZone }: CourseDetailProps) {
         course={course}
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
-        onDeleted={() => router.push("/courses")}
       />
     </section>
   );

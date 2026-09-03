@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { CourseDetail } from "@/components/courses/course-detail";
 import { createClient } from "@/lib/supabase/server";
 import type { Course } from "@/types/course";
-import type { Task, TaskListItem } from "@/types/task";
+import type { Task } from "@/types/task";
 
 type CourseDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -11,7 +11,7 @@ type CourseDetailPageProps = {
 
 type TaskRow = Pick<
   Task,
-  "id" | "course_id" | "title" | "deadline" | "status" | "estimated_duration"
+  "id" | "title" | "deadline" | "status" | "updated_at"
 >;
 
 export async function generateMetadata({ params }: CourseDetailPageProps) {
@@ -64,9 +64,7 @@ export default async function CourseDetailPage({
       .returns<Course>(),
     supabase
       .from("tasks")
-      .select(
-        "id, course_id, title, deadline, status, estimated_duration",
-      )
+      .select("id, title, deadline, status, updated_at")
       .eq("user_id", user.id)
       .eq("course_id", id)
       .is("deleted_at", null)
@@ -95,15 +93,12 @@ export default async function CourseDetailPage({
   }
 
   const timeZone = profile?.timezone ?? "UTC";
-  const listItems: TaskListItem[] = (tasks ?? []).map((task) => ({
+  const listItems = (tasks ?? []).map((task) => ({
     id: task.id,
-    course_id: task.course_id,
     title: task.title,
     deadline: task.deadline,
     status: task.status,
-    estimated_duration: task.estimated_duration,
-    course_name: course.name,
-    course_color: course.color,
+    updated_at: task.updated_at,
   }));
 
   return (

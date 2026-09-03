@@ -1,10 +1,5 @@
 import type { TaskStatus } from "@/lib/validation/task";
 
-/** Match the dashboard approaching window for “due this week”. */
-export const DUE_THIS_WEEK_DAYS = 7;
-
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
 export type CourseTask = {
   id: string;
   title: string;
@@ -12,10 +7,17 @@ export type CourseTask = {
   status: TaskStatus;
 };
 
-export type CourseTaskSummary = {
-  overdue: number;
-  dueThisWeek: number;
-  completed: number;
+export type CourseTaskGroups<T extends CourseTask = CourseTask> = {
+  late: T[];
+  upcoming: T[];
+  done: T[];
+};
+
+export type CourseDetailSummary = {
+  total: number;
+  late: number;
+  upcoming: number;
+  done: number;
 };
 
 function deadlineMs(task: CourseTask): number | null {
@@ -28,15 +30,15 @@ function compareByDeadline(a: CourseTask, b: CourseTask): number {
 }
 
 /**
- * Active work first (overdue, then nearest deadline), then done tasks.
- * Tasks with invalid deadlines stay with active work, after dated items.
+ * Split course tasks into Late / Upcoming / Done for Course Detail.
+ * Invalid deadlines stay with Upcoming after dated items.
  */
-export function orderCourseTasks<T extends CourseTask>(
+export function groupCourseTasks<T extends CourseTask>(
   tasks: T[],
   now: Date = new Date(),
-): T[] {
+): CourseTaskGroups<T> {
   const nowMs = now.getTime();
-  const overdue: T[] = [];
+  const late: T[] = [];
   const upcoming: T[] = [];
   const undated: T[] = [];
   const done: T[] = [];
@@ -54,45 +56,47 @@ export function orderCourseTasks<T extends CourseTask>(
     }
 
     if (ms < nowMs) {
-      overdue.push(task);
+      late.push(task);
     } else {
       upcoming.push(task);
     }
   }
 
-  overdue.sort(compareByDeadline);
+  late.sort(compareByDeadline);
   upcoming.sort(compareByDeadline);
   done.sort(compareByDeadline);
 
-  return [...overdue, ...upcoming, ...undated, ...done];
+  return { late, upcoming: [...upcoming, ...undated], done };
 }
 
-export function summarizeCourseTasks(
+export function summarizeCourseDetail(
   tasks: CourseTask[],
   now: Date = new Date(),
-): CourseTaskSummary {
-  const nowMs = now.getTime();
-  const weekCutoffMs = nowMs + DUE_THIS_WEEK_DAYS * MS_PER_DAY;
+): CourseDetailSummary {
+  const groups = groupCourseTasks(tasks, now);
+  return {
+    total: tasks.length,
+    late: groups.late.length,
+    upcoming: groups.upcoming.length,
+    done: groups.done.length,
+  };
+}
 
-  let overdue = 0;
-  let dueThisWeek = 0;
-  let completed = 0;
+/** Lightweight secondary line: `12 Tasks · 3 Upcoming · 2 Done`. */
+export function formatCourseDetailSummaryLine(
+  summary: CourseDetailSummary,
+): string | null {
+  if (summary.total === 0) return null;
 
-  for (const task of tasks) {
-    if (task.status === "done") {
-      completed += 1;
-      continue;
-    }
+  const parts = [
+    `${summary.total} ${summary.total === 1 ? "Task" : "Tasks"}`,
+    `${summary.upcoming} Upcoming`,
+    `${summary.done} Done`,
+  ];
 
-    const ms = deadlineMs(task);
-    if (ms === null) continue;
-
-    if (ms < nowMs) {
-      overdue += 1;
-    } else if (ms <= weekCutoffMs) {
-      dueThisWeek += 1;
-    }
+  if (summary.late > 0) {
+    parts.splice(1, 0, `${summary.late} Late`);
   }
 
-  return { overdue, dueThisWeek, completed };
+  return parts.join(" · ");
 }
