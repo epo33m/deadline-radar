@@ -14,11 +14,15 @@ import {
   filterTasksByStatusView,
   groupTasksByHorizon,
   resolveTasksEmptyState,
+  type TaskHorizonGroups,
   type TasksStatusView,
 } from "@/lib/tasks/global-tasks";
 import { cn } from "@/lib/utils";
 import type { CourseListItem } from "@/types/course";
 import type { TaskListItem } from "@/types/task";
+
+/** Show search once the collection is large enough to justify it (UX-008). */
+const SEARCH_MIN_TASKS = 8;
 
 const STATUS_VIEWS: { id: TasksStatusView; label: string }[] = [
   { id: "all", label: "All" },
@@ -28,6 +32,29 @@ const STATUS_VIEWS: { id: TasksStatusView; label: string }[] = [
 ];
 
 type RowTone = "late" | "upcoming" | "done";
+
+const TONE_ICON_CLASS: Record<Exclude<RowTone, "done">, string> = {
+  late: "text-destructive",
+  upcoming: "text-warning",
+};
+
+const TONE_RELATIVE_CLASS: Record<RowTone, string> = {
+  late: "text-destructive",
+  upcoming: "text-ink-muted-80",
+  done: "text-ink-muted-48",
+};
+
+const TONE_TITLE_CLASS: Record<RowTone, string> = {
+  late: "text-destructive",
+  upcoming: "text-warning",
+  done: "text-ink-muted-48",
+};
+
+const TONE_INDICATOR_LABEL: Record<RowTone, string> = {
+  late: "Late",
+  upcoming: "Upcoming",
+  done: "Done",
+};
 
 type TasksCollectionProps = {
   courses: CourseListItem[];
@@ -57,8 +84,6 @@ function TaskRow({
   const metaLine = completed
     ? `${task.course_name ?? "Course"} · Completed ${formatDeadline(task.deadline, timeZone)}`
     : `${task.course_name ?? "Course"} · Due ${formatDeadline(task.deadline, timeZone)}`;
-  const indicatorLabel =
-    tone === "late" ? "Late" : tone === "upcoming" ? "Upcoming" : "Done";
 
   return (
     <li className="border-b border-hairline last:border-b-0">
@@ -73,13 +98,15 @@ function TaskRow({
             <Circle
               className={cn(
                 "size-5",
-                tone === "late" ? "text-destructive" : "text-warning",
+                tone === "late"
+                  ? TONE_ICON_CLASS.late
+                  : TONE_ICON_CLASS.upcoming,
               )}
               strokeWidth={2}
             />
           )}
         </span>
-        <span className="sr-only">{indicatorLabel}. </span>
+        <span className="sr-only">{TONE_INDICATOR_LABEL[tone]}. </span>
         <div className="min-w-0 flex-1 space-y-0.5">
           <p
             className={cn(
@@ -96,11 +123,7 @@ function TaskRow({
         <p
           className={cn(
             "shrink-0 pt-0.5 text-right text-[13px] leading-snug sm:text-sm",
-            tone === "late"
-              ? "text-destructive"
-              : tone === "upcoming"
-                ? "text-ink-muted-80"
-                : "text-ink-muted-48",
+            TONE_RELATIVE_CLASS[tone],
           )}
         >
           {relativeLabel}
@@ -124,19 +147,12 @@ function TaskGroup({
 }) {
   if (tasks.length === 0) return null;
 
-  const titleClass =
-    tone === "late"
-      ? "text-destructive"
-      : tone === "done"
-        ? "text-ink-muted-48"
-        : "text-warning";
-
   return (
     <section className="space-y-2" aria-label={title}>
       <h3
         className={cn(
           "font-display text-[13px] font-semibold tracking-[0.06em] uppercase sm:text-sm",
-          titleClass,
+          TONE_TITLE_CLASS[tone],
         )}
       >
         {title}
@@ -155,6 +171,37 @@ function TaskGroup({
   );
 }
 
+function HorizonGroups({
+  horizons,
+  timeZone,
+}: {
+  horizons: TaskHorizonGroups<TaskListItem>;
+  timeZone: string;
+}) {
+  return (
+    <>
+      <TaskGroup
+        title="Today"
+        tone="upcoming"
+        tasks={horizons.today}
+        timeZone={timeZone}
+      />
+      <TaskGroup
+        title="Upcoming"
+        tone="upcoming"
+        tasks={horizons.upcoming}
+        timeZone={timeZone}
+      />
+      <TaskGroup
+        title="Later"
+        tone="upcoming"
+        tasks={horizons.later}
+        timeZone={timeZone}
+      />
+    </>
+  );
+}
+
 function EmptyPanel({
   title,
   description,
@@ -165,14 +212,14 @@ function EmptyPanel({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center px-2 py-10 text-center sm:px-4 sm:py-14">
+    <div className="flex flex-col items-center px-2 py-6 text-center sm:px-4 sm:py-8">
       <h2 className="font-display text-xl font-semibold text-ink sm:text-[22px]">
         {title}
       </h2>
       <p className="mt-2 max-w-sm text-[15px] leading-relaxed text-ink-muted-48">
         {description}
       </p>
-      {action ? <div className="mt-6">{action}</div> : null}
+      {action ? <div className="mt-5">{action}</div> : null}
     </div>
   );
 }
@@ -187,22 +234,16 @@ export function TasksCollection({
   const [addOpen, setAddOpen] = useState(false);
 
   const normalizedQuery = query.trim().toLowerCase();
+  const searchEnabled =
+    tasks.length >= SEARCH_MIN_TASKS || normalizedQuery.length > 0;
 
   const searchedTasks = useMemo(
-    () => tasks.filter((task) => matchesSearch(task, normalizedQuery)),
-    [tasks, normalizedQuery],
+    () =>
+      searchEnabled
+        ? tasks.filter((task) => matchesSearch(task, normalizedQuery))
+        : tasks,
+    [tasks, normalizedQuery, searchEnabled],
   );
-
-  const filteredTasks = useMemo(
-    () => filterTasksByStatusView(searchedTasks, view),
-    [searchedTasks, view],
-  );
-
-  const emptyState = resolveTasksEmptyState({
-    courseCount: courses.length,
-    taskCount: tasks.length,
-    filteredCount: filteredTasks.length,
-  });
 
   const lateTasks = useMemo(
     () => filterTasksByStatusView(searchedTasks, "late"),
@@ -216,6 +257,22 @@ export function TasksCollection({
     () => filterTasksByStatusView(searchedTasks, "done"),
     [searchedTasks],
   );
+
+  const filteredTasks =
+    view === "all"
+      ? searchedTasks
+      : view === "late"
+        ? lateTasks
+        : view === "upcoming"
+          ? upcomingOpenTasks
+          : doneTasks;
+
+  const emptyState = resolveTasksEmptyState({
+    courseCount: courses.length,
+    taskCount: tasks.length,
+    filteredCount: filteredTasks.length,
+  });
+
   const horizons = useMemo(
     () => groupTasksByHorizon(upcomingOpenTasks, timeZone),
     [upcomingOpenTasks, timeZone],
@@ -223,6 +280,7 @@ export function TasksCollection({
 
   const openAdd = () => setAddOpen(true);
   const showChrome = emptyState !== "no-courses" && emptyState !== "no-tasks";
+  const hasCourses = courses.length > 0;
 
   return (
     <section className="mx-auto w-full max-w-3xl space-y-6 sm:space-y-8">
@@ -236,23 +294,21 @@ export function TasksCollection({
           </p>
         </div>
 
-        {courses.length > 0 ? (
-          <Button
-            type="button"
-            onClick={openAdd}
-            aria-label="Add task"
-            className="mt-0.5 hidden min-h-11 gap-1.5 rounded-full px-5 lg:inline-flex"
-          >
-            <Plus className="size-4" strokeWidth={2} aria-hidden="true" />
-            Add task
-          </Button>
-        ) : null}
+        <Button
+          type="button"
+          onClick={openAdd}
+          aria-label="Add task"
+          className="mt-0.5 hidden min-h-11 gap-1.5 rounded-full px-5 lg:inline-flex"
+        >
+          <Plus className="size-4" strokeWidth={2} aria-hidden="true" />
+          Add task
+        </Button>
       </header>
 
       {showChrome ? (
         <div className="space-y-4">
           <div
-            role="tablist"
+            role="group"
             aria-label="Task status"
             className="flex flex-wrap gap-1.5"
           >
@@ -262,8 +318,7 @@ export function TasksCollection({
                 <button
                   key={item.id}
                   type="button"
-                  role="tab"
-                  aria-selected={selected}
+                  aria-pressed={selected}
                   onClick={() => setView(item.id)}
                   className={cn(
                     "min-h-9 rounded-full px-3.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -278,21 +333,23 @@ export function TasksCollection({
             })}
           </div>
 
-          <div className="relative">
-            <Search
-              className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-muted-48"
-              aria-hidden="true"
-              strokeWidth={2}
-            />
-            <Input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search tasks…"
-              aria-label="Search tasks"
-              className="h-11 rounded-xl pl-9 text-[15px] md:text-[15px]"
-            />
-          </div>
+          {searchEnabled ? (
+            <div className="relative">
+              <Search
+                className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-muted-48"
+                aria-hidden="true"
+                strokeWidth={2}
+              />
+              <Input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search tasks…"
+                aria-label="Search tasks"
+                className="h-11 rounded-xl pl-9 text-[15px] md:text-[15px]"
+              />
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -302,12 +359,12 @@ export function TasksCollection({
           description="Create a course first to start adding tasks."
           action={
             <Button
-              nativeButton={false}
-              render={<Link href="/courses" />}
+              type="button"
+              onClick={openAdd}
               className="min-h-11 gap-1.5 rounded-full px-5"
             >
               <Plus className="size-4" strokeWidth={2} aria-hidden="true" />
-              Create course
+              Add task
             </Button>
           }
         />
@@ -347,24 +404,7 @@ export function TasksCollection({
                 tasks={lateTasks}
                 timeZone={timeZone}
               />
-              <TaskGroup
-                title="Today"
-                tone="upcoming"
-                tasks={horizons.today}
-                timeZone={timeZone}
-              />
-              <TaskGroup
-                title="Upcoming"
-                tone="upcoming"
-                tasks={horizons.upcoming}
-                timeZone={timeZone}
-              />
-              <TaskGroup
-                title="Later"
-                tone="upcoming"
-                tasks={horizons.later}
-                timeZone={timeZone}
-              />
+              <HorizonGroups horizons={horizons} timeZone={timeZone} />
               <TaskGroup
                 title="Done"
                 tone="done"
@@ -375,26 +415,7 @@ export function TasksCollection({
           ) : null}
 
           {view === "upcoming" ? (
-            <>
-              <TaskGroup
-                title="Today"
-                tone="upcoming"
-                tasks={horizons.today}
-                timeZone={timeZone}
-              />
-              <TaskGroup
-                title="Upcoming"
-                tone="upcoming"
-                tasks={horizons.upcoming}
-                timeZone={timeZone}
-              />
-              <TaskGroup
-                title="Later"
-                tone="upcoming"
-                tasks={horizons.later}
-                timeZone={timeZone}
-              />
-            </>
+            <HorizonGroups horizons={horizons} timeZone={timeZone} />
           ) : null}
 
           {view === "late" ? (
@@ -421,23 +442,25 @@ export function TasksCollection({
         </div>
       ) : null}
 
-      {courses.length > 0 ? (
-        <Button
-          type="button"
-          onClick={openAdd}
-          aria-label="Add task"
-          className="fixed right-4 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-40 size-14 rounded-full p-0 shadow-lg lg:hidden"
-        >
-          <Plus className="size-5" strokeWidth={2} aria-hidden="true" />
-        </Button>
-      ) : null}
+      <Button
+        type="button"
+        onClick={openAdd}
+        aria-label="Add task"
+        className="fixed right-4 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-40 size-14 rounded-full p-0 shadow-lg lg:hidden"
+      >
+        <Plus className="size-5" strokeWidth={2} aria-hidden="true" />
+      </Button>
 
       <Dialog
         open={addOpen}
         onOpenChange={setAddOpen}
-        title={courses.length === 0 ? "No courses yet" : "Add task"}
+        title={hasCourses ? "Add task" : "No courses yet"}
       >
-        {courses.length === 0 ? (
+        {hasCourses ? (
+          <div className="w-full text-left">
+            <AddTaskForm courses={courses} returnTo="/tasks" />
+          </div>
+        ) : (
           <div className="w-full space-y-4 text-left">
             <p className="text-[15px] leading-relaxed text-ink-muted-48">
               Create a course first to start adding tasks.
@@ -449,10 +472,6 @@ export function TasksCollection({
             >
               Create course
             </Button>
-          </div>
-        ) : (
-          <div className="w-full text-left">
-            <AddTaskForm courses={courses} returnTo="/tasks" />
           </div>
         )}
       </Dialog>
