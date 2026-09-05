@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { apiJson } from "@/lib/api/server";
+import { ACCESS_COOKIE, REFRESH_COOKIE } from "@/lib/auth/cookies";
 
 export type AuthActionState = {
   error?: string;
@@ -12,33 +13,6 @@ export type AuthActionState = {
   redirectTo?: string;
 };
 
-const ACCESS_COOKIE = "dr_access_token";
-const REFRESH_COOKIE = "dr_refresh_token";
-
-async function persistSessionCookies(input: {
-  accessToken?: string;
-  refreshToken?: string;
-  expiresIn?: number;
-}) {
-  if (!input.accessToken || !input.refreshToken) return;
-  const store = await cookies();
-  const secure = process.env.NODE_ENV === "production";
-  store.set(ACCESS_COOKIE, input.accessToken, {
-    httpOnly: true,
-    secure,
-    sameSite: "lax",
-    path: "/",
-    maxAge: input.expiresIn ?? 60 * 60,
-  });
-  store.set(REFRESH_COOKIE, input.refreshToken, {
-    httpOnly: true,
-    secure,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 30,
-  });
-}
-
 export async function register(
   _prev: AuthActionState,
   formData: FormData,
@@ -46,9 +20,6 @@ export async function register(
   const result = await apiJson<{
     redirectTo?: string;
     message?: string;
-    accessToken?: string;
-    refreshToken?: string;
-    expiresIn?: number;
   }>("/api/auth/register", {
     method: "POST",
     body: JSON.stringify({
@@ -64,8 +35,6 @@ export async function register(
       fieldErrors: result.fieldErrors,
     };
   }
-
-  await persistSessionCookies(result);
 
   if (result.redirectTo) {
     redirect(result.redirectTo);
@@ -84,9 +53,6 @@ export async function login(
 ): Promise<AuthActionState> {
   const result = await apiJson<{
     redirectTo?: string;
-    accessToken?: string;
-    refreshToken?: string;
-    expiresIn?: number;
   }>("/api/auth/login", {
     method: "POST",
     body: JSON.stringify({
@@ -102,7 +68,6 @@ export async function login(
     };
   }
 
-  await persistSessionCookies(result);
   redirect(result.redirectTo ?? "/dashboard");
 }
 
@@ -159,6 +124,14 @@ export async function updatePassword(
 
 export async function logout() {
   await apiJson("/api/auth/logout", { method: "POST" });
+  const store = await cookies();
+  store.delete(ACCESS_COOKIE);
+  store.delete(REFRESH_COOKIE);
+  redirect("/login");
+}
+
+export async function logoutAll() {
+  await apiJson("/api/auth/logout-all", { method: "POST" });
   const store = await cookies();
   store.delete(ACCESS_COOKIE);
   store.delete(REFRESH_COOKIE);

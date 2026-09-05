@@ -13,37 +13,15 @@ import {
 
 const API_ORIGIN = process.env.API_ORIGIN ?? "http://127.0.0.1:4025";
 
-function applySessionCookies(
-  response: NextResponse,
-  data: AuthTokenBody,
-): void {
-  if (!data.accessToken || !data.refreshToken) return;
-  response.cookies.set(
-    ACCESS_COOKIE,
-    data.accessToken,
-    authCookieOptions(data.expiresIn ?? 60 * 60),
-  );
-  response.cookies.set(
-    REFRESH_COOKIE,
-    data.refreshToken,
-    authCookieOptions(REFRESH_COOKIE_MAX_AGE_SECONDS),
-  );
-}
-
-async function bridgeAuthPost(
-  path: string,
-  request: NextRequest,
-): Promise<NextResponse> {
-  const incoming = await request.text();
-  const upstream = await fetch(`${API_ORIGIN}${path}`, {
+/** Optional same-origin refresh bridge for client-triggered renewal. */
+export async function POST(request: NextRequest) {
+  const upstream = await fetch(`${API_ORIGIN}/api/auth/refresh`, {
     method: "POST",
     headers: {
-      "content-type": "application/json",
       cookie: request.headers.get("cookie") ?? "",
       origin: process.env.WEB_ORIGIN ?? "http://127.0.0.1:3025",
       [AUTH_BRIDGE_HEADER]: AUTH_BRIDGE_VALUE,
     },
-    body: incoming,
     cache: "no-store",
   });
 
@@ -57,10 +35,22 @@ async function bridgeAuthPost(
 
   const safe = stripAuthTokens(data);
   const response = NextResponse.json(safe, { status: upstream.status });
-  applySessionCookies(response, data);
-  return response;
-}
 
-export async function POST(request: NextRequest) {
-  return bridgeAuthPost("/api/auth/login", request);
+  if (data.accessToken && data.refreshToken) {
+    response.cookies.set(
+      ACCESS_COOKIE,
+      data.accessToken,
+      authCookieOptions(data.expiresIn ?? 60 * 60),
+    );
+    response.cookies.set(
+      REFRESH_COOKIE,
+      data.refreshToken,
+      authCookieOptions(REFRESH_COOKIE_MAX_AGE_SECONDS),
+    );
+  } else if (!upstream.ok) {
+    response.cookies.set(ACCESS_COOKIE, "", { httpOnly: true, path: "/", maxAge: 0 });
+    response.cookies.set(REFRESH_COOKIE, "", { httpOnly: true, path: "/", maxAge: 0 });
+  }
+
+  return response;
 }

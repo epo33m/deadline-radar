@@ -5,6 +5,7 @@ export type SessionUser = {
   email?: string;
   timezone: string;
   name: string | null;
+  sessionId?: string | null;
 };
 
 export async function getSession(): Promise<{

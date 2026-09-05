@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { resolveSessionGate } from "./session-gate";
 
 describe("resolveSessionGate", () => {
-  test("redirects unauthenticated users away from protected routes to /login", () => {
+  test("redirects unauthenticated users away from non-public routes to /login", () => {
     expect(
       resolveSessionGate({ hasSession: false, pathname: "/dashboard" }),
     ).toEqual({ action: "redirect", to: "/login" });
@@ -11,6 +11,9 @@ describe("resolveSessionGate", () => {
     ).toEqual({ action: "redirect", to: "/login" });
     expect(
       resolveSessionGate({ hasSession: false, pathname: "/tasks/abc" }),
+    ).toEqual({ action: "redirect", to: "/login" });
+    expect(
+      resolveSessionGate({ hasSession: false, pathname: "/secret-page" }),
     ).toEqual({ action: "redirect", to: "/login" });
   });
 
@@ -26,6 +29,12 @@ describe("resolveSessionGate", () => {
     ).toEqual({ action: "allow" });
     expect(
       resolveSessionGate({ hasSession: false, pathname: "/forgot-password" }),
+    ).toEqual({ action: "allow" });
+    expect(
+      resolveSessionGate({ hasSession: false, pathname: "/reset-password" }),
+    ).toEqual({ action: "allow" });
+    expect(
+      resolveSessionGate({ hasSession: false, pathname: "/auth/confirm" }),
     ).toEqual({ action: "allow" });
   });
 
@@ -48,5 +57,11 @@ describe("resolveSessionGate", () => {
     expect(resolveSessionGate({ hasSession: true, pathname: "/" })).toEqual({
       action: "allow",
     });
+  });
+
+  test("does not redirect authenticated users away from reset-password", () => {
+    expect(
+      resolveSessionGate({ hasSession: true, pathname: "/reset-password" }),
+    ).toEqual({ action: "allow" });
   });
 });

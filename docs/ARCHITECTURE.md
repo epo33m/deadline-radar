@@ -80,13 +80,41 @@ Layering: **routes → services → Drizzle repos**. App-layer authorization by 
 
 ## 4. Auth & Security
 
-- Supabase Auth for identity (email/password MVP).
-- Elysia sets `dr_access_token` / `dr_refresh_token` httpOnly cookies after login/register/confirm.
-- JWT verified via Supabase **JWKS** (ES256/RS256; legacy HS256 JWT secret optional fallback) on protected API routes **and** in the Next proxy.
-- Invalid/expired tokens are cleared by `/api/auth/session` and on any API `401`.
-- Backend rate limits (in-memory MVP): auth 30/min, general 180/min, cron 10/min; `Cache-Control: private, no-store` on `/api/*`.
-- Browser talks to web origin only; Next rewrites `/api/*` to the API so cookies stay same-site.
-- Env (see `.env.example`): `DATABASE_URL`, `SUPABASE_*`, `SUPABASE_JWT_SECRET`, `RESEND_*`, `CRON_SECRET`, `WEB_ORIGIN`, `API_ORIGIN`, `API_PORT`.
+### Identity model
+- Supabase Auth owns identity, password hashing, email confirmation, and reset tokens (email/password MVP).
+- **Out of scope (deferred):** MFA/2FA, Google OAuth, magic link (`MVP.md`, issue #38).
+- App auth context (`AuthUser`): `userId` (`id`), optional `email`, optional `sessionId` from JWT `session_id`. Authorization stays in domain routes via `requireUser().id` — not inside login/session logic.
+
+### Session / cookies
+- Elysia sets `dr_access_token` / `dr_refresh_token` httpOnly cookies (`Secure` in production, `SameSite=lax`, `Path=/`) after login/register/confirm/refresh.
+- Access lifetime ≈ Supabase `expires_in`; refresh absolute max-age 30 days. Idle timeout N/A (stateless JWT); refresh renews access.
+- `POST /api/auth/refresh` rotates tokens via Supabase `refreshSession`. Next `proxy.ts` silently refreshes when access JWT is invalid but refresh cookie is present.
+- Logout: `POST /api/auth/logout` (current session, `signOut` local) and `POST /api/auth/logout-all` (global). Password reset completion clears cookies and global sign-out.
+- JWT verified via Supabase **JWKS** (ES256/RS256/EdDSA; legacy HS256 JWT secret optional fallback) on protected API routes **and** in the Next proxy.
+- Invalid/expired tokens are cleared by `/api/auth/session`, refresh failure, and API `401`.
+
+### Token transport (no browser JS secrets)
+- Access/refresh tokens appear in JSON **only** when the caller sends `x-dr-auth-bridge: 1` (Next server bridges for login/register/confirm/refresh/proxy).
+- Browser-facing responses strip tokens after setting httpOnly cookies on the **web** origin.
+- Email confirm uses same-origin `/auth/confirm` → server-side bridge (cookies must not be set on `API_ORIGIN`).
+
+### Page / API enforcement
+- Next session gate: **public allowlist** (`/`, auth pages, `/reset-password`, `/auth/confirm`); all other pages require a session (fail closed).
+- API: auth routes public; domain routes `requireUser()`; cron via `CRON_SECRET`. Client-supplied user IDs are never trusted as identity.
+- CSRF: `SameSite=lax` + same-origin `/api` (no separate CSRF token). CORS locked to `WEB_ORIGIN` with credentials.
+
+### Abuse protection & errors
+- Backend rate limits (in-memory; hooks registered `as: "global"`): sensitive auth 20/min, other auth 60/min, general 180/min, cron 10/min. **Redis required for multi-node.**
+- Progressive delay on repeated failed logins (per email+IP); no permanent lockout.
+- Client errors are generic (`Invalid credentials.`, forgot-password always succeeds generically). Provider details go to server logs only.
+
+### Observability & headers
+- `auth_audit_events` table + structured `[auth-audit]` logs (no passwords/tokens/secrets).
+- Production: `Strict-Transport-Security`; always `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`; `Cache-Control: private, no-store` on `/api/*`.
+- Serve auth over HTTPS in production. Rotate Supabase JWT/service keys and `CRON_SECRET` via env/secret store (never commit secrets).
+
+### Env
+- See `.env.example`: `DATABASE_URL`, `SUPABASE_*`, `SUPABASE_JWT_SECRET`, `RESEND_*`, `CRON_SECRET`, `WEB_ORIGIN`, `API_ORIGIN`, `API_PORT`.
 
 ## 5. Folder Structure
 

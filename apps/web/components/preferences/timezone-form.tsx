@@ -119,8 +119,10 @@ export function TimezoneForm({
   const onTimezoneChangeRef = useRef(onTimezoneChange);
 
   const catalog = useMemo(() => listTimeZones(), []);
-  const [mode, setMode] = useState<TimezoneMode>("manual");
+  const [mode, setMode] = useState<TimezoneMode>(() => readStoredTimezoneMode());
   const [timezone, setTimezone] = useState(initialTimezone);
+  const [trackedInitialTimezone, setTrackedInitialTimezone] =
+    useState(initialTimezone);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null);
@@ -132,6 +134,12 @@ export function TimezoneForm({
     mode: TimezoneMode;
     zone: string;
   } | null>(null);
+
+  // Sync from parent prop without an effect (avoids cascading renders).
+  if (trackedInitialTimezone !== initialTimezone) {
+    setTrackedInitialTimezone(initialTimezone);
+    setTimezone(initialTimezone);
+  }
 
   const isAutomatic = mode === "automatic";
 
@@ -146,14 +154,6 @@ export function TimezoneForm({
   useEffect(() => {
     timezoneRef.current = timezone;
   }, [timezone]);
-
-  useEffect(() => {
-    setTimezone(initialTimezone);
-  }, [initialTimezone]);
-
-  useEffect(() => {
-    setMode(readStoredTimezoneMode());
-  }, []);
 
   useEffect(() => {
     return () => {
@@ -241,11 +241,12 @@ export function TimezoneForm({
       setMenuPosition(measureMenuPosition(triggerRef.current));
     }
 
-    updatePosition();
+    const frame = window.requestAnimationFrame(updatePosition);
     window.addEventListener("resize", updatePosition);
     window.addEventListener("scroll", updatePosition, true);
 
     return () => {
+      window.cancelAnimationFrame(frame);
       window.removeEventListener("resize", updatePosition);
       window.removeEventListener("scroll", updatePosition, true);
     };
@@ -479,7 +480,7 @@ export function TimezoneForm({
             aria-haspopup="listbox"
             aria-expanded={open}
             aria-controls={menuId}
-            aria-invalid={showError || undefined}
+            aria-describedby={showError ? statusId : undefined}
             disabled={isAutomatic || showSaving}
             onClick={toggleMenu}
             className={cn(

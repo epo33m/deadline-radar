@@ -25,6 +25,8 @@ auth.users (Supabase managed)
      ├── 1:N ──▶ attachments            ▼
      │                         notification_deliveries
      └── (status, deadline, etc.)
+
+auth_audit_events  (append-only; soft-linked user_id, no FK)
 ```
 
 ## 2. Enums
@@ -47,6 +49,25 @@ create table profiles (
   email text not null,
   name text,
   timezone text not null default 'UTC',
+  created_at timestamptz not null default now()
+);
+```
+
+### auth_audit_events
+*Append-only authentication audit trail. Written by the API service role. No RLS client policies. Never store passwords, tokens, or secrets.*
+
+```sql
+create table auth_audit_events (
+  id uuid primary key default gen_random_uuid(),
+  event text not null,
+  user_id uuid,
+  session_id text,
+  result text not null check (result in ('success', 'failure', 'denied')),
+  method text,
+  ip text,
+  user_agent text,
+  request_id text,
+  metadata jsonb,
   created_at timestamptz not null default now()
 );
 ```

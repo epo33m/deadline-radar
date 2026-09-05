@@ -5,6 +5,7 @@ import {
   verifyAccessToken,
   type AuthUser,
 } from "../lib/auth-tokens";
+import { AUTH_ERRORS } from "../lib/auth-errors";
 
 export const authPlugin = new Elysia({ name: "auth" }).derive(
   { as: "scoped" },
@@ -27,7 +28,7 @@ export const authPlugin = new Elysia({ name: "auth" }).derive(
       accessToken: token,
       requireUser(): AuthUser {
         if (!user) {
-          throw new Response(JSON.stringify({ error: "Unauthorized" }), {
+          throw new Response(JSON.stringify({ error: AUTH_ERRORS.unauthorized }), {
             status: 401,
             headers: { "content-type": "application/json" },
           });
