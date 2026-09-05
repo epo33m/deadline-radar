@@ -51,7 +51,7 @@ function mapNotification(row: ApiNotification): InAppNotification {
 
 export async function listInAppNotifications(): Promise<InAppNotification[]> {
   const result = await apiJson<{ notifications?: ApiNotification[] }>(
-    "/api/notifications",
+    "/api/v1/notifications",
   );
   if (result.error || !result.notifications) return [];
   return result.notifications.map(mapNotification);
@@ -59,7 +59,7 @@ export async function listInAppNotifications(): Promise<InAppNotification[]> {
 
 export async function countUnreadInAppNotifications(): Promise<number> {
   const result = await apiJson<{ count?: number }>(
-    "/api/notifications/unread-count",
+    "/api/v1/notifications/unread-count",
   );
   return result.count ?? 0;
 }
@@ -72,7 +72,7 @@ export async function markNotificationRead(
   if (typeof id !== "string" || !id) {
     return { error: "Notification id is required." };
   }
-  const result = await apiJson(`/api/notifications/${id}/read`, {
+  const result = await apiJson(`/api/v1/notifications/${id}/read`, {
     method: "POST",
   });
   if (result.error) {
@@ -88,7 +88,7 @@ export async function markAllNotificationsRead(
   formData: FormData,
 ): Promise<NotificationActionState> {
   void formData;
-  const result = await apiJson("/api/notifications/read-all", {
+  const result = await apiJson("/api/v1/notifications/read-all", {
     method: "POST",
   });
   if (result.error) {

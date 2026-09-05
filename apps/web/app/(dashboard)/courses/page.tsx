@@ -35,7 +35,7 @@ export default async function CoursesPage() {
   await requireSession();
 
   const result = await apiJson<{ courses?: ApiCourse[]; error?: string }>(
-    "/api/courses",
+    "/api/v1/courses",
   );
 
   if (result.error || !result.courses) {

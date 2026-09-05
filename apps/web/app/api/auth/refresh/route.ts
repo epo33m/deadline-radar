@@ -3,9 +3,9 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   ACCESS_COOKIE,
   AUTH_BRIDGE_HEADER,
-  AUTH_BRIDGE_VALUE,
   REFRESH_COOKIE,
   REFRESH_COOKIE_MAX_AGE_SECONDS,
+  authBridgeSecret,
   authCookieOptions,
   stripAuthTokens,
   type AuthTokenBody,
@@ -15,12 +15,12 @@ const API_ORIGIN = process.env.API_ORIGIN ?? "http://127.0.0.1:4025";
 
 /** Optional same-origin refresh bridge for client-triggered renewal. */
 export async function POST(request: NextRequest) {
-  const upstream = await fetch(`${API_ORIGIN}/api/auth/refresh`, {
+  const upstream = await fetch(`${API_ORIGIN}/api/v1/auth/refresh`, {
     method: "POST",
     headers: {
       cookie: request.headers.get("cookie") ?? "",
       origin: process.env.WEB_ORIGIN ?? "http://127.0.0.1:3025",
-      [AUTH_BRIDGE_HEADER]: AUTH_BRIDGE_VALUE,
+      [AUTH_BRIDGE_HEADER]: authBridgeSecret(),
     },
     cache: "no-store",
   });
@@ -48,8 +48,16 @@ export async function POST(request: NextRequest) {
       authCookieOptions(REFRESH_COOKIE_MAX_AGE_SECONDS),
     );
   } else if (!upstream.ok) {
-    response.cookies.set(ACCESS_COOKIE, "", { httpOnly: true, path: "/", maxAge: 0 });
-    response.cookies.set(REFRESH_COOKIE, "", { httpOnly: true, path: "/", maxAge: 0 });
+    response.cookies.set(ACCESS_COOKIE, "", {
+      httpOnly: true,
+      path: "/",
+      maxAge: 0,
+    });
+    response.cookies.set(REFRESH_COOKIE, "", {
+      httpOnly: true,
+      path: "/",
+      maxAge: 0,
+    });
   }
 
   return response;

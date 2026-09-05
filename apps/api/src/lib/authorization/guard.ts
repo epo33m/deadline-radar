@@ -35,7 +35,7 @@ export async function requireCapability(
   });
 
   if (reason === "missing_identity") {
-    throw unauthorizedResponse();
+    unauthorizedResponse();
   }
-  throw forbiddenResponse();
+  forbiddenResponse();
 }

@@ -55,48 +55,65 @@ const deadlineSchema = z
   })
   .transform((value) => new Date(value).toISOString());
 
-export const taskSchema = z.object({
-  title: z.string().trim().min(1, "Task title is required"),
-  course_id: z.uuid("Course is required"),
-  deadline: deadlineSchema,
-  status: taskStatusSchema,
-  description: optionalTrimmedNullable,
-  estimated_duration: optionalDurationMinutes,
-});
+export const taskSchema = z
+  .object({
+    title: z.string().trim().min(1, "Task title is required"),
+    course_id: z.uuid("Course is required"),
+    deadline: deadlineSchema,
+    status: taskStatusSchema,
+    description: optionalTrimmedNullable,
+    estimated_duration: optionalDurationMinutes,
+  })
+  .strict();
+
+export const taskPatchSchema = z
+  .object({
+    title: z.string().trim().min(1, "Task title is required"),
+    course_id: z.uuid("Course is required"),
+    deadline: deadlineSchema,
+    status: taskStatusSchema,
+    description: optionalTrimmedNullable,
+    estimated_duration: optionalDurationMinutes,
+    updatedAt: z.string().datetime({ offset: true }).optional(),
+    updated_at: z.string().datetime({ offset: true }).optional(),
+  })
+  .strict();
 
 /** days_before for a reminder threshold: integer ≥ 0 (DOMAIN.md §2.4). */
-export const reminderThresholdSchema = z.object({
-  days_before: z
-    .union([z.string(), z.number()])
-    .transform((value, ctx) => {
-      if (typeof value === "number") {
-        if (!Number.isInteger(value) || value < 0) {
+export const reminderThresholdSchema = z
+  .object({
+    days_before: z
+      .union([z.string(), z.number()])
+      .transform((value, ctx) => {
+        if (typeof value === "number") {
+          if (!Number.isInteger(value) || value < 0) {
+            ctx.addIssue({
+              code: "custom",
+              message: "Days before must be a whole number of 0 or more",
+            });
+            return z.NEVER;
+          }
+          return value;
+        }
+        const trimmed = value.trim();
+        if (trimmed.length === 0) {
+          ctx.addIssue({
+            code: "custom",
+            message: "Days before is required",
+          });
+          return z.NEVER;
+        }
+        if (!/^\d+$/.test(trimmed)) {
           ctx.addIssue({
             code: "custom",
             message: "Days before must be a whole number of 0 or more",
           });
           return z.NEVER;
         }
-        return value;
-      }
-      const trimmed = value.trim();
-      if (trimmed.length === 0) {
-        ctx.addIssue({
-          code: "custom",
-          message: "Days before is required",
-        });
-        return z.NEVER;
-      }
-      if (!/^\d+$/.test(trimmed)) {
-        ctx.addIssue({
-          code: "custom",
-          message: "Days before must be a whole number of 0 or more",
-        });
-        return z.NEVER;
-      }
-      return Number(trimmed);
-    }),
-});
+        return Number(trimmed);
+      }),
+  })
+  .strict();
 
 export type TaskInput = z.infer<typeof taskSchema>;
 export type TaskStatus = z.infer<typeof taskStatusSchema>;

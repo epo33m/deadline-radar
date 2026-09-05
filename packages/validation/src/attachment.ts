@@ -19,12 +19,28 @@ function emptyToUndefined(value: unknown): unknown {
   return value;
 }
 
+export const linkAttachmentRequestSchema = z
+  .object({
+    task_id: z.uuid("Task is required"),
+    name: attachmentNameSchema,
+    url: absoluteUrlSchema,
+  })
+  .strict()
+  .transform((value) => ({
+    type: "link" as const,
+    task_id: value.task_id,
+    name: value.name,
+    url: value.url,
+    storage_path: null as null,
+  }));
+
 export const linkAttachmentSchema = z
   .object({
     name: attachmentNameSchema,
     url: absoluteUrlSchema,
     storage_path: z.preprocess(emptyToUndefined, z.undefined()).optional(),
   })
+  .strict()
   .transform((value) => ({
     type: "link" as const,
     name: value.name,
@@ -35,18 +51,28 @@ export const linkAttachmentSchema = z
 export const fileAttachmentSchema = z
   .object({
     name: attachmentNameSchema,
-    storage_path: z
-      .string()
-      .trim()
-      .min(1, "Storage path is required"),
+    storage_path: z.string().trim().min(1, "Storage path is required"),
     url: z.preprocess(emptyToUndefined, z.undefined()).optional(),
   })
+  .strict()
   .transform((value) => ({
     type: "file" as const,
     name: value.name,
     storage_path: value.storage_path,
     url: null,
   }));
+
+export const MAX_ATTACHMENT_BYTES = 10 * 1_048_576;
+export const ALLOWED_ATTACHMENT_MIME = [
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  "text/plain",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+] as const;
 
 export type LinkAttachmentInput = z.infer<typeof linkAttachmentSchema>;
 export type FileAttachmentInput = z.infer<typeof fileAttachmentSchema>;

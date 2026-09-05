@@ -3,9 +3,9 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   ACCESS_COOKIE,
   AUTH_BRIDGE_HEADER,
-  AUTH_BRIDGE_VALUE,
   REFRESH_COOKIE,
   REFRESH_COOKIE_MAX_AGE_SECONDS,
+  authBridgeSecret,
   authCookieOptions,
   type AuthTokenBody,
 } from "@/lib/auth/cookies";
@@ -18,7 +18,7 @@ const API_ORIGIN = process.env.API_ORIGIN ?? "http://127.0.0.1:4025";
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const target = new URL("/api/auth/confirm", API_ORIGIN);
+  const target = new URL("/api/v1/auth/confirm", API_ORIGIN);
   searchParams.forEach((value, key) => {
     target.searchParams.set(key, value);
   });
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     const upstream = await fetch(target.toString(), {
       method: "GET",
       headers: {
-        [AUTH_BRIDGE_HEADER]: AUTH_BRIDGE_VALUE,
+        [AUTH_BRIDGE_HEADER]: authBridgeSecret(),
         origin: process.env.WEB_ORIGIN ?? "http://127.0.0.1:3025",
         cookie: request.headers.get("cookie") ?? "",
       },

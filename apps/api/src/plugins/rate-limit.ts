@@ -1,78 +1,162 @@
 import { Elysia } from "elysia";
 
+import {
+  ApiError,
+  toErrorBody,
+  normalizeRequestId,
+  extractClientRequestId,
+} from "../lib/api";
+import { env } from "../env";
+import { getRedis } from "../lib/redis";
+
 type Bucket = { count: number; resetAt: number };
 
-const buckets = new Map<string, Bucket>();
+const memoryBuckets = new Map<string, Bucket>();
+
+export type RateLimitStore = {
+  consume(
+    key: string,
+    max: number,
+    windowMs: number,
+  ): Promise<{ remaining: number; resetAt: number; limited: boolean }>;
+};
 
 function clientKey(request: Request): string {
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0]?.trim() || "unknown";
-  return request.headers.get("x-real-ip") ?? "local";
+  if (env.trustProxy()) {
+    const forwarded = request.headers.get("x-forwarded-for");
+    if (forwarded) return forwarded.split(",")[0]?.trim() || "unknown";
+    return request.headers.get("x-real-ip") ?? "local";
+  }
+  return "local";
 }
 
 function limitForPath(pathname: string): { max: number; windowMs: number } {
   if (
-    pathname === "/api/auth/login" ||
-    pathname === "/api/auth/register" ||
-    pathname === "/api/auth/forgot-password" ||
-    pathname === "/api/auth/reset-password"
+    pathname === "/api/v1/auth/login" ||
+    pathname === "/api/v1/auth/register" ||
+    pathname === "/api/v1/auth/forgot-password" ||
+    pathname === "/api/v1/auth/reset-password"
   ) {
     return { max: 20, windowMs: 60_000 };
   }
-  if (pathname.startsWith("/api/auth")) {
+  if (pathname.startsWith("/api/v1/auth")) {
     return { max: 60, windowMs: 60_000 };
   }
-  if (pathname.startsWith("/api/cron")) {
+  if (pathname.startsWith("/api/v1/cron")) {
     return { max: 10, windowMs: 60_000 };
   }
   return { max: 180, windowMs: 60_000 };
 }
 
+function scopeForPath(pathname: string): string {
+  if (pathname.startsWith("/api/v1/auth")) {
+    if (
+      pathname.startsWith("/api/v1/auth/login") ||
+      pathname.startsWith("/api/v1/auth/register") ||
+      pathname.startsWith("/api/v1/auth/forgot") ||
+      pathname.startsWith("/api/v1/auth/reset")
+    ) {
+      return "auth-sensitive";
+    }
+    return "auth";
+  }
+  if (pathname.startsWith("/api/v1/cron")) return "cron";
+  return "api";
+}
+
+/** In-memory store (dev / single-node). */
+export const memoryRateLimitStore: RateLimitStore = {
+  async consume(key, max, windowMs) {
+    const now = Date.now();
+    let bucket = memoryBuckets.get(key);
+    if (!bucket || bucket.resetAt <= now) {
+      bucket = { count: 0, resetAt: now + windowMs };
+      memoryBuckets.set(key, bucket);
+    }
+    bucket.count += 1;
+    return {
+      remaining: Math.max(0, max - bucket.count),
+      resetAt: bucket.resetAt,
+      limited: bucket.count > max,
+    };
+  },
+};
+
+/** Redis-backed store when REDIS_URL is available. */
+export const redisRateLimitStore: RateLimitStore = {
+  async consume(key, max, windowMs) {
+    const redis = await getRedis();
+    if (!redis) {
+      return memoryRateLimitStore.consume(key, max, windowMs);
+    }
+    const now = Date.now();
+    const redisKey = `rl:${key}`;
+    const count = await redis.incr(redisKey);
+    if (count === 1) {
+      await redis.pexpire(redisKey, windowMs);
+    }
+    return {
+      remaining: Math.max(0, max - count),
+      resetAt: now + windowMs,
+      limited: count > max,
+    };
+  },
+};
+
+let activeStore: RateLimitStore = {
+  async consume(key, max, windowMs) {
+    const redis = await getRedis();
+    if (redis) return redisRateLimitStore.consume(key, max, windowMs);
+    return memoryRateLimitStore.consume(key, max, windowMs);
+  },
+};
+
+/** Test helper — inject a fake store (e.g. Redis path without a real Redis). */
+export function setRateLimitStoreForTests(store: RateLimitStore | null): void {
+  activeStore =
+    store ??
+    ({
+      async consume(key, max, windowMs) {
+        const redis = await getRedis();
+        if (redis) return redisRateLimitStore.consume(key, max, windowMs);
+        return memoryRateLimitStore.consume(key, max, windowMs);
+      },
+    } satisfies RateLimitStore);
+}
+
 /**
- * In-memory rate limit (per process). Fine for local/single-node;
- * swap for Redis when scaling horizontally.
+ * Rate limit: Redis when REDIS_URL is set; otherwise in-memory (dev/single-node).
  */
 export const rateLimitPlugin = new Elysia({ name: "rate-limit" }).onBeforeHandle(
   { as: "global" },
-  ({ request, set }) => {
+  async ({ request, set, requestId }) => {
     const pathname = new URL(request.url).pathname;
     if (pathname === "/health" || pathname.startsWith("/openapi")) return;
 
     const { max, windowMs } = limitForPath(pathname);
-    const scope = pathname.startsWith("/api/auth")
-      ? pathname.startsWith("/api/auth/login") ||
-        pathname.startsWith("/api/auth/register") ||
-        pathname.startsWith("/api/auth/forgot") ||
-        pathname.startsWith("/api/auth/reset")
-        ? "auth-sensitive"
-        : "auth"
-      : pathname.startsWith("/api/cron")
-        ? "cron"
-        : "api";
-    const key = `${clientKey(request)}:${scope}`;
-    const now = Date.now();
-    let bucket = buckets.get(key);
-    if (!bucket || bucket.resetAt <= now) {
-      bucket = { count: 0, resetAt: now + windowMs };
-      buckets.set(key, bucket);
-    }
-    bucket.count += 1;
+    const key = `${clientKey(request)}:${scopeForPath(pathname)}`;
+    const { remaining, resetAt, limited } = await activeStore.consume(
+      key,
+      max,
+      windowMs,
+    );
 
-    const remaining = Math.max(0, max - bucket.count);
     set.headers["X-RateLimit-Limit"] = String(max);
     set.headers["X-RateLimit-Remaining"] = String(remaining);
-    set.headers["X-RateLimit-Reset"] = String(Math.ceil(bucket.resetAt / 1000));
+    set.headers["X-RateLimit-Reset"] = String(Math.ceil(resetAt / 1000));
 
-    if (bucket.count > max) {
+    if (limited) {
+      const rid =
+        (typeof requestId === "string" && requestId) ||
+        normalizeRequestId(extractClientRequestId(request));
       set.status = 429;
-      return {
-        error: "Too many requests. Slow down and try again.",
-      };
+      set.headers["X-Request-Id"] = rid;
+      return toErrorBody(ApiError.rateLimited(), rid);
     }
   },
 );
 
 /** Test helper */
 export function resetRateLimitBuckets(): void {
-  buckets.clear();
+  memoryBuckets.clear();
 }

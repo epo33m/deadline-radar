@@ -5,6 +5,7 @@ import {
   loginSchema,
   registerSchema,
   resetPasswordSchema,
+  timezoneUpdateSchema,
 } from "@deadline-radar/validation";
 import { profiles } from "@deadline-radar/db";
 
@@ -34,6 +35,8 @@ import {
   recordLoginFailure,
 } from "../lib/auth-abuse";
 import { AUTH_ERRORS, logAuthProviderError } from "../lib/auth-errors";
+import { ApiError, validationFromZod } from "../lib/api/errors";
+import { readJsonBody, jsonBodyDetail, openApiBodies } from "../lib/api";
 import { env } from "../env";
 
 function isValidTimeZone(timeZone: string): boolean {
@@ -84,24 +87,25 @@ function forgotPasswordSuccessBody() {
   };
 }
 
-export const authRoutes = new Elysia({ prefix: "/api/auth" })
+export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
   .use(authPlugin)
   .post(
     "/register",
-    async ({ body, cookie, set, request }) => {
+    async ({ cookie, set, request }) => {
       const bridge = isAuthBridgeRequest(request);
+      const body = await readJsonBody(request);
       const parsed = registerSchema.safeParse(body);
       if (!parsed.success) {
-        set.status = 400;
-        return {
-          error: AUTH_ERRORS.invalidDetails,
-          fieldErrors: parsed.error.flatten().fieldErrors,
-        };
+        throw validationFromZod(
+          AUTH_ERRORS.invalidDetails,
+          parsed.error.flatten().fieldErrors,
+        );
       }
 
       const timezone =
-        typeof body.timezone === "string" && isValidTimeZone(body.timezone)
-          ? body.timezone
+        typeof parsed.data.timezone === "string" &&
+        isValidTimeZone(parsed.data.timezone)
+          ? parsed.data.timezone
           : "UTC";
 
       const supabase = createAnonClient();
@@ -118,8 +122,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
           method: "password",
           request,
         });
-        set.status = 400;
-        return { error: AUTH_ERRORS.registrationFailed };
+        throw ApiError.validation(AUTH_ERRORS.registrationFailed);
       }
 
       if (data.session && data.user) {
@@ -174,25 +177,24 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       };
     },
     {
-      body: t.Object({
-        email: t.String(),
-        password: t.String(),
-        timezone: t.Optional(t.String()),
-      }),
-      detail: { tags: ["Auth"], summary: "Register" },
+      detail: {
+        tags: ["Auth"],
+        summary: "Register",
+        requestBody: jsonBodyDetail(openApiBodies.register),
+      },
     },
   )
   .post(
     "/login",
-    async ({ body, cookie, set, request }) => {
+    async ({ cookie, set, request }) => {
       const bridge = isAuthBridgeRequest(request);
+      const body = await readJsonBody(request);
       const parsed = loginSchema.safeParse(body);
       if (!parsed.success) {
-        set.status = 400;
-        return {
-          error: AUTH_ERRORS.invalidDetails,
-          fieldErrors: parsed.error.flatten().fieldErrors,
-        };
+        throw validationFromZod(
+          AUTH_ERRORS.invalidDetails,
+          parsed.error.flatten().fieldErrors,
+        );
       }
 
       const ip = clientIpFromRequest(request);
@@ -206,9 +208,8 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
           request,
           metadata: { delayMs },
         });
-        set.status = 429;
         set.headers["Retry-After"] = String(Math.ceil(delayMs / 1000));
-        return { error: AUTH_ERRORS.rateLimited };
+        throw ApiError.rateLimited(AUTH_ERRORS.rateLimited);
       }
 
       const supabase = createAnonClient();
@@ -227,8 +228,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
           request,
           metadata: nextDelay > 0 ? { delayMs: nextDelay } : undefined,
         });
-        set.status = 401;
-        return { error: AUTH_ERRORS.invalidCredentials };
+        throw ApiError.unauthorized(AUTH_ERRORS.invalidCredentials);
       }
 
       clearLoginFailures(attemptKey);
@@ -263,11 +263,11 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       );
     },
     {
-      body: t.Object({
-        email: t.String(),
-        password: t.String(),
-      }),
-      detail: { tags: ["Auth"], summary: "Login" },
+      detail: {
+        tags: ["Auth"],
+        summary: "Login",
+        requestBody: jsonBodyDetail(openApiBodies.login),
+      },
     },
   )
   .post(
@@ -277,8 +277,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       const refreshToken = readRefreshCookie(cookie as never);
       if (!refreshToken) {
         clearSessionCookies(cookie as never);
-        set.status = 401;
-        return { error: AUTH_ERRORS.sessionExpired };
+        throw ApiError.unauthorized(AUTH_ERRORS.sessionExpired);
       }
 
       const supabase = createAnonClient();
@@ -295,8 +294,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
           method: "refresh_token",
           request,
         });
-        set.status = 401;
-        return { error: AUTH_ERRORS.sessionExpired };
+        throw ApiError.unauthorized(AUTH_ERRORS.sessionExpired);
       }
 
       setSessionCookies(
@@ -360,8 +358,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
     async ({ cookie, accessToken, requireUser, request, set }) => {
       const user = requireUser();
       if (!accessToken) {
-        set.status = 401;
-        return { error: AUTH_ERRORS.unauthorized };
+        throw ApiError.unauthorized(AUTH_ERRORS.unauthorized);
       }
       try {
         const userClient = createUserClient(accessToken);
@@ -387,14 +384,14 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
   )
   .post(
     "/forgot-password",
-    async ({ body, set, request }) => {
+    async ({ request }) => {
+      const body = await readJsonBody(request);
       const parsed = forgotPasswordSchema.safeParse(body);
       if (!parsed.success) {
-        set.status = 400;
-        return {
-          error: AUTH_ERRORS.invalidDetails,
-          fieldErrors: parsed.error.flatten().fieldErrors,
-        };
+        throw validationFromZod(
+          AUTH_ERRORS.invalidDetails,
+          parsed.error.flatten().fieldErrors,
+        );
       }
 
       const origin =
@@ -427,25 +424,27 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       return forgotPasswordSuccessBody();
     },
     {
-      body: t.Object({ email: t.String() }),
-      detail: { tags: ["Auth"], summary: "Request password reset" },
+      detail: {
+        tags: ["Auth"],
+        summary: "Request password reset",
+        requestBody: jsonBodyDetail(openApiBodies.forgotPassword),
+      },
     },
   )
   .post(
     "/reset-password",
-    async ({ body, cookie, accessToken, set, request }) => {
+    async ({ cookie, accessToken, request }) => {
+      const body = await readJsonBody(request);
       const parsed = resetPasswordSchema.safeParse(body);
       if (!parsed.success) {
-        set.status = 400;
-        return {
-          error: AUTH_ERRORS.invalidDetails,
-          fieldErrors: parsed.error.flatten().fieldErrors,
-        };
+        throw validationFromZod(
+          AUTH_ERRORS.invalidDetails,
+          parsed.error.flatten().fieldErrors,
+        );
       }
 
       if (!accessToken) {
-        set.status = 401;
-        return { error: AUTH_ERRORS.invalidReset };
+        throw ApiError.unauthorized(AUTH_ERRORS.invalidReset);
       }
 
       const userClient = createUserClient(accessToken);
@@ -454,8 +453,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       });
       if (result.error) {
         logAuthProviderError("reset-password", result.error);
-        set.status = 400;
-        return { error: AUTH_ERRORS.unableToComplete };
+        throw ApiError.validation(AUTH_ERRORS.unableToComplete);
       }
 
       // Invalidate all sessions after password change.
@@ -479,11 +477,11 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       return { ok: true, redirectTo: "/login" };
     },
     {
-      body: t.Object({
-        password: t.String(),
-        confirmPassword: t.String(),
-      }),
-      detail: { tags: ["Auth"], summary: "Reset password" },
+      detail: {
+        tags: ["Auth"],
+        summary: "Reset password",
+        requestBody: jsonBodyDetail(openApiBodies.resetPassword),
+      },
     },
   )
   .get(
@@ -515,8 +513,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
             method: "email",
             request,
           });
-          set.status = 400;
-          return { error: AUTH_ERRORS.unableToComplete };
+          throw ApiError.validation(AUTH_ERRORS.unableToComplete);
         }
         session = data.session;
         userId = data.user?.id;
@@ -533,14 +530,12 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
             method: "email",
             request,
           });
-          set.status = 400;
-          return { error: AUTH_ERRORS.unableToComplete };
+          throw ApiError.validation(AUTH_ERRORS.unableToComplete);
         }
         session = data.session;
         userId = data.user?.id;
       } else {
-        set.status = 400;
-        return { error: AUTH_ERRORS.invalidDetails };
+        throw ApiError.validation(AUTH_ERRORS.invalidDetails);
       }
 
       setSessionCookies(
@@ -597,8 +592,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       }
       // Authenticated session read requires profile.view (fail closed if no roles).
       if (!authz) {
-        set.status = 403;
-        return { error: "Forbidden" };
+        throw ApiError.forbidden();
       }
       await requireAuthz("profile.view");
       const [profile] = await getDb()
@@ -622,12 +616,16 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
   )
   .patch(
     "/timezone",
-    async ({ body, requireAuthz, set }) => {
+    async ({ requireAuthz, request }) => {
       const ctx = await requireAuthz("profile.timezone.update");
-      const timezone = body.timezone;
+      const body = await readJsonBody(request);
+      const parsed = timezoneUpdateSchema.safeParse(body);
+      if (!parsed.success) {
+        throw validationFromZod("Enter a valid timezone", parsed.error.flatten().fieldErrors);
+      }
+      const timezone = parsed.data.timezone;
       if (!isValidTimeZone(timezone)) {
-        set.status = 400;
-        return { error: "Enter a valid timezone" };
+        throw ApiError.validation("Enter a valid timezone", [{ field: "timezone", message: "Enter a valid timezone" }]);
       }
       await getDb()
         .update(profiles)
@@ -636,7 +634,10 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       return { ok: true, timezone };
     },
     {
-      body: t.Object({ timezone: t.String() }),
-      detail: { tags: ["Auth"], summary: "Update timezone" },
+      detail: {
+        tags: ["Auth"],
+        summary: "Update timezone",
+        requestBody: jsonBodyDetail(openApiBodies.timezone),
+      },
     },
   );

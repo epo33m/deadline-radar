@@ -2,23 +2,25 @@ import { Elysia } from "elysia";
 
 import { env } from "../env";
 import { runEvaluateReminders } from "../services/run-evaluate";
+import { ApiError } from "../lib/api/errors";
 
-function authorizeCron(request: Request): boolean {
+function authorizeCron(request: Request): void {
   const secret = env.cronSecret();
+  // Always require CRON_SECRET except in automated tests.
   if (!secret) {
-    return !env.isProduction;
+    if (env.isTest) return;
+    throw ApiError.unauthorized("Cron secret not configured");
   }
   const header = request.headers.get("authorization");
-  return header === `Bearer ${secret}`;
+  if (header !== `Bearer ${secret}`) {
+    throw ApiError.unauthorized();
+  }
 }
 
-export const cronRoutes = new Elysia({ prefix: "/api/cron" }).get(
+export const cronRoutes = new Elysia({ prefix: "/api/v1/cron" }).get(
   "/evaluate-reminders",
-  async ({ request, set }) => {
-    if (!authorizeCron(request)) {
-      set.status = 401;
-      return { error: "Unauthorized" };
-    }
+  async ({ request }) => {
+    authorizeCron(request);
     const result = await runEvaluateReminders();
     return { ok: true, ...result };
   },

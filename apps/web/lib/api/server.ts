@@ -1,15 +1,16 @@
 import { cookies, headers } from "next/headers";
 
+import {
+  normalizeApiErrorBody,
+  type ApiErrorBody,
+} from "@/lib/api/errors";
+
+export type { ApiErrorBody, ApiErrorDetail, ApiErrorObject } from "@/lib/api/errors";
+export { normalizeApiErrorBody } from "@/lib/api/errors";
+
 const API_ORIGIN = process.env.API_ORIGIN ?? "http://127.0.0.1:4025";
 const ACCESS_COOKIE = "dr_access_token";
 const REFRESH_COOKIE = "dr_refresh_token";
-
-export type ApiErrorBody = {
-  error?: string;
-  fieldErrors?: Partial<Record<string, string[]>>;
-  message?: string;
-  success?: string;
-};
 
 function parseSetCookie(header: string): {
   name: string;
@@ -121,9 +122,16 @@ export async function apiJson<T = unknown>(
   path: string,
   init: RequestInit = {},
 ): Promise<T & ApiErrorBody> {
-  const { data, response } = await apiFetch<T & ApiErrorBody>(path, init);
-  if (!response.ok && !data.error) {
-    return { ...data, error: `Request failed (${response.status})` };
+  const { data, response } = await apiFetch<T & Record<string, unknown>>(
+    path,
+    init,
+  );
+  const normalized = normalizeApiErrorBody(data);
+  if (!response.ok && !normalized.error) {
+    return {
+      ...normalized,
+      error: `Request failed (${response.status})`,
+    } as T & ApiErrorBody;
   }
-  return data;
+  return normalized as T & ApiErrorBody;
 }

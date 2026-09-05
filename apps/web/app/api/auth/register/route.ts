@@ -3,9 +3,9 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   ACCESS_COOKIE,
   AUTH_BRIDGE_HEADER,
-  AUTH_BRIDGE_VALUE,
   REFRESH_COOKIE,
   REFRESH_COOKIE_MAX_AGE_SECONDS,
+  authBridgeSecret,
   authCookieOptions,
   stripAuthTokens,
   type AuthTokenBody,
@@ -32,13 +32,13 @@ function applySessionCookies(
 
 export async function POST(request: NextRequest) {
   const incoming = await request.text();
-  const upstream = await fetch(`${API_ORIGIN}/api/auth/register`, {
+  const upstream = await fetch(`${API_ORIGIN}/api/v1/auth/register`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
       cookie: request.headers.get("cookie") ?? "",
       origin: process.env.WEB_ORIGIN ?? "http://127.0.0.1:3025",
-      [AUTH_BRIDGE_HEADER]: AUTH_BRIDGE_VALUE,
+      [AUTH_BRIDGE_HEADER]: authBridgeSecret(),
     },
     body: incoming,
     cache: "no-store",

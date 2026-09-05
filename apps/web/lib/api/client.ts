@@ -1,10 +1,22 @@
 /** Browser-side API helper (same-origin /api rewrite → Elysia). */
+import { normalizeApiErrorBody } from "@/lib/api/errors";
+
 export async function apiBrowser<T = unknown>(
   path: string,
   init: RequestInit = {},
-): Promise<T & { error?: string; fieldErrors?: Partial<Record<string, string[]>> }> {
+): Promise<
+  T & {
+    error?: string;
+    fieldErrors?: Partial<Record<string, string[]>>;
+    requestId?: string;
+  }
+> {
   const headers = new Headers(init.headers);
-  if (!headers.has("content-type") && init.body && !(init.body instanceof FormData)) {
+  if (
+    !headers.has("content-type") &&
+    init.body &&
+    !(init.body instanceof FormData)
+  ) {
     headers.set("content-type", "application/json");
   }
   const response = await fetch(path, {
@@ -13,12 +25,17 @@ export async function apiBrowser<T = unknown>(
     credentials: "include",
   });
   const text = await response.text();
-  const data = (text ? JSON.parse(text) : {}) as T & {
+  const raw = (text ? JSON.parse(text) : {}) as Record<string, unknown>;
+  const data = normalizeApiErrorBody(raw);
+  if (!response.ok && !data.error) {
+    return {
+      ...(data as T & { error?: string }),
+      error: `Request failed (${response.status})`,
+    };
+  }
+  return data as T & {
     error?: string;
     fieldErrors?: Partial<Record<string, string[]>>;
+    requestId?: string;
   };
-  if (!response.ok && !data.error) {
-    return { ...data, error: `Request failed (${response.status})` };
-  }
-  return data;
 }

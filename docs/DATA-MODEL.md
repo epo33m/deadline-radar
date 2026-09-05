@@ -27,6 +27,7 @@ auth.users (Supabase managed)
      └── (status, deadline, etc.)
 
 auth_audit_events  (append-only; soft-linked user_id, no FK)
+idempotency_keys   (per-user Idempotency-Key store; 24h TTL)
 roles ──1:N──▶ role_capabilities
   ▲
   │ N:M via user_roles
@@ -117,6 +118,7 @@ create table courses (
   code text,
   color text,
   created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
   deleted_at timestamptz
 );
 
@@ -124,7 +126,29 @@ create index idx_courses_user_id on courses(user_id);
 create index idx_courses_user_id_active on courses(user_id) where deleted_at is null;
 ```
 
-> Soft delete: set `deleted_at` instead of removing the row. Active queries filter `deleted_at is null`. Course `name` is not unique per user; identity is `id`. Retention / purge of soft-deleted rows is an open domain question (see `DOMAIN.md` §7).
+> Soft delete: set `deleted_at` instead of removing the row. Active queries filter `deleted_at is null`. Course `name` is not unique per user; identity is `id`. `updated_at` supports optimistic concurrency on PATCH. Retention / purge of soft-deleted rows is an open domain question (see `DOMAIN.md` §7).
+
+### idempotency_keys
+
+*API create-POST idempotency (24h TTL). Scoped per user. Service-role writes; RLS enabled with no client policies.*
+
+```sql
+create table idempotency_keys (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  key text not null,
+  method text not null,
+  path text not null,
+  request_hash text not null,
+  response_status integer,
+  response_body jsonb,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  unique (user_id, key)
+);
+
+create index idempotency_keys_expires_at_idx on idempotency_keys (expires_at);
+```
 
 ### tasks
 

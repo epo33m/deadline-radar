@@ -71,7 +71,10 @@ export function resetLoginAttemptStore(): void {
 }
 
 export function clientIpFromRequest(request: Request): string {
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0]?.trim() || "unknown";
-  return request.headers.get("x-real-ip") ?? "local";
+  if (process.env.TRUST_PROXY === "true") {
+    const forwarded = request.headers.get("x-forwarded-for");
+    if (forwarded) return forwarded.split(",")[0]?.trim() || "unknown";
+    return request.headers.get("x-real-ip") ?? "local";
+  }
+  return "local";
 }
