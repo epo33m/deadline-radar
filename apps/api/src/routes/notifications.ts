@@ -7,15 +7,15 @@ import {
   tasks,
 } from "@deadline-radar/db";
 
-import { authPlugin } from "../plugins/auth";
+import { requireAuthPlugin } from "../plugins/auth";
 import { getDb } from "../lib/db";
 
 export const notificationRoutes = new Elysia({ prefix: "/api/notifications" })
-  .use(authPlugin)
+  .use(requireAuthPlugin)
   .get(
     "/",
-    async ({ requireUser }) => {
-      const user = requireUser();
+    async ({ requireAuthz }) => {
+      const ctx = await requireAuthz("notification.view");
       const rows = await getDb()
         .select({
           id: notificationDeliveries.id,
@@ -38,7 +38,7 @@ export const notificationRoutes = new Elysia({ prefix: "/api/notifications" })
         )
         .where(
           and(
-            eq(tasks.userId, user.id),
+            eq(tasks.userId, ctx.subject.id),
             eq(notificationDeliveries.channel, "in_app"),
             eq(notificationDeliveries.status, "sent"),
             isNull(tasks.deletedAt),
@@ -52,8 +52,8 @@ export const notificationRoutes = new Elysia({ prefix: "/api/notifications" })
   )
   .get(
     "/unread-count",
-    async ({ requireUser }) => {
-      const user = requireUser();
+    async ({ requireAuthz }) => {
+      const ctx = await requireAuthz("notification.view");
       const [row] = await getDb()
         .select({
           count: sql<number>`count(*)::int`,
@@ -62,7 +62,7 @@ export const notificationRoutes = new Elysia({ prefix: "/api/notifications" })
         .innerJoin(tasks, eq(notificationDeliveries.taskId, tasks.id))
         .where(
           and(
-            eq(tasks.userId, user.id),
+            eq(tasks.userId, ctx.subject.id),
             eq(notificationDeliveries.channel, "in_app"),
             eq(notificationDeliveries.status, "sent"),
             isNull(notificationDeliveries.readAt),
@@ -75,8 +75,8 @@ export const notificationRoutes = new Elysia({ prefix: "/api/notifications" })
   )
   .post(
     "/:id/read",
-    async ({ params, requireUser, set }) => {
-      const user = requireUser();
+    async ({ params, requireAuthz, set }) => {
+      const ctx = await requireAuthz("notification.mark-read");
       const parsed = markNotificationReadSchema.safeParse({ id: params.id });
       if (!parsed.success) {
         set.status = 400;
@@ -90,7 +90,7 @@ export const notificationRoutes = new Elysia({ prefix: "/api/notifications" })
         .where(
           and(
             eq(notificationDeliveries.id, parsed.data.id),
-            eq(tasks.userId, user.id),
+            eq(tasks.userId, ctx.subject.id),
           ),
         )
         .limit(1);
@@ -114,15 +114,15 @@ export const notificationRoutes = new Elysia({ prefix: "/api/notifications" })
   )
   .post(
     "/read-all",
-    async ({ requireUser }) => {
-      const user = requireUser();
+    async ({ requireAuthz }) => {
+      const ctx = await requireAuthz("notification.mark-read");
       const owned = await getDb()
         .select({ id: notificationDeliveries.id })
         .from(notificationDeliveries)
         .innerJoin(tasks, eq(notificationDeliveries.taskId, tasks.id))
         .where(
           and(
-            eq(tasks.userId, user.id),
+            eq(tasks.userId, ctx.subject.id),
             eq(notificationDeliveries.channel, "in_app"),
             eq(notificationDeliveries.status, "sent"),
             isNull(notificationDeliveries.readAt),

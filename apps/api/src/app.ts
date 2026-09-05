@@ -10,6 +10,7 @@ import { courseRoutes } from "./routes/courses";
 import { taskRoutes } from "./routes/tasks";
 import { attachmentRoutes } from "./routes/attachments";
 import { notificationRoutes } from "./routes/notifications";
+import { adminRoutes } from "./routes/admin";
 import { cronRoutes } from "./routes/cron";
 
 export const app = new Elysia()
@@ -36,6 +37,7 @@ export const app = new Elysia()
           { name: "Tasks" },
           { name: "Attachments" },
           { name: "Notifications" },
+          { name: "Admin" },
           { name: "Cron" },
         ],
       },
@@ -50,6 +52,7 @@ export const app = new Elysia()
   .use(taskRoutes)
   .use(attachmentRoutes)
   .use(notificationRoutes)
+  .use(adminRoutes)
   .use(cronRoutes);
 
 export type App = typeof app;

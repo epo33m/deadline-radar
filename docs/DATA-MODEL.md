@@ -2,7 +2,7 @@
 
 > **Source of truth:** `product.md` (Baseline v0.1) + `DOMAIN.md`
 > Target: Supabase PostgreSQL
-> Access path: Elysia API queries via **Drizzle** (`packages/db`) using `DATABASE_URL`. RLS policies below remain **defense-in-depth**; the API is the primary authorization boundary (scoped by authenticated `user_id`).
+> Access path: Elysia API queries via **Drizzle** (`packages/db`) using `DATABASE_URL`. Domain ownership helpers use transaction-local JWT claim GUCs (`withUserRls`) so RLS can apply when the DB role does not `BYPASSRLS`. App-layer RBAC + ownership remains the primary authorization boundary.
 
 ---
 
@@ -27,6 +27,10 @@ auth.users (Supabase managed)
      └── (status, deadline, etc.)
 
 auth_audit_events  (append-only; soft-linked user_id, no FK)
+roles ──1:N──▶ role_capabilities
+  ▲
+  │ N:M via user_roles
+profiles
 ```
 
 ## 2. Enums
@@ -53,8 +57,39 @@ create table profiles (
 );
 ```
 
+### roles / role_capabilities / user_roles
+*RBAC. Flat roles (no inheritance). No tenant/org tables (N/A). RLS enabled with no client policies — API service role only.*
+
+```sql
+create table roles (
+  id uuid primary key default gen_random_uuid(),
+  slug text not null unique,
+  description text,
+  created_at timestamptz not null default now()
+);
+
+create table role_capabilities (
+  id uuid primary key default gen_random_uuid(),
+  role_id uuid not null references roles(id) on delete cascade,
+  capability text not null,
+  created_at timestamptz not null default now(),
+  unique (role_id, capability)
+);
+
+create table user_roles (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  role_id uuid not null references roles(id) on delete cascade,
+  assigned_at timestamptz not null default now(),
+  assigned_by uuid references profiles(id) on delete set null,
+  unique (user_id, role_id)
+);
+```
+
+Seeded roles: `user` (default on signup), `admin`. Capability IDs are documented in `apps/api/src/lib/authorization/capabilities.ts`.
+
 ### auth_audit_events
-*Append-only authentication audit trail. Written by the API service role. No RLS client policies. Never store passwords, tokens, or secrets.*
+*Append-only authentication/authorization audit trail. Written by the API service role. No RLS client policies. Never store passwords, tokens, or secrets. Includes authz denials and role assign/revoke.*
 
 ```sql
 create table auth_audit_events (

@@ -587,7 +587,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
   )
   .get(
     "/session",
-    async ({ user, cookie, accessToken, set }) => {
+    async ({ user, authz, cookie, accessToken, requireAuthz, set }) => {
       if (!user) {
         if (accessToken) {
           clearSessionCookies(cookie as never);
@@ -595,6 +595,12 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
         set.status = 401;
         return { authenticated: false };
       }
+      // Authenticated session read requires profile.view (fail closed if no roles).
+      if (!authz) {
+        set.status = 403;
+        return { error: "Forbidden" };
+      }
+      await requireAuthz("profile.view");
       const [profile] = await getDb()
         .select()
         .from(profiles)
@@ -616,8 +622,8 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
   )
   .patch(
     "/timezone",
-    async ({ body, requireUser, set }) => {
-      const user = requireUser();
+    async ({ body, requireAuthz, set }) => {
+      const ctx = await requireAuthz("profile.timezone.update");
       const timezone = body.timezone;
       if (!isValidTimeZone(timezone)) {
         set.status = 400;
@@ -626,7 +632,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       await getDb()
         .update(profiles)
         .set({ timezone })
-        .where(eq(profiles.id, user.id));
+        .where(eq(profiles.id, ctx.subject.id));
       return { ok: true, timezone };
     },
     {

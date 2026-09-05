@@ -51,12 +51,12 @@ Owns **all auth, domain API, and business logic**:
 - Cron: `GET /api/cron/evaluate-reminders` (Bearer `CRON_SECRET`)
 - Contract: OpenAPI at `/openapi` (typed client under `apps/web/lib/api`)
 
-Layering: **routes → services → Drizzle repos**. App-layer authorization by authenticated `user_id`. Existing Postgres RLS remains defense-in-depth.
+Layering: **routes → services → Drizzle repos**. App-layer authorization via RBAC capabilities + ownership (`requireAuthz` + owned-resource helpers). Existing Postgres RLS remains defense-in-depth.
 
 ### 2.3 Database — Supabase Postgres + Drizzle
 - DDL / triggers / RLS: `supabase/migrations/` (source of schema truth for this branch)
 - Query layer: `@deadline-radar/db` (Drizzle schema mirroring `DATA-MODEL.md`)
-- Privileged `DATABASE_URL` from the API (service DB role)
+- Privileged `DATABASE_URL` from the API for cron/admin writes. Domain ownership lookups run inside `withUserRls(userId)` transactions that set Supabase JWT claim GUCs (`request.jwt.claim.sub`) with `is_local=true` so pooled connections cannot leak identity. For Postgres RLS to enforce (not only app filters), point `DATABASE_URL` at a role **without** `BYPASSRLS`; otherwise RLS remains defense-in-depth only.
 
 ### 2.4 Storage — Supabase Storage
 - Private bucket `attachments`; API uses service role for upload/signed URLs
@@ -83,7 +83,20 @@ Layering: **routes → services → Drizzle repos**. App-layer authorization by 
 ### Identity model
 - Supabase Auth owns identity, password hashing, email confirmation, and reset tokens (email/password MVP).
 - **Out of scope (deferred):** MFA/2FA, Google OAuth, magic link (`MVP.md`, issue #38).
-- App auth context (`AuthUser`): `userId` (`id`), optional `email`, optional `sessionId` from JWT `session_id`. Authorization stays in domain routes via `requireUser().id` — not inside login/session logic.
+- App auth context (`AuthUser`): `userId` (`id`), optional `email`, optional `sessionId` from JWT `session_id`. Authentication answers “who”; authorization is separate (see below).
+
+### Authorization model (RBAC + ownership)
+- **Single source of truth:** `apps/api/src/lib/authorization/` + tables `roles`, `role_capabilities`, `user_roles`.
+- **Subject:** verified JWT user id. **Roles:** loaded from `user_roles` (never from client body or JWT role claims). **Capabilities:** union of `role_capabilities` for those roles; unknown capability IDs are denied.
+- **Roles (seeded):** `user` (default on signup / backfill), `admin` (role assign/revoke + audit view only). **No role inheritance.** Flat capability maps only.
+- **Scope:** owned resources (`resource.user_id === subject.id`). **Multi-tenant / org isolation: N/A** (B2C per-profile ownership; no org/workspace).
+- **Enforcement:** domain/admin routes use `authPlugin` / `requireAuthPlugin` + per-handler `requireAuthz('<capability>')` + ownership-scoped queries. Missing capability → `403`; missing identity → `401`; cross-owner resource → `404` (anti-enumeration) except signed-URL path/row mismatches → `403`. Every protected handler must call `requireAuthz` (fail closed).
+- **Admin:** `POST /api/admin/roles/assign|revoke`, `GET /api/admin/audit`. Admin does **not** unlock cross-user course/task access.
+- **Cron:** separate principal via `CRON_SECRET` (not an RBAC role).
+- **Field-level:** mutation deny-list blocks client `userId` / `role` / `capabilities` / `deletedAt` injection; no sensitive financial fields in the product.
+- **Caching:** short-lived in-memory authz snapshot per `userId` (30s TTL). Cache keys are subject ids only (no cross-user collision). Invalidated on `role.assign` / `role.revoke`. Fail closed on load errors (empty capabilities).
+- **RLS:** ownership helpers use `withUserRls` (transaction-local JWT claim GUCs). App-layer RBAC remains primary; RLS applies when `DATABASE_URL` is a non-`BYPASSRLS` role.
+- **Audit:** `auth_audit_events` records auth events plus `authz.denied`, `role.assigned`, `role.revoked` (no secrets).
 
 ### Session / cookies
 - Elysia sets `dr_access_token` / `dr_refresh_token` httpOnly cookies (`Secure` in production, `SameSite=lax`, `Path=/`) after login/register/confirm/refresh.
@@ -100,7 +113,7 @@ Layering: **routes → services → Drizzle repos**. App-layer authorization by 
 
 ### Page / API enforcement
 - Next session gate: **public allowlist** (`/`, auth pages, `/reset-password`, `/auth/confirm`); all other pages require a session (fail closed).
-- API: auth routes public; domain routes `requireUser()`; cron via `CRON_SECRET`. Client-supplied user IDs are never trusted as identity.
+- API: public auth/health/openapi; domain + admin routes authenticated + capability-checked; cron via `CRON_SECRET`. Client-supplied user IDs / roles / capabilities are never trusted as authorization input.
 - CSRF: `SameSite=lax` + same-origin `/api` (no separate CSRF token). CORS locked to `WEB_ORIGIN` with credentials.
 
 ### Abuse protection & errors
