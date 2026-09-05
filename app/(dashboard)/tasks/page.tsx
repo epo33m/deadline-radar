@@ -1,8 +1,6 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { AddTaskForm } from "@/components/tasks/task-form";
-import { TaskList } from "@/components/tasks/task-list";
+import { TasksCollection } from "@/components/tasks/tasks-collection";
 import { createClient } from "@/lib/supabase/server";
 import type { Course } from "@/types/course";
 import type { Task, TaskListItem } from "@/types/task";
@@ -34,28 +32,28 @@ export default async function TasksPage() {
     { data: tasks, error: tasksError },
     { data: profile },
   ] = await Promise.all([
-      supabase
-        .from("courses")
-        .select("id, name, code, color")
-        .eq("user_id", user.id)
-        .is("deleted_at", null)
-        .order("created_at", { ascending: true })
-        .returns<Pick<Course, "id" | "name" | "code" | "color">[]>(),
-      supabase
-        .from("tasks")
-        .select(
-          "id, course_id, title, deadline, status, estimated_duration, courses(name, color)",
-        )
-        .eq("user_id", user.id)
-        .is("deleted_at", null)
-        .order("deadline", { ascending: true })
-        .returns<TaskRow[]>(),
-      supabase
-        .from("profiles")
-        .select("timezone")
-        .eq("id", user.id)
-        .maybeSingle(),
-    ]);
+    supabase
+      .from("courses")
+      .select("id, name, code, color")
+      .eq("user_id", user.id)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: true })
+      .returns<Pick<Course, "id" | "name" | "code" | "color">[]>(),
+    supabase
+      .from("tasks")
+      .select(
+        "id, course_id, title, deadline, status, estimated_duration, courses(name, color)",
+      )
+      .eq("user_id", user.id)
+      .is("deleted_at", null)
+      .order("deadline", { ascending: true })
+      .returns<TaskRow[]>(),
+    supabase
+      .from("profiles")
+      .select("timezone")
+      .eq("id", user.id)
+      .maybeSingle(),
+  ]);
 
   if (coursesError || tasksError) {
     return (
@@ -86,34 +84,10 @@ export default async function TasksPage() {
   });
 
   return (
-    <section className="space-y-8">
-      <div className="space-y-2">
-        <h1 className="font-display text-3xl font-semibold">Tasks</h1>
-        <p className="text-ink-muted-48">
-          Create tasks with a course and deadline. Default reminder thresholds
-          (H-7 / H-3 / H-1 / H-0) are generated automatically.
-        </p>
-      </div>
-
-      <div className="space-y-4">
-        <h2 className="font-display text-xl font-semibold">Add task</h2>
-        {(courses ?? []).length === 0 ? (
-          <p className="text-sm text-ink-muted-48">
-            You need an active course first.{" "}
-            <Link href="/courses" className="text-primary hover:underline">
-              Create a course
-            </Link>
-            .
-          </p>
-        ) : (
-          <AddTaskForm courses={courses ?? []} />
-        )}
-      </div>
-
-      <div className="space-y-4">
-        <h2 className="font-display text-xl font-semibold">Your tasks</h2>
-        <TaskList tasks={listItems} timeZone={timeZone} />
-      </div>
-    </section>
+    <TasksCollection
+      courses={courses ?? []}
+      tasks={listItems}
+      timeZone={timeZone}
+    />
   );
 }
