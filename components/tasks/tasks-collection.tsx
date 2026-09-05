@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Check, Circle, Plus, Search } from "lucide-react";
+import { Check, CheckSquare, Circle, Plus, Search } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 
 import { AddTaskForm } from "@/components/tasks/task-form";
@@ -212,14 +212,19 @@ function EmptyPanel({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center px-2 py-6 text-center sm:px-4 sm:py-8">
+    <div className="flex min-h-[min(28rem,calc(100svh-14rem))] flex-col items-center justify-center px-2 py-12 text-center sm:min-h-[min(32rem,calc(100svh-16rem))] sm:px-4 sm:py-16">
+      <CheckSquare
+        className="mb-4 size-12 text-ink-muted-48 sm:size-16"
+        aria-hidden="true"
+        strokeWidth={1.5}
+      />
       <h2 className="font-display text-xl font-semibold text-ink sm:text-[22px]">
         {title}
       </h2>
       <p className="mt-2 max-w-sm text-[15px] leading-relaxed text-ink-muted-48">
         {description}
       </p>
-      {action ? <div className="mt-5">{action}</div> : null}
+      {action ? <div className="mt-6 w-full max-w-xs sm:w-auto">{action}</div> : null}
     </div>
   );
 }
@@ -283,30 +288,41 @@ export function TasksCollection({
   const hasCourses = courses.length > 0;
 
   return (
-    <section className="mx-auto w-full max-w-3xl space-y-6 sm:space-y-8">
+    <section className="space-y-6 sm:space-y-8">
       <header className="flex items-start justify-between gap-3 sm:gap-4">
         <div className="min-w-0 flex-1 space-y-2 sm:space-y-3">
           <h1 className="font-display text-[32px] font-semibold leading-[1.07] tracking-[-0.28px] text-ink sm:text-[36px] lg:text-[44px]">
             Tasks
           </h1>
           <p className="max-w-xl text-[15px] font-normal leading-[1.47] tracking-[-0.374px] text-ink-muted-48 sm:text-[17px]">
-            All your tasks across courses.
+            Track deadlines across every course.
           </p>
         </div>
 
-        <Button
-          type="button"
-          onClick={openAdd}
-          aria-label="Add task"
-          className="mt-0.5 hidden min-h-11 gap-1.5 rounded-full px-5 lg:inline-flex"
-        >
-          <Plus className="size-4" strokeWidth={2} aria-hidden="true" />
-          Add task
-        </Button>
+        {hasCourses ? (
+          <Button
+            type="button"
+            onClick={openAdd}
+            aria-label="Add task"
+            className="mt-0.5 hidden size-11 shrink-0 rounded-full p-0 lg:inline-flex"
+          >
+            <Plus className="size-5" strokeWidth={2} aria-hidden="true" />
+          </Button>
+        ) : null}
       </header>
 
       {showChrome ? (
-        <div className="space-y-4">
+        <div
+          className={
+            emptyState === "ready" || emptyState === "no-results"
+              ? "space-y-4 pb-20 sm:space-y-5 lg:pb-0"
+              : "space-y-4"
+          }
+        >
+          <h2 className="font-display text-[19px] font-semibold tracking-[-0.2px] text-ink sm:text-[21px]">
+            My Tasks
+          </h2>
+
           <div
             role="group"
             aria-label="Task status"
@@ -350,21 +366,75 @@ export function TasksCollection({
               />
             </div>
           ) : null}
+
+          {emptyState === "no-results" ? (
+            <EmptyPanel
+              title="No Tasks Found"
+              description="Try changing your search or filters."
+            />
+          ) : null}
+
+          {emptyState === "ready" ? (
+            <div className="space-y-8">
+              {view === "all" ? (
+                <>
+                  <TaskGroup
+                    title="Late"
+                    tone="late"
+                    tasks={lateTasks}
+                    timeZone={timeZone}
+                  />
+                  <HorizonGroups horizons={horizons} timeZone={timeZone} />
+                  <TaskGroup
+                    title="Done"
+                    tone="done"
+                    tasks={doneTasks}
+                    timeZone={timeZone}
+                  />
+                </>
+              ) : null}
+
+              {view === "upcoming" ? (
+                <HorizonGroups horizons={horizons} timeZone={timeZone} />
+              ) : null}
+
+              {view === "late" ? (
+                <TaskGroup
+                  title="Late"
+                  tone="late"
+                  tasks={filteredTasks}
+                  timeZone={timeZone}
+                />
+              ) : null}
+
+              {view === "done" ? (
+                <TaskGroup
+                  title="Done"
+                  tone="done"
+                  tasks={filteredTasks}
+                  timeZone={timeZone}
+                />
+              ) : null}
+
+              <p className="pb-2 text-center text-sm text-ink-muted-48">
+                That&apos;s all for now.
+              </p>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
       {emptyState === "no-courses" ? (
         <EmptyPanel
-          title="No courses yet"
+          title="No Courses Yet"
           description="Create a course first to start adding tasks."
           action={
             <Button
-              type="button"
-              onClick={openAdd}
-              className="min-h-11 gap-1.5 rounded-full px-5"
+              nativeButton={false}
+              render={<Link href="/courses" />}
+              className="min-h-11 w-full rounded-full px-5 sm:w-auto"
             >
-              <Plus className="size-4" strokeWidth={2} aria-hidden="true" />
-              Add task
+              Create course
             </Button>
           }
         />
@@ -372,84 +442,30 @@ export function TasksCollection({
 
       {emptyState === "no-tasks" ? (
         <EmptyPanel
-          title="No tasks yet"
+          title="No Tasks Yet"
           description="Add a task to start tracking your deadlines."
           action={
             <Button
               type="button"
               onClick={openAdd}
-              className="min-h-11 rounded-full px-5"
+              className="min-h-11 w-full rounded-full px-5 sm:w-auto"
             >
-              <Plus className="size-4" strokeWidth={2} aria-hidden="true" />
               Add task
             </Button>
           }
         />
       ) : null}
 
-      {emptyState === "no-results" ? (
-        <EmptyPanel
-          title="No tasks found"
-          description="Try changing your search or filters."
-        />
+      {hasCourses ? (
+        <Button
+          type="button"
+          onClick={openAdd}
+          aria-label="Add task"
+          className="fixed right-4 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-40 size-14 rounded-full p-0 shadow-lg lg:hidden"
+        >
+          <Plus className="size-5" strokeWidth={2} aria-hidden="true" />
+        </Button>
       ) : null}
-
-      {emptyState === "ready" ? (
-        <div className="space-y-8 pb-20 lg:pb-0">
-          {view === "all" ? (
-            <>
-              <TaskGroup
-                title="Late"
-                tone="late"
-                tasks={lateTasks}
-                timeZone={timeZone}
-              />
-              <HorizonGroups horizons={horizons} timeZone={timeZone} />
-              <TaskGroup
-                title="Done"
-                tone="done"
-                tasks={doneTasks}
-                timeZone={timeZone}
-              />
-            </>
-          ) : null}
-
-          {view === "upcoming" ? (
-            <HorizonGroups horizons={horizons} timeZone={timeZone} />
-          ) : null}
-
-          {view === "late" ? (
-            <TaskGroup
-              title="Late"
-              tone="late"
-              tasks={filteredTasks}
-              timeZone={timeZone}
-            />
-          ) : null}
-
-          {view === "done" ? (
-            <TaskGroup
-              title="Done"
-              tone="done"
-              tasks={filteredTasks}
-              timeZone={timeZone}
-            />
-          ) : null}
-
-          <p className="pb-2 text-center text-sm text-ink-muted-48">
-            That&apos;s all for now.
-          </p>
-        </div>
-      ) : null}
-
-      <Button
-        type="button"
-        onClick={openAdd}
-        aria-label="Add task"
-        className="fixed right-4 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-40 size-14 rounded-full p-0 shadow-lg lg:hidden"
-      >
-        <Plus className="size-5" strokeWidth={2} aria-hidden="true" />
-      </Button>
 
       <Dialog
         open={addOpen}
