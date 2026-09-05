@@ -11,26 +11,21 @@ import {
   attachments,
 } from "@deadline-radar/db";
 
-import { authPlugin } from "../plugins/auth";
+import { requireAuthPlugin } from "../plugins/auth";
 import { getDb } from "../lib/db";
-
-async function ownedTask(userId: string, taskId: string) {
-  const [row] = await getDb()
-    .select()
-    .from(tasks)
-    .where(
-      and(eq(tasks.id, taskId), eq(tasks.userId, userId), isNull(tasks.deletedAt)),
-    )
-    .limit(1);
-  return row ?? null;
-}
+import {
+  assertNoForbiddenMutationKeys,
+  ForbiddenFieldError,
+  ownedCourse,
+  ownedTask,
+} from "../lib/authorization";
 
 export const taskRoutes = new Elysia({ prefix: "/api/tasks" })
-  .use(authPlugin)
+  .use(requireAuthPlugin)
   .get(
     "/",
-    async ({ requireUser, query }) => {
-      const user = requireUser();
+    async ({ requireAuthz, query }) => {
+      const ctx = await requireAuthz("task.view");
       const db = getDb();
       const rows = await db
         .select({
@@ -51,7 +46,7 @@ export const taskRoutes = new Elysia({ prefix: "/api/tasks" })
         .leftJoin(courses, eq(tasks.courseId, courses.id))
         .where(
           and(
-            eq(tasks.userId, user.id),
+            eq(tasks.userId, ctx.subject.id),
             isNull(tasks.deletedAt),
             query.courseId ? eq(tasks.courseId, query.courseId) : undefined,
           ),
@@ -66,9 +61,9 @@ export const taskRoutes = new Elysia({ prefix: "/api/tasks" })
   )
   .get(
     "/:id",
-    async ({ params, requireUser, set }) => {
-      const user = requireUser();
-      const task = await ownedTask(user.id, params.id);
+    async ({ params, requireAuthz, set }) => {
+      const ctx = await requireAuthz("task.view");
+      const task = await ownedTask(ctx.subject.id, params.id);
       if (!task) {
         set.status = 404;
         return { error: "Task not found" };
@@ -97,8 +92,17 @@ export const taskRoutes = new Elysia({ prefix: "/api/tasks" })
   )
   .post(
     "/",
-    async ({ body, requireUser, set }) => {
-      const user = requireUser();
+    async ({ body, requireAuthz, set }) => {
+      const ctx = await requireAuthz("task.create");
+      try {
+        assertNoForbiddenMutationKeys(body);
+      } catch (e) {
+        if (e instanceof ForbiddenFieldError) {
+          set.status = 400;
+          return { error: "Invalid task details" };
+        }
+        throw e;
+      }
       const parsed = taskSchema.safeParse(body);
       if (!parsed.success) {
         set.status = 400;
@@ -108,17 +112,7 @@ export const taskRoutes = new Elysia({ prefix: "/api/tasks" })
         };
       }
 
-      const [course] = await getDb()
-        .select({ id: courses.id })
-        .from(courses)
-        .where(
-          and(
-            eq(courses.id, parsed.data.course_id),
-            eq(courses.userId, user.id),
-            isNull(courses.deletedAt),
-          ),
-        )
-        .limit(1);
+      const course = await ownedCourse(ctx.subject.id, parsed.data.course_id);
       if (!course) {
         set.status = 400;
         return { error: "Course not found" };
@@ -127,7 +121,7 @@ export const taskRoutes = new Elysia({ prefix: "/api/tasks" })
       const [row] = await getDb()
         .insert(tasks)
         .values({
-          userId: user.id,
+          userId: ctx.subject.id,
           courseId: parsed.data.course_id,
           title: parsed.data.title,
           description: parsed.data.description,
@@ -155,8 +149,17 @@ export const taskRoutes = new Elysia({ prefix: "/api/tasks" })
   )
   .patch(
     "/:id",
-    async ({ params, body, requireUser, set }) => {
-      const user = requireUser();
+    async ({ params, body, requireAuthz, set }) => {
+      const ctx = await requireAuthz("task.update");
+      try {
+        assertNoForbiddenMutationKeys(body);
+      } catch (e) {
+        if (e instanceof ForbiddenFieldError) {
+          set.status = 400;
+          return { error: "Invalid task details" };
+        }
+        throw e;
+      }
       const parsed = taskSchema.safeParse(body);
       if (!parsed.success) {
         set.status = 400;
@@ -165,10 +168,16 @@ export const taskRoutes = new Elysia({ prefix: "/api/tasks" })
           fieldErrors: parsed.error.flatten().fieldErrors,
         };
       }
-      const existing = await ownedTask(user.id, params.id);
+      const existing = await ownedTask(ctx.subject.id, params.id);
       if (!existing) {
         set.status = 404;
         return { error: "Task not found" };
+      }
+
+      const course = await ownedCourse(ctx.subject.id, parsed.data.course_id);
+      if (!course) {
+        set.status = 400;
+        return { error: "Course not found" };
       }
 
       const [row] = await getDb()
@@ -182,7 +191,9 @@ export const taskRoutes = new Elysia({ prefix: "/api/tasks" })
           estimatedDuration: parsed.data.estimated_duration,
           updatedAt: new Date(),
         })
-        .where(eq(tasks.id, params.id))
+        .where(
+          and(eq(tasks.id, params.id), eq(tasks.userId, ctx.subject.id)),
+        )
         .returning();
       return { task: row };
     },
@@ -203,9 +214,9 @@ export const taskRoutes = new Elysia({ prefix: "/api/tasks" })
   )
   .post(
     "/:id/complete",
-    async ({ params, requireUser, set }) => {
-      const user = requireUser();
-      const existing = await ownedTask(user.id, params.id);
+    async ({ params, requireAuthz, set }) => {
+      const ctx = await requireAuthz("task.update");
+      const existing = await ownedTask(ctx.subject.id, params.id);
       if (!existing) {
         set.status = 404;
         return { error: "Task not found" };
@@ -216,7 +227,9 @@ export const taskRoutes = new Elysia({ prefix: "/api/tasks" })
       const [row] = await getDb()
         .update(tasks)
         .set({ status: "done", updatedAt: new Date() })
-        .where(eq(tasks.id, params.id))
+        .where(
+          and(eq(tasks.id, params.id), eq(tasks.userId, ctx.subject.id)),
+        )
         .returning();
       return { task: row };
     },
@@ -227,15 +240,15 @@ export const taskRoutes = new Elysia({ prefix: "/api/tasks" })
   )
   .delete(
     "/:id",
-    async ({ params, requireUser, set }) => {
-      const user = requireUser();
+    async ({ params, requireAuthz, set }) => {
+      const ctx = await requireAuthz("task.archive");
       const [row] = await getDb()
         .update(tasks)
         .set({ deletedAt: new Date(), updatedAt: new Date() })
         .where(
           and(
             eq(tasks.id, params.id),
-            eq(tasks.userId, user.id),
+            eq(tasks.userId, ctx.subject.id),
             isNull(tasks.deletedAt),
           ),
         )
@@ -253,9 +266,9 @@ export const taskRoutes = new Elysia({ prefix: "/api/tasks" })
   )
   .post(
     "/:id/thresholds",
-    async ({ params, body, requireUser, set }) => {
-      const user = requireUser();
-      const task = await ownedTask(user.id, params.id);
+    async ({ params, body, requireAuthz, set }) => {
+      const ctx = await requireAuthz("threshold.manage");
+      const task = await ownedTask(ctx.subject.id, params.id);
       if (!task) {
         set.status = 404;
         return { error: "Task not found" };
@@ -293,9 +306,9 @@ export const taskRoutes = new Elysia({ prefix: "/api/tasks" })
   )
   .patch(
     "/:id/thresholds/:thresholdId",
-    async ({ params, body, requireUser, set }) => {
-      const user = requireUser();
-      const task = await ownedTask(user.id, params.id);
+    async ({ params, body, requireAuthz, set }) => {
+      const ctx = await requireAuthz("threshold.manage");
+      const task = await ownedTask(ctx.subject.id, params.id);
       if (!task) {
         set.status = 404;
         return { error: "Task not found" };
@@ -337,9 +350,9 @@ export const taskRoutes = new Elysia({ prefix: "/api/tasks" })
   )
   .delete(
     "/:id/thresholds/:thresholdId",
-    async ({ params, requireUser, set }) => {
-      const user = requireUser();
-      const task = await ownedTask(user.id, params.id);
+    async ({ params, requireAuthz, set }) => {
+      const ctx = await requireAuthz("threshold.manage");
+      const task = await ownedTask(ctx.subject.id, params.id);
       if (!task) {
         set.status = 404;
         return { error: "Task not found" };

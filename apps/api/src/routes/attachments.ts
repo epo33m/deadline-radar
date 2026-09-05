@@ -1,34 +1,28 @@
 import { Elysia, t } from "elysia";
-import { and, eq, isNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import {
   attachmentObjectKey,
   buildAttachmentStoragePath,
   linkAttachmentSchema,
   sanitizeAttachmentFilename,
 } from "@deadline-radar/validation";
-import { attachments, tasks } from "@deadline-radar/db";
+import { attachments } from "@deadline-radar/db";
 
-import { authPlugin } from "../plugins/auth";
+import { requireAuthPlugin } from "../plugins/auth";
 import { getDb } from "../lib/db";
 import { createServiceClient } from "../lib/supabase";
-
-async function ownedTask(userId: string, taskId: string) {
-  const [row] = await getDb()
-    .select()
-    .from(tasks)
-    .where(
-      and(eq(tasks.id, taskId), eq(tasks.userId, userId), isNull(tasks.deletedAt)),
-    )
-    .limit(1);
-  return row ?? null;
-}
+import {
+  ownedAttachment,
+  ownedAttachmentByStoragePath,
+  ownedTask,
+} from "../lib/authorization";
 
 export const attachmentRoutes = new Elysia({ prefix: "/api/attachments" })
-  .use(authPlugin)
+  .use(requireAuthPlugin)
   .post(
     "/link",
-    async ({ body, requireUser, set }) => {
-      const user = requireUser();
+    async ({ body, requireAuthz, set }) => {
+      const ctx = await requireAuthz("attachment.create");
       const parsed = linkAttachmentSchema.safeParse({
         name: body.name,
         url: body.url,
@@ -40,7 +34,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/attachments" })
           fieldErrors: parsed.error.flatten().fieldErrors,
         };
       }
-      const task = await ownedTask(user.id, body.task_id);
+      const task = await ownedTask(ctx.subject.id, body.task_id);
       if (!task) {
         set.status = 404;
         return { error: "Task not found" };
@@ -68,8 +62,8 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/attachments" })
   )
   .post(
     "/file",
-    async ({ body, requireUser, set }) => {
-      const user = requireUser();
+    async ({ body, requireAuthz, set }) => {
+      const ctx = await requireAuthz("attachment.create");
       const taskId = body.task_id;
       const name = body.name;
       const file = body.file;
@@ -79,7 +73,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/attachments" })
         return { error: "task_id and file are required" };
       }
 
-      const task = await ownedTask(user.id, taskId);
+      const task = await ownedTask(ctx.subject.id, taskId);
       if (!task) {
         set.status = 404;
         return { error: "Task not found" };
@@ -88,7 +82,11 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/attachments" })
       const filename = sanitizeAttachmentFilename(
         name?.trim() || file.name || "upload",
       );
-      const dbPath = buildAttachmentStoragePath(user.id, task.id, filename);
+      const dbPath = buildAttachmentStoragePath(
+        ctx.subject.id,
+        task.id,
+        filename,
+      );
       const objectKey = attachmentObjectKey(dbPath);
 
       const bytes = await file.arrayBuffer();
@@ -129,17 +127,9 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/attachments" })
   )
   .delete(
     "/:id",
-    async ({ params, requireUser, set }) => {
-      const user = requireUser();
-      const [row] = await getDb()
-        .select({
-          attachment: attachments,
-          taskUserId: tasks.userId,
-        })
-        .from(attachments)
-        .innerJoin(tasks, eq(attachments.taskId, tasks.id))
-        .where(and(eq(attachments.id, params.id), eq(tasks.userId, user.id)))
-        .limit(1);
+    async ({ params, requireAuthz, set }) => {
+      const ctx = await requireAuthz("attachment.delete");
+      const row = await ownedAttachment(ctx.subject.id, params.id);
 
       if (!row) {
         set.status = 404;
@@ -168,13 +158,24 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/attachments" })
   )
   .get(
     "/signed-url",
-    async ({ query, requireUser, set }) => {
-      const user = requireUser();
+    async ({ query, requireAuthz, set }) => {
+      const ctx = await requireAuthz("attachment.signed-url");
       const storagePath = query.storage_path;
-      if (!storagePath?.startsWith(`attachments/${user.id}/`)) {
+      const expectedPrefix = `attachments/${ctx.subject.id}/`;
+      if (!storagePath?.startsWith(expectedPrefix)) {
         set.status = 403;
         return { error: "Forbidden" };
       }
+
+      const owned = await ownedAttachmentByStoragePath(
+        ctx.subject.id,
+        storagePath,
+      );
+      if (!owned) {
+        set.status = 403;
+        return { error: "Forbidden" };
+      }
+
       const objectKey = storagePath.replace(/^attachments\//, "");
       const supabase = createServiceClient();
       const { data, error } = await supabase.storage

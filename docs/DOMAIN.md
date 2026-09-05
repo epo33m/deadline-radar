@@ -16,6 +16,8 @@
 | Threshold | A point in time ("H-N") relative to the deadline that triggers a reminder |
 | Notification Delivery | One reminder-sending attempt for a (task, threshold, channel) combination |
 | Attachment | Supporting material for a task: a file or an external link |
+| Role | Named set of capabilities (`user`, `admin`); assigned server-side via `user_roles` |
+| Capability | Stable permission id (e.g. `course.create`, `role.assign`) |
 
 ## 2. Entities & Business Meaning
 
@@ -23,6 +25,7 @@
 - Created automatically when the user registers (auto-provisioned, see `ARCHITECTURE.md`).
 - Stores `timezone` — used for all reminder time calculations for that user.
 - All Courses & Tasks are owned by exactly one Profile.
+- Receives the default `user` role on signup (RBAC). Roles are never trusted from the client.
 
 ### 2.2 Course
 - Purely organizational, scoped to its owner.
@@ -104,6 +107,9 @@
 - Recurring tasks
 - Task sharing/collaboration between users
 - Dependencies between tasks
+- Multi-tenant organizations / workspaces (tenant isolation **N/A** — per-profile ownership only)
+- Role hierarchy / permission inheritance (roles are flat)
+- Admin cross-user access to another profile’s courses/tasks
 
 ## 7. Open Domain Questions
 - [ ] Maximum retries for a `failed` email delivery? (suggestion: 3x)

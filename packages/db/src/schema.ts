@@ -56,6 +56,51 @@ export const authAuditEvents = pgTable("auth_audit_events", {
     .defaultNow(),
 });
 
+/** RBAC roles. Flat — no inheritance. */
+export const roles = pgTable("roles", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  slug: text("slug").notNull().unique(),
+  description: text("description"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+    .notNull()
+    .defaultNow(),
+});
+
+export const roleCapabilities = pgTable(
+  "role_capabilities",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    roleId: uuid("role_id")
+      .notNull()
+      .references(() => roles.id, { onDelete: "cascade" }),
+    capability: text("capability").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [unique().on(table.roleId, table.capability)],
+);
+
+export const userRoles = pgTable(
+  "user_roles",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    roleId: uuid("role_id")
+      .notNull()
+      .references(() => roles.id, { onDelete: "cascade" }),
+    assignedAt: timestamp("assigned_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+    assignedBy: uuid("assigned_by").references(() => profiles.id, {
+      onDelete: "set null",
+    }),
+  },
+  (table) => [unique().on(table.userId, table.roleId)],
+);
+
 export const courses = pgTable("courses", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id")

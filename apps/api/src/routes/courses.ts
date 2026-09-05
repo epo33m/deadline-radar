@@ -3,8 +3,13 @@ import { and, eq, isNull } from "drizzle-orm";
 import { courseSchema } from "@deadline-radar/validation";
 import { courses } from "@deadline-radar/db";
 
-import { authPlugin } from "../plugins/auth";
+import { requireAuthPlugin } from "../plugins/auth";
 import { getDb } from "../lib/db";
+import {
+  assertNoForbiddenMutationKeys,
+  ForbiddenFieldError,
+  ownedCourse,
+} from "../lib/authorization";
 
 function normalizeCourseColor(raw: string | null | undefined): string | null {
   if (!raw) return null;
@@ -14,34 +19,26 @@ function normalizeCourseColor(raw: string | null | undefined): string | null {
 }
 
 export const courseRoutes = new Elysia({ prefix: "/api/courses" })
-  .use(authPlugin)
+  .use(requireAuthPlugin)
   .get(
     "/",
-    async ({ requireUser }) => {
-      const user = requireUser();
+    async ({ requireAuthz }) => {
+      const ctx = await requireAuthz("course.view");
       const rows = await getDb()
         .select()
         .from(courses)
-        .where(and(eq(courses.userId, user.id), isNull(courses.deletedAt)));
+        .where(
+          and(eq(courses.userId, ctx.subject.id), isNull(courses.deletedAt)),
+        );
       return { courses: rows };
     },
     { detail: { tags: ["Courses"], summary: "List courses" } },
   )
   .get(
     "/:id",
-    async ({ params, requireUser, set }) => {
-      const user = requireUser();
-      const [row] = await getDb()
-        .select()
-        .from(courses)
-        .where(
-          and(
-            eq(courses.id, params.id),
-            eq(courses.userId, user.id),
-            isNull(courses.deletedAt),
-          ),
-        )
-        .limit(1);
+    async ({ params, requireAuthz, set }) => {
+      const ctx = await requireAuthz("course.view");
+      const row = await ownedCourse(ctx.subject.id, params.id);
       if (!row) {
         set.status = 404;
         return { error: "Course not found" };
@@ -55,8 +52,17 @@ export const courseRoutes = new Elysia({ prefix: "/api/courses" })
   )
   .post(
     "/",
-    async ({ body, requireUser, set }) => {
-      const user = requireUser();
+    async ({ body, requireAuthz, set }) => {
+      const ctx = await requireAuthz("course.create");
+      try {
+        assertNoForbiddenMutationKeys(body);
+      } catch (e) {
+        if (e instanceof ForbiddenFieldError) {
+          set.status = 400;
+          return { error: "Invalid course details" };
+        }
+        throw e;
+      }
       const parsed = courseSchema.safeParse({
         ...body,
         color: normalizeCourseColor(body.color ?? null),
@@ -71,7 +77,7 @@ export const courseRoutes = new Elysia({ prefix: "/api/courses" })
       const [row] = await getDb()
         .insert(courses)
         .values({
-          userId: user.id,
+          userId: ctx.subject.id,
           name: parsed.data.name,
           code: parsed.data.code,
           color: parsed.data.color,
@@ -90,8 +96,17 @@ export const courseRoutes = new Elysia({ prefix: "/api/courses" })
   )
   .patch(
     "/:id",
-    async ({ params, body, requireUser, set }) => {
-      const user = requireUser();
+    async ({ params, body, requireAuthz, set }) => {
+      const ctx = await requireAuthz("course.update");
+      try {
+        assertNoForbiddenMutationKeys(body);
+      } catch (e) {
+        if (e instanceof ForbiddenFieldError) {
+          set.status = 400;
+          return { error: "Invalid course details" };
+        }
+        throw e;
+      }
       const parsed = courseSchema.safeParse({
         ...body,
         color: normalizeCourseColor(body.color ?? null),
@@ -113,7 +128,7 @@ export const courseRoutes = new Elysia({ prefix: "/api/courses" })
         .where(
           and(
             eq(courses.id, params.id),
-            eq(courses.userId, user.id),
+            eq(courses.userId, ctx.subject.id),
             isNull(courses.deletedAt),
           ),
         )
@@ -136,15 +151,15 @@ export const courseRoutes = new Elysia({ prefix: "/api/courses" })
   )
   .delete(
     "/:id",
-    async ({ params, requireUser, set }) => {
-      const user = requireUser();
+    async ({ params, requireAuthz, set }) => {
+      const ctx = await requireAuthz("course.archive");
       const [row] = await getDb()
         .update(courses)
         .set({ deletedAt: new Date() })
         .where(
           and(
             eq(courses.id, params.id),
-            eq(courses.userId, user.id),
+            eq(courses.userId, ctx.subject.id),
             isNull(courses.deletedAt),
           ),
         )

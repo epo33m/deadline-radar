@@ -34,9 +34,22 @@ function issuer(): string {
  * Verify Supabase access tokens.
  * New projects use asymmetric ES256 via JWKS; legacy HS256 JWT secret is a fallback.
  */
+type VerifyFn = (token: string) => Promise<AuthUser | null>;
+
+let verifyAccessTokenOverride: VerifyFn | null = null;
+
+/** Test-only hook so route suites can inject identity without JWKS. */
+export function setVerifyAccessTokenOverride(fn: VerifyFn | null): void {
+  verifyAccessTokenOverride = fn;
+}
+
 export async function verifyAccessToken(
   token: string,
 ): Promise<AuthUser | null> {
+  if (verifyAccessTokenOverride) {
+    return verifyAccessTokenOverride(token);
+  }
+
   try {
     const { payload } = await jwtVerify(token, getJwks(), {
       issuer: issuer(),

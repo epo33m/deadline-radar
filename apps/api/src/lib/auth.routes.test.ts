@@ -23,10 +23,22 @@ const signUp = mock(async () => ({
   error: { message: "User already registered" },
 }));
 
-const refreshSession = mock(async () => ({
-  data: { session: null },
-  error: { message: "Invalid Refresh Token" },
-}));
+const refreshSession = mock(
+  async (): Promise<{
+    data: {
+      session: {
+        access_token: string;
+        refresh_token: string;
+        expires_in: number;
+      } | null;
+      user?: { id: string } | null;
+    };
+    error: { message: string } | null;
+  }> => ({
+    data: { session: null },
+    error: { message: "Invalid Refresh Token" },
+  }),
+);
 
 const resetPasswordForEmail = mock(
   async () =>
