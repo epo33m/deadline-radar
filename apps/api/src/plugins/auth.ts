@@ -13,13 +13,11 @@ import {
   type AuthorizationContext,
   type Capability,
 } from "../lib/authorization";
-
-function requestIdFrom(request: Request): string | null {
-  return (
-    request.headers.get("x-request-id") ??
-    request.headers.get("x-correlation-id")
-  );
-}
+import { ApiError } from "../lib/api/errors";
+import {
+  extractClientRequestId,
+  normalizeRequestId,
+} from "../lib/api/request-id";
 
 /**
  * Authentication + authorization derive.
@@ -27,7 +25,7 @@ function requestIdFrom(request: Request): string | null {
  */
 export const authPlugin = new Elysia({ name: "auth" }).derive(
   { as: "scoped" },
-  async ({ cookie, request }) => {
+  async ({ cookie, request, requestId }) => {
     const header = request.headers.get("authorization");
     const bearer =
       header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : null;
@@ -41,8 +39,12 @@ export const authPlugin = new Elysia({ name: "auth" }).derive(
       ? await verifyAccessToken(token)
       : null;
 
+    const rid =
+      (typeof requestId === "string" && requestId) ||
+      normalizeRequestId(extractClientRequestId(request));
+
     const authz: AuthorizationContext | null = user
-      ? await loadAuthorizationContext(user, requestIdFrom(request))
+      ? await loadAuthorizationContext(user, rid)
       : null;
 
     return {
@@ -51,21 +53,15 @@ export const authPlugin = new Elysia({ name: "auth" }).derive(
       authz,
       requireUser(): AuthUser {
         if (!user) {
-          throw new Response(
-            JSON.stringify({ error: AUTH_ERRORS.unauthorized }),
-            {
-              status: 401,
-              headers: { "content-type": "application/json" },
-            },
-          );
+          throw ApiError.unauthorized(AUTH_ERRORS.unauthorized);
         }
         return user;
       },
       async requireAuthz(capability: Capability): Promise<AuthorizationContext> {
         if (!user || !authz) {
-          throw unauthorizedResponse();
+          unauthorizedResponse();
         }
-        return requireCapability(authz, capability, { request });
+        return requireCapability(authz!, capability, { request });
       },
     };
   },

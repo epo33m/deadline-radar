@@ -1,3 +1,4 @@
+process.env.AUTH_BRIDGE_SECRET ??= "test-auth-bridge-secret";
 import { beforeEach, describe, expect, test } from "bun:test";
 
 import {

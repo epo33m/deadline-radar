@@ -19,9 +19,15 @@ export const env = {
     process.env.RESEND_FROM_EMAIL ??
     "Deadline Radar <onboarding@resend.dev>",
   cronSecret: () => process.env.CRON_SECRET,
+  /** Shared secret for Next→API auth bridge token JSON (never "1"). */
+  authBridgeSecret: () => process.env.AUTH_BRIDGE_SECRET,
+  redisUrl: () => process.env.REDIS_URL,
+  /** Only trust X-Forwarded-For / X-Real-IP when behind a known reverse proxy. */
+  trustProxy: () => process.env.TRUST_PROXY === "true",
   webOrigin: process.env.WEB_ORIGIN ?? "http://127.0.0.1:3025",
   nodeEnv: process.env.NODE_ENV ?? "development",
   isProduction: process.env.NODE_ENV === "production",
+  isTest: process.env.NODE_ENV === "test",
 };
 
 /** Prefer SUPABASE_URL; fall back to NEXT_PUBLIC_ for local monorepo envs. */

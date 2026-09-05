@@ -28,13 +28,23 @@ const optionalHexColor = z
     return trimmed.toLowerCase();
   });
 
-export const courseSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(1, "Course name is required"),
-  code: optionalTrimmedNullable,
-  color: optionalHexColor,
-});
+export const courseSchema = z
+  .object({
+    name: z.string().trim().min(1, "Course name is required"),
+    code: optionalTrimmedNullable,
+    color: optionalHexColor,
+  })
+  .strict();
+
+/** PATCH body: same fields; optional updatedAt for optimistic concurrency. */
+export const coursePatchSchema = z
+  .object({
+    name: z.string().trim().min(1, "Course name is required"),
+    code: optionalTrimmedNullable,
+    color: optionalHexColor,
+    updatedAt: z.string().datetime({ offset: true }).optional(),
+    updated_at: z.string().datetime({ offset: true }).optional(),
+  })
+  .strict();
 
 export type CourseInput = z.infer<typeof courseSchema>;

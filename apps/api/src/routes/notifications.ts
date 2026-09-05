@@ -1,5 +1,5 @@
+import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { Elysia, t } from "elysia";
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { markNotificationReadSchema } from "@deadline-radar/validation";
 import {
   notificationDeliveries,
@@ -9,13 +9,27 @@ import {
 
 import { requireAuthPlugin } from "../plugins/auth";
 import { getDb } from "../lib/db";
+import {
+  ApiError,
+  decodeCursor,
+  encodeCursor,
+  pageMeta,
+  parsePaginationQuery,
+  serializeNotification,
+  validationFromZod,
+} from "../lib/api";
 
-export const notificationRoutes = new Elysia({ prefix: "/api/notifications" })
+export const notificationRoutes = new Elysia({
+  prefix: "/api/v1/notifications",
+})
   .use(requireAuthPlugin)
   .get(
     "/",
-    async ({ requireAuthz }) => {
+    async ({ requireAuthz, query }) => {
       const ctx = await requireAuthz("notification.view");
+      const { limit, cursor } = parsePaginationQuery(query);
+      const decoded = decodeCursor(cursor);
+
       const rows = await getDb()
         .select({
           id: notificationDeliveries.id,
@@ -42,13 +56,46 @@ export const notificationRoutes = new Elysia({ prefix: "/api/notifications" })
             eq(notificationDeliveries.channel, "in_app"),
             eq(notificationDeliveries.status, "sent"),
             isNull(tasks.deletedAt),
+            decoded
+              ? or(
+                  lt(notificationDeliveries.sentAt, new Date(decoded.k)),
+                  and(
+                    eq(notificationDeliveries.sentAt, new Date(decoded.k)),
+                    lt(notificationDeliveries.id, decoded.id),
+                  ),
+                )
+              : undefined,
           ),
         )
-        .orderBy(desc(notificationDeliveries.sentAt));
+        .orderBy(desc(notificationDeliveries.sentAt), desc(notificationDeliveries.id))
+        .limit(limit + 1);
 
-      return { notifications: rows };
+      const pageRows = rows.slice(0, limit);
+      const last = pageRows[pageRows.length - 1];
+      const nextCursor =
+        rows.length > limit && last?.sentAt
+          ? encodeCursor({
+              v: 1,
+              k: new Date(last.sentAt).toISOString(),
+              id: last.id,
+            })
+          : null;
+
+      return {
+        notifications: pageRows.map(serializeNotification),
+        page: pageMeta(limit, nextCursor),
+      };
     },
-    { detail: { tags: ["Notifications"], summary: "List in-app notifications" } },
+    {
+      query: t.Object({
+        limit: t.Optional(t.String()),
+        cursor: t.Optional(t.String()),
+      }),
+      detail: {
+        tags: ["Notifications"],
+        summary: "List in-app notifications",
+      },
+    },
   )
   .get(
     "/unread-count",
@@ -75,12 +122,14 @@ export const notificationRoutes = new Elysia({ prefix: "/api/notifications" })
   )
   .post(
     "/:id/read",
-    async ({ params, requireAuthz, set }) => {
+    async ({ params, requireAuthz }) => {
       const ctx = await requireAuthz("notification.mark-read");
       const parsed = markNotificationReadSchema.safeParse({ id: params.id });
       if (!parsed.success) {
-        set.status = 400;
-        return { error: "Invalid notification id" };
+        throw validationFromZod(
+          "Invalid notification id",
+          parsed.error.flatten().fieldErrors,
+        );
       }
 
       const [owned] = await getDb()
@@ -95,10 +144,7 @@ export const notificationRoutes = new Elysia({ prefix: "/api/notifications" })
         )
         .limit(1);
 
-      if (!owned) {
-        set.status = 404;
-        return { error: "Notification not found" };
-      }
+      if (!owned) throw ApiError.notFound("Notification not found");
 
       await getDb()
         .update(notificationDeliveries)
@@ -108,7 +154,7 @@ export const notificationRoutes = new Elysia({ prefix: "/api/notifications" })
       return { ok: true };
     },
     {
-      params: t.Object({ id: t.String() }),
+      params: t.Object({ id: t.String({ format: "uuid" }) }),
       detail: { tags: ["Notifications"], summary: "Mark one as read" },
     },
   )

@@ -107,7 +107,12 @@ mock.module("./auth-audit", () => ({
 }));
 
 const { resetLoginAttemptStore } = await import("./auth-abuse");
-const { AUTH_BRIDGE_HEADER, AUTH_BRIDGE_VALUE } = await import("./auth-bridge");
+process.env.AUTH_BRIDGE_SECRET ??= "test-auth-bridge-secret";
+process.env.NODE_ENV = "test";
+process.env.TRUST_PROXY = "true";
+
+const { AUTH_BRIDGE_HEADER } = await import("./auth-bridge");
+const AUTH_BRIDGE_VALUE = process.env.AUTH_BRIDGE_SECRET!;
 const { AUTH_ERRORS } = await import("./auth-errors");
 const { resetRateLimitBuckets } = await import("../plugins/rate-limit");
 
@@ -127,7 +132,7 @@ describe("auth routes integration / security", () => {
 
   test("login returns generic invalid credentials without leaking provider text", async () => {
     const response = await app.handle(
-      new Request("http://localhost/api/auth/login", {
+      new Request("http://localhost/api/v1/auth/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -137,9 +142,10 @@ describe("auth routes integration / security", () => {
       }),
     );
     expect(response.status).toBe(401);
-    const body = (await response.json()) as { error?: string };
-    expect(body.error).toBe(AUTH_ERRORS.invalidCredentials);
-    expect(body.error).not.toContain("Invalid login credentials");
+    const body = (await response.json()) as { error?: { code?: string; message?: string } | string };
+    const errMsg = typeof body.error === 'string' ? body.error : body.error?.message;
+    expect(errMsg).toBe(AUTH_ERRORS.invalidCredentials);
+    expect(errMsg).not.toContain("Invalid login credentials");
   });
 
   test("login does not return tokens without bridge header", async () => {
@@ -156,7 +162,7 @@ describe("auth routes integration / security", () => {
     }));
 
     const response = await app.handle(
-      new Request("http://localhost/api/auth/login", {
+      new Request("http://localhost/api/v1/auth/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -186,7 +192,7 @@ describe("auth routes integration / security", () => {
     }));
 
     const response = await app.handle(
-      new Request("http://localhost/api/auth/login", {
+      new Request("http://localhost/api/v1/auth/login", {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -211,7 +217,7 @@ describe("auth routes integration / security", () => {
     }));
 
     const response = await app.handle(
-      new Request("http://localhost/api/auth/forgot-password", {
+      new Request("http://localhost/api/v1/auth/forgot-password", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email: "missing@example.com" }),
@@ -224,16 +230,17 @@ describe("auth routes integration / security", () => {
 
   test("refresh without cookie returns session expired", async () => {
     const response = await app.handle(
-      new Request("http://localhost/api/auth/refresh", { method: "POST" }),
+      new Request("http://localhost/api/v1/auth/refresh", { method: "POST" }),
     );
     expect(response.status).toBe(401);
-    const body = (await response.json()) as { error?: string };
-    expect(body.error).toBe(AUTH_ERRORS.sessionExpired);
+    const body = (await response.json()) as { error?: { code?: string; message?: string } | string };
+    const errMsg = typeof body.error === 'string' ? body.error : body.error?.message;
+    expect(errMsg).toBe(AUTH_ERRORS.sessionExpired);
   });
 
   test("logout is idempotent without a session", async () => {
     const response = await app.handle(
-      new Request("http://localhost/api/auth/logout", { method: "POST" }),
+      new Request("http://localhost/api/v1/auth/logout", { method: "POST" }),
     );
     expect(response.status).toBe(200);
     const body = (await response.json()) as { ok?: boolean };
@@ -242,7 +249,7 @@ describe("auth routes integration / security", () => {
 
   test("protected course route rejects unauthenticated requests", async () => {
     const response = await app.handle(
-      new Request("http://localhost/api/courses", { method: "GET" }),
+      new Request("http://localhost/api/v1/courses", { method: "GET" }),
     );
     expect(response.status).toBe(401);
   });
@@ -250,7 +257,7 @@ describe("auth routes integration / security", () => {
   test("progressive delay returns 429 after repeated failed logins", async () => {
     for (let i = 0; i < 3; i++) {
       await app.handle(
-        new Request("http://localhost/api/auth/login", {
+        new Request("http://localhost/api/v1/auth/login", {
           method: "POST",
           headers: {
             "content-type": "application/json",
@@ -265,7 +272,7 @@ describe("auth routes integration / security", () => {
     }
 
     const response = await app.handle(
-      new Request("http://localhost/api/auth/login", {
+      new Request("http://localhost/api/v1/auth/login", {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -278,13 +285,14 @@ describe("auth routes integration / security", () => {
       }),
     );
     expect(response.status).toBe(429);
-    const body = (await response.json()) as { error?: string };
-    expect(body.error).toBe(AUTH_ERRORS.rateLimited);
+    const body = (await response.json()) as { error?: { code?: string; message?: string } | string };
+    const errMsg = typeof body.error === 'string' ? body.error : body.error?.message;
+    expect(errMsg).toBe(AUTH_ERRORS.rateLimited);
   });
 
   test("tampered bearer token is rejected on protected routes", async () => {
     const response = await app.handle(
-      new Request("http://localhost/api/courses", {
+      new Request("http://localhost/api/v1/courses", {
         method: "GET",
         headers: { authorization: "Bearer not-a-real-jwt" },
       }),
@@ -306,7 +314,7 @@ describe("auth routes integration / security", () => {
     }));
 
     const response = await app.handle(
-      new Request("http://localhost/api/auth/refresh", {
+      new Request("http://localhost/api/v1/auth/refresh", {
         method: "POST",
         headers: {
           cookie: "dr_refresh_token=old-refresh",
@@ -328,19 +336,20 @@ describe("auth routes integration / security", () => {
     }));
 
     const response = await app.handle(
-      new Request("http://localhost/api/auth/refresh", {
+      new Request("http://localhost/api/v1/auth/refresh", {
         method: "POST",
         headers: { cookie: "dr_refresh_token=revoked-token" },
       }),
     );
     expect(response.status).toBe(401);
-    const body = (await response.json()) as { error?: string };
-    expect(body.error).toBe(AUTH_ERRORS.sessionExpired);
+    const body = (await response.json()) as { error?: { code?: string; message?: string } | string };
+    const errMsg = typeof body.error === 'string' ? body.error : body.error?.message;
+    expect(errMsg).toBe(AUTH_ERRORS.sessionExpired);
   });
 
   test("register returns generic failure without provider message", async () => {
     const response = await app.handle(
-      new Request("http://localhost/api/auth/register", {
+      new Request("http://localhost/api/v1/auth/register", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -350,14 +359,15 @@ describe("auth routes integration / security", () => {
       }),
     );
     expect(response.status).toBe(400);
-    const body = (await response.json()) as { error?: string };
-    expect(body.error).toBe(AUTH_ERRORS.registrationFailed);
-    expect(body.error).not.toContain("already registered");
+    const body = (await response.json()) as { error?: { code?: string; message?: string } | string };
+    const errMsg = typeof body.error === 'string' ? body.error : body.error?.message;
+    expect(errMsg).toBe(AUTH_ERRORS.registrationFailed);
+    expect(errMsg).not.toContain("already registered");
   });
 
   test("logout-all requires authentication", async () => {
     const response = await app.handle(
-      new Request("http://localhost/api/auth/logout-all", { method: "POST" }),
+      new Request("http://localhost/api/v1/auth/logout-all", { method: "POST" }),
     );
     expect(response.status).toBe(401);
   });
@@ -367,7 +377,7 @@ describe("auth routes integration / security", () => {
     let limited = false;
     for (let i = 0; i < 25; i++) {
       const response = await app.handle(
-        new Request("http://localhost/api/auth/forgot-password", {
+        new Request("http://localhost/api/v1/auth/forgot-password", {
           method: "POST",
           headers: {
             "content-type": "application/json",
@@ -378,8 +388,9 @@ describe("auth routes integration / security", () => {
       );
       if (response.status === 429) {
         limited = true;
-        const body = (await response.json()) as { error?: string };
-        expect(body.error).toContain("Too many requests");
+        const body = (await response.json()) as { error?: { code?: string; message?: string } | string };
+        const errMsg = typeof body.error === "string" ? body.error : body.error?.message;
+        expect(errMsg).toContain("Too many requests");
         break;
       }
     }

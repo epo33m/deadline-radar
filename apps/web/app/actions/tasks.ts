@@ -33,7 +33,7 @@ export async function createTask(
   formData: FormData,
 ): Promise<TaskActionState> {
   const result = await apiJson<{ task?: { id: string }; redirectTo?: string }>(
-    "/api/tasks",
+    "/api/v1/tasks",
     {
       method: "POST",
       body: JSON.stringify(taskBody(formData)),
@@ -56,7 +56,7 @@ export async function updateTask(
 ): Promise<TaskActionState> {
   const id = formData.get("id");
   if (typeof id !== "string" || !id) return { error: "Task id is required." };
-  const result = await apiJson(`/api/tasks/${id}`, {
+  const result = await apiJson(`/api/v1/tasks/${id}`, {
     method: "PATCH",
     body: JSON.stringify(taskBody(formData)),
   });
@@ -73,7 +73,7 @@ export async function completeTask(
 ): Promise<TaskActionState> {
   const id = formData.get("id");
   if (typeof id !== "string" || !id) return { error: "Task id is required." };
-  const result = await apiJson(`/api/tasks/${id}/complete`, { method: "POST" });
+  const result = await apiJson(`/api/v1/tasks/${id}/complete`, { method: "POST" });
   if (result.error) {
     return { error: result.error, fieldErrors: result.fieldErrors };
   }
@@ -87,7 +87,7 @@ export async function softDeleteTask(
 ): Promise<TaskActionState> {
   const id = formData.get("id");
   if (typeof id !== "string" || !id) return { error: "Task id is required." };
-  const result = await apiJson(`/api/tasks/${id}`, { method: "DELETE" });
+  const result = await apiJson(`/api/v1/tasks/${id}`, { method: "DELETE" });
   if (result.error) {
     return { error: result.error, fieldErrors: result.fieldErrors };
   }
@@ -104,7 +104,7 @@ export async function addReminderThreshold(
     return { error: "Task id is required." };
   }
   const days = Number(formData.get("days_before"));
-  const result = await apiJson(`/api/tasks/${taskId}/thresholds`, {
+  const result = await apiJson(`/api/v1/tasks/${taskId}/thresholds`, {
     method: "POST",
     body: JSON.stringify({ days_before: days }),
   });
@@ -125,7 +125,7 @@ export async function updateReminderThreshold(
     return { error: "Task and threshold ids are required." };
   }
   const days = Number(formData.get("days_before"));
-  const result = await apiJson(`/api/tasks/${taskId}/thresholds/${id}`, {
+  const result = await apiJson(`/api/v1/tasks/${taskId}/thresholds/${id}`, {
     method: "PATCH",
     body: JSON.stringify({ days_before: days }),
   });
@@ -145,7 +145,7 @@ export async function removeReminderThreshold(
   if (typeof taskId !== "string" || typeof id !== "string") {
     return { error: "Task and threshold ids are required." };
   }
-  const result = await apiJson(`/api/tasks/${taskId}/thresholds/${id}`, {
+  const result = await apiJson(`/api/v1/tasks/${taskId}/thresholds/${id}`, {
     method: "DELETE",
   });
   if (result.error) {

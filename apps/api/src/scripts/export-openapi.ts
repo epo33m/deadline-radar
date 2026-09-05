@@ -1,25 +1,26 @@
 /**
- * Export helper for OpenAPI metadata.
- * Prefer fetching GET /openapi from a running API for the full document.
+ * Export OpenAPI JSON from the running app module (no live server required).
  */
-import { app } from "../app";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 
-const openapiMounted = Boolean(
-  // Elysia route graph includes /openapi when the openapi plugin is registered.
-  app.routes?.some(
-    (route) =>
-      typeof route.path === "string" && route.path.includes("openapi"),
-  ),
-);
+process.env.NODE_ENV ??= "test";
+process.env.AUTH_BRIDGE_SECRET ??= "export-openapi-bridge-secret";
 
-console.log(
-  JSON.stringify(
-    {
-      note: "Start the API and fetch GET /openapi (or /openapi/json) for the full document; use web generate-api against a running server.",
-      openapiMounted,
-      service: "deadline-radar-api",
-    },
-    null,
-    2,
-  ),
+const { app } = await import("../app");
+
+const response = await app.handle(
+  new Request("http://localhost/openapi/json"),
 );
+if (!response.ok) {
+  console.error("OpenAPI export failed", response.status, await response.text());
+  process.exit(1);
+}
+
+const spec = await response.json();
+const out =
+  process.argv[2] ??
+  resolve(import.meta.dir, "../../../../apps/web/lib/api/openapi.json");
+mkdirSync(dirname(out), { recursive: true });
+writeFileSync(out, JSON.stringify(spec, null, 2) + "\n");
+console.log(`Wrote OpenAPI document to ${out}`);

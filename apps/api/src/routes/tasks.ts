@@ -1,32 +1,83 @@
+import { and, asc, desc, eq, gt, isNull, lt, or } from "drizzle-orm";
 import { Elysia, t } from "elysia";
-import { and, asc, eq, isNull } from "drizzle-orm";
 import {
   reminderThresholdSchema,
+  taskPatchSchema,
   taskSchema,
 } from "@deadline-radar/validation";
 import {
+  attachments,
   courses,
   reminderThresholds,
   tasks,
-  attachments,
 } from "@deadline-radar/db";
 
 import { requireAuthPlugin } from "../plugins/auth";
 import { getDb } from "../lib/db";
 import {
   assertNoForbiddenMutationKeys,
-  ForbiddenFieldError,
   ownedCourse,
   ownedTask,
 } from "../lib/authorization";
+import {
+  ApiError,
+  beginIdempotent,
+  completeIdempotent,
+  decodeCursor,
+  encodeCursor,
+  pageMeta,
+  parsePaginationQuery,
+  readIdempotencyKey,
+  readJsonBody,
+  serializeAttachment,
+  serializeCourse,
+  serializeTask,
+  serializeThreshold,
+  validationFromZod,
+  jsonBodyDetail,
+  openApiBodies,
+} from "../lib/api";
 
-export const taskRoutes = new Elysia({ prefix: "/api/tasks" })
+const ALLOWED_TASK_SORT = new Set(["deadline", "createdAt"]);
+
+function assertFreshUpdatedAt(
+  rowUpdatedAt: Date | string,
+  clientUpdatedAt: string | undefined,
+): void {
+  if (!clientUpdatedAt) return;
+  const server = new Date(rowUpdatedAt).getTime();
+  const client = new Date(clientUpdatedAt).getTime();
+  if (!Number.isFinite(client) || server !== client) {
+    throw ApiError.conflict("Resource was modified; refresh and retry", [
+      { field: "updatedAt", message: "Stale updatedAt" },
+    ]);
+  }
+}
+
+export const taskRoutes = new Elysia({ prefix: "/api/v1/tasks" })
   .use(requireAuthPlugin)
   .get(
     "/",
     async ({ requireAuthz, query }) => {
       const ctx = await requireAuthz("task.view");
+      const { limit, cursor } = parsePaginationQuery(query);
+      const sort =
+        typeof query.sort === "string" && ALLOWED_TASK_SORT.has(query.sort)
+          ? query.sort
+          : "deadline";
+      if (query.sort && !ALLOWED_TASK_SORT.has(String(query.sort))) {
+        throw ApiError.validation("Invalid sort field", [
+          {
+            field: "sort",
+            message: "Allowed: deadline, createdAt",
+          },
+        ]);
+      }
+      const decoded = decodeCursor(cursor);
       const db = getDb();
+
+      const orderCol = sort === "createdAt" ? tasks.createdAt : tasks.deadline;
+
       const rows = await db
         .select({
           id: tasks.id,
@@ -49,25 +100,51 @@ export const taskRoutes = new Elysia({ prefix: "/api/tasks" })
             eq(tasks.userId, ctx.subject.id),
             isNull(tasks.deletedAt),
             query.courseId ? eq(tasks.courseId, query.courseId) : undefined,
+            decoded
+              ? or(
+                  gt(orderCol, new Date(decoded.k)),
+                  and(eq(orderCol, new Date(decoded.k)), gt(tasks.id, decoded.id)),
+                )
+              : undefined,
           ),
         )
-        .orderBy(asc(tasks.deadline));
-      return { tasks: rows };
+        .orderBy(asc(orderCol), asc(tasks.id))
+        .limit(limit + 1);
+
+      const pageRows = rows.slice(0, limit);
+      const last = pageRows[pageRows.length - 1];
+      const nextCursor =
+        rows.length > limit && last
+          ? encodeCursor({
+              v: 1,
+              k: new Date(
+                sort === "createdAt" ? last.createdAt : last.deadline,
+              ).toISOString(),
+              id: last.id,
+            })
+          : null;
+
+      return {
+        tasks: pageRows.map(serializeTask),
+        page: pageMeta(limit, nextCursor),
+      };
     },
     {
-      query: t.Object({ courseId: t.Optional(t.String()) }),
+      query: t.Object({
+        courseId: t.Optional(t.String({ format: "uuid" })),
+        limit: t.Optional(t.String()),
+        cursor: t.Optional(t.String()),
+        sort: t.Optional(t.String()),
+      }),
       detail: { tags: ["Tasks"], summary: "List tasks" },
     },
   )
   .get(
     "/:id",
-    async ({ params, requireAuthz, set }) => {
+    async ({ params, requireAuthz }) => {
       const ctx = await requireAuthz("task.view");
       const task = await ownedTask(ctx.subject.id, params.id);
-      if (!task) {
-        set.status = 404;
-        return { error: "Task not found" };
-      }
+      if (!task) throw ApiError.notFound("Task not found");
       const db = getDb();
       const [course] = await db
         .select()
@@ -83,40 +160,49 @@ export const taskRoutes = new Elysia({ prefix: "/api/tasks" })
         .select()
         .from(attachments)
         .where(eq(attachments.taskId, task.id));
-      return { task, course: course ?? null, thresholds, attachments: files };
+      return {
+        task: serializeTask(task),
+        course: course ? serializeCourse(course) : null,
+        thresholds: thresholds.map(serializeThreshold),
+        attachments: files.map(serializeAttachment),
+      };
     },
     {
-      params: t.Object({ id: t.String() }),
+      params: t.Object({ id: t.String({ format: "uuid" }) }),
       detail: { tags: ["Tasks"], summary: "Get task detail" },
     },
   )
   .post(
     "/",
-    async ({ body, requireAuthz, set }) => {
+    async ({ requireAuthz, request, set }) => {
       const ctx = await requireAuthz("task.create");
-      try {
-        assertNoForbiddenMutationKeys(body);
-      } catch (e) {
-        if (e instanceof ForbiddenFieldError) {
-          set.status = 400;
-          return { error: "Invalid task details" };
+      const body = await readJsonBody(request);
+      assertNoForbiddenMutationKeys(body);
+      const idemKey = readIdempotencyKey(request);
+      if (idemKey) {
+        const { replay } = await beginIdempotent({
+          userId: ctx.subject.id,
+          key: idemKey,
+          method: "POST",
+          path: "/api/v1/tasks",
+          body,
+        });
+        if (replay) {
+          set.status = replay.statusCode;
+          return replay.body;
         }
-        throw e;
       }
+
       const parsed = taskSchema.safeParse(body);
       if (!parsed.success) {
-        set.status = 400;
-        return {
-          error: "Invalid task details",
-          fieldErrors: parsed.error.flatten().fieldErrors,
-        };
+        throw validationFromZod(
+          "Invalid task details",
+          parsed.error.flatten().fieldErrors,
+        );
       }
 
       const course = await ownedCourse(ctx.subject.id, parsed.data.course_id);
-      if (!course) {
-        set.status = 400;
-        return { error: "Course not found" };
-      }
+      if (!course) throw ApiError.validation("Course not found");
 
       const [row] = await getDb()
         .insert(tasks)
@@ -131,54 +217,51 @@ export const taskRoutes = new Elysia({ prefix: "/api/tasks" })
         })
         .returning();
 
-      return { task: row, redirectTo: `/tasks/${row.id}` };
+      const response = {
+        task: serializeTask(row),
+        redirectTo: `/tasks/${row.id}`,
+      };
+      if (idemKey) {
+        await completeIdempotent({
+          userId: ctx.subject.id,
+          key: idemKey,
+          statusCode: 200,
+          body: response,
+        });
+      }
+      return response;
     },
     {
-      body: t.Object({
-        title: t.String(),
-        course_id: t.String(),
-        deadline: t.String(),
-        status: t.Optional(t.String()),
-        description: t.Optional(t.Union([t.String(), t.Null()])),
-        estimated_duration: t.Optional(
-          t.Union([t.Number(), t.String(), t.Null()]),
-        ),
-      }),
-      detail: { tags: ["Tasks"], summary: "Create task" },
+      detail: {
+        tags: ["Tasks"],
+        summary: "Create task",
+        requestBody: jsonBodyDetail(openApiBodies.taskCreate),
+      },
     },
   )
   .patch(
     "/:id",
-    async ({ params, body, requireAuthz, set }) => {
+    async ({ params, requireAuthz, request }) => {
       const ctx = await requireAuthz("task.update");
-      try {
-        assertNoForbiddenMutationKeys(body);
-      } catch (e) {
-        if (e instanceof ForbiddenFieldError) {
-          set.status = 400;
-          return { error: "Invalid task details" };
-        }
-        throw e;
-      }
-      const parsed = taskSchema.safeParse(body);
+      const body = await readJsonBody(request);
+      assertNoForbiddenMutationKeys(body);
+      const parsed = taskPatchSchema.safeParse(body);
       if (!parsed.success) {
-        set.status = 400;
-        return {
-          error: "Invalid task details",
-          fieldErrors: parsed.error.flatten().fieldErrors,
-        };
+        throw validationFromZod(
+          "Invalid task details",
+          parsed.error.flatten().fieldErrors,
+        );
       }
       const existing = await ownedTask(ctx.subject.id, params.id);
-      if (!existing) {
-        set.status = 404;
-        return { error: "Task not found" };
-      }
+      if (!existing) throw ApiError.notFound("Task not found");
+
+      assertFreshUpdatedAt(
+        existing.updatedAt,
+        parsed.data.updatedAt ?? parsed.data.updated_at,
+      );
 
       const course = await ownedCourse(ctx.subject.id, parsed.data.course_id);
-      if (!course) {
-        set.status = 400;
-        return { error: "Course not found" };
-      }
+      if (!course) throw ApiError.validation("Course not found");
 
       const [row] = await getDb()
         .update(tasks)
@@ -191,56 +274,43 @@ export const taskRoutes = new Elysia({ prefix: "/api/tasks" })
           estimatedDuration: parsed.data.estimated_duration,
           updatedAt: new Date(),
         })
-        .where(
-          and(eq(tasks.id, params.id), eq(tasks.userId, ctx.subject.id)),
-        )
+        .where(and(eq(tasks.id, params.id), eq(tasks.userId, ctx.subject.id)))
         .returning();
-      return { task: row };
+      return { task: serializeTask(row) };
     },
     {
-      params: t.Object({ id: t.String() }),
-      body: t.Object({
-        title: t.String(),
-        course_id: t.String(),
-        deadline: t.String(),
-        status: t.Optional(t.String()),
-        description: t.Optional(t.Union([t.String(), t.Null()])),
-        estimated_duration: t.Optional(
-          t.Union([t.Number(), t.String(), t.Null()]),
-        ),
-      }),
-      detail: { tags: ["Tasks"], summary: "Update task" },
+      params: t.Object({ id: t.String({ format: "uuid" }) }),
+      detail: {
+        tags: ["Tasks"],
+        summary: "Update task",
+        requestBody: jsonBodyDetail(openApiBodies.taskPatch),
+      },
     },
   )
   .post(
     "/:id/complete",
-    async ({ params, requireAuthz, set }) => {
+    async ({ params, requireAuthz }) => {
       const ctx = await requireAuthz("task.update");
       const existing = await ownedTask(ctx.subject.id, params.id);
-      if (!existing) {
-        set.status = 404;
-        return { error: "Task not found" };
-      }
+      if (!existing) throw ApiError.notFound("Task not found");
       if (existing.status === "done") {
-        return { task: existing };
+        return { task: serializeTask(existing) };
       }
       const [row] = await getDb()
         .update(tasks)
         .set({ status: "done", updatedAt: new Date() })
-        .where(
-          and(eq(tasks.id, params.id), eq(tasks.userId, ctx.subject.id)),
-        )
+        .where(and(eq(tasks.id, params.id), eq(tasks.userId, ctx.subject.id)))
         .returning();
-      return { task: row };
+      return { task: serializeTask(row) };
     },
     {
-      params: t.Object({ id: t.String() }),
+      params: t.Object({ id: t.String({ format: "uuid" }) }),
       detail: { tags: ["Tasks"], summary: "Mark task done" },
     },
   )
   .delete(
     "/:id",
-    async ({ params, requireAuthz, set }) => {
+    async ({ params, requireAuthz }) => {
       const ctx = await requireAuthz("task.archive");
       const [row] = await getDb()
         .update(tasks)
@@ -253,35 +323,28 @@ export const taskRoutes = new Elysia({ prefix: "/api/tasks" })
           ),
         )
         .returning();
-      if (!row) {
-        set.status = 404;
-        return { error: "Task not found" };
-      }
+      if (!row) throw ApiError.notFound("Task not found");
       return { ok: true };
     },
     {
-      params: t.Object({ id: t.String() }),
+      params: t.Object({ id: t.String({ format: "uuid" }) }),
       detail: { tags: ["Tasks"], summary: "Soft-delete task" },
     },
   )
   .post(
     "/:id/thresholds",
-    async ({ params, body, requireAuthz, set }) => {
+    async ({ params, requireAuthz, request }) => {
       const ctx = await requireAuthz("threshold.manage");
+      const body = await readJsonBody(request);
+      assertNoForbiddenMutationKeys(body);
       const task = await ownedTask(ctx.subject.id, params.id);
-      if (!task) {
-        set.status = 404;
-        return { error: "Task not found" };
-      }
-      const parsed = reminderThresholdSchema.safeParse({
-        days_before: body.days_before,
-      });
+      if (!task) throw ApiError.notFound("Task not found");
+      const parsed = reminderThresholdSchema.safeParse(body);
       if (!parsed.success) {
-        set.status = 400;
-        return {
-          error: "Invalid threshold",
-          fieldErrors: parsed.error.flatten().fieldErrors,
-        };
+        throw validationFromZod(
+          "Invalid threshold",
+          parsed.error.flatten().fieldErrors,
+        );
       }
       try {
         const [row] = await getDb()
@@ -292,36 +355,36 @@ export const taskRoutes = new Elysia({ prefix: "/api/tasks" })
             isDefault: false,
           })
           .returning();
-        return { threshold: row };
+        return { threshold: serializeThreshold(row) };
       } catch {
-        set.status = 400;
-        return { error: "Threshold already exists for this day offset" };
+        throw ApiError.conflict(
+          "Threshold already exists for this day offset",
+        );
       }
     },
     {
-      params: t.Object({ id: t.String() }),
-      body: t.Object({ days_before: t.Number() }),
-      detail: { tags: ["Tasks"], summary: "Add reminder threshold" },
+      params: t.Object({ id: t.String({ format: "uuid" }) }),
+      detail: {
+        tags: ["Tasks"],
+        summary: "Add reminder threshold",
+        requestBody: jsonBodyDetail(openApiBodies.threshold),
+      },
     },
   )
   .patch(
     "/:id/thresholds/:thresholdId",
-    async ({ params, body, requireAuthz, set }) => {
+    async ({ params, requireAuthz, request }) => {
       const ctx = await requireAuthz("threshold.manage");
+      const body = await readJsonBody(request);
+      assertNoForbiddenMutationKeys(body);
       const task = await ownedTask(ctx.subject.id, params.id);
-      if (!task) {
-        set.status = 404;
-        return { error: "Task not found" };
-      }
-      const parsed = reminderThresholdSchema.safeParse({
-        days_before: body.days_before,
-      });
+      if (!task) throw ApiError.notFound("Task not found");
+      const parsed = reminderThresholdSchema.safeParse(body);
       if (!parsed.success) {
-        set.status = 400;
-        return {
-          error: "Invalid threshold",
-          fieldErrors: parsed.error.flatten().fieldErrors,
-        };
+        throw validationFromZod(
+          "Invalid threshold",
+          parsed.error.flatten().fieldErrors,
+        );
       }
       const [row] = await getDb()
         .update(reminderThresholds)
@@ -336,27 +399,27 @@ export const taskRoutes = new Elysia({ prefix: "/api/tasks" })
           ),
         )
         .returning();
-      if (!row) {
-        set.status = 404;
-        return { error: "Threshold not found" };
-      }
-      return { threshold: row };
+      if (!row) throw ApiError.notFound("Threshold not found");
+      return { threshold: serializeThreshold(row) };
     },
     {
-      params: t.Object({ id: t.String(), thresholdId: t.String() }),
-      body: t.Object({ days_before: t.Number() }),
-      detail: { tags: ["Tasks"], summary: "Update reminder threshold" },
+      params: t.Object({
+        id: t.String({ format: "uuid" }),
+        thresholdId: t.String({ format: "uuid" }),
+      }),
+      detail: {
+        tags: ["Tasks"],
+        summary: "Update reminder threshold",
+        requestBody: jsonBodyDetail(openApiBodies.threshold),
+      },
     },
   )
   .delete(
     "/:id/thresholds/:thresholdId",
-    async ({ params, requireAuthz, set }) => {
+    async ({ params, requireAuthz }) => {
       const ctx = await requireAuthz("threshold.manage");
       const task = await ownedTask(ctx.subject.id, params.id);
-      if (!task) {
-        set.status = 404;
-        return { error: "Task not found" };
-      }
+      if (!task) throw ApiError.notFound("Task not found");
       const [row] = await getDb()
         .delete(reminderThresholds)
         .where(
@@ -366,14 +429,14 @@ export const taskRoutes = new Elysia({ prefix: "/api/tasks" })
           ),
         )
         .returning();
-      if (!row) {
-        set.status = 404;
-        return { error: "Threshold not found" };
-      }
+      if (!row) throw ApiError.notFound("Threshold not found");
       return { ok: true };
     },
     {
-      params: t.Object({ id: t.String(), thresholdId: t.String() }),
+      params: t.Object({
+        id: t.String({ format: "uuid" }),
+        thresholdId: t.String({ format: "uuid" }),
+      }),
       detail: { tags: ["Tasks"], summary: "Remove reminder threshold" },
     },
   );

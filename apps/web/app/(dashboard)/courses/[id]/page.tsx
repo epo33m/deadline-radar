@@ -36,7 +36,7 @@ function iso(value: string | Date | null | undefined): string | null {
 export async function generateMetadata({ params }: CourseDetailPageProps) {
   const { id } = await params;
   const result = await apiJson<{ course?: { name: string } }>(
-    `/api/courses/${id}`,
+    `/api/v1/courses/${id}`,
   );
   return { title: result.course?.name ?? "Course" };
 }
@@ -48,8 +48,8 @@ export default async function CourseDetailPage({
   const user = await requireSession();
 
   const [courseResult, tasksResult] = await Promise.all([
-    apiJson<{ course?: ApiCourse; error?: string }>(`/api/courses/${id}`),
-    apiJson<{ tasks?: ApiTask[] }>(`/api/tasks?courseId=${id}`),
+    apiJson<{ course?: ApiCourse; error?: string }>(`/api/v1/courses/${id}`),
+    apiJson<{ tasks?: ApiTask[] }>(`/api/v1/tasks?courseId=${id}`),
   ]);
 
   if (courseResult.error === "Course not found") {

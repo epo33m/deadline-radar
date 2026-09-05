@@ -22,7 +22,7 @@ export async function addLinkAttachment(
   if (typeof taskId !== "string" || !taskId) {
     return { error: "Task id is required." };
   }
-  const result = await apiJson("/api/attachments/link", {
+  const result = await apiJson("/api/v1/attachments/link", {
     method: "POST",
     body: JSON.stringify({
       task_id: taskId,
@@ -56,7 +56,7 @@ export async function addFileAttachment(
   if (typeof name === "string" && name.trim()) body.set("name", name);
   body.set("file", file);
 
-  const result = await apiJson("/api/attachments/file", {
+  const result = await apiJson("/api/v1/attachments/file", {
     method: "POST",
     body,
   });
@@ -76,7 +76,7 @@ export async function removeAttachment(
   if (typeof id !== "string" || !id) {
     return { error: "Attachment id is required." };
   }
-  const result = await apiJson(`/api/attachments/${id}`, { method: "DELETE" });
+  const result = await apiJson(`/api/v1/attachments/${id}`, { method: "DELETE" });
   if (result.error) {
     return { error: result.error, fieldErrors: result.fieldErrors };
   }
@@ -88,7 +88,7 @@ export async function getAttachmentSignedUrl(
   storagePath: string,
 ): Promise<{ url?: string; error?: string }> {
   const result = await apiJson<{ url?: string }>(
-    `/api/attachments/signed-url?storage_path=${encodeURIComponent(storagePath)}`,
+    `/api/v1/attachments/signed-url?storage_path=${encodeURIComponent(storagePath)}`,
   );
   if (result.error) return { error: result.error };
   return { url: result.url };

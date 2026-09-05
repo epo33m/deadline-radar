@@ -1,3 +1,5 @@
+process.env.NODE_ENV = "test";
+process.env.AUTH_BRIDGE_SECRET ??= "test-auth-bridge-secret";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 import {
@@ -136,14 +138,14 @@ describe("authorization routes — adversarial", () => {
 
   test("unauthenticated domain request is 401", async () => {
     const response = await app.handle(
-      new Request("http://localhost/api/courses", { method: "GET" }),
+      new Request("http://localhost/api/v1/courses", { method: "GET" }),
     );
     expect(response.status).toBe(401);
   });
 
   test("authenticated user can list courses with capability", async () => {
     const response = await app.handle(
-      new Request("http://localhost/api/courses", {
+      new Request("http://localhost/api/v1/courses", {
         method: "GET",
         headers: { authorization: "Bearer user-a" },
       }),
@@ -154,20 +156,21 @@ describe("authorization routes — adversarial", () => {
   test("missing capability yields 403 without leaking internals", async () => {
     currentCapabilities = [];
     const response = await app.handle(
-      new Request("http://localhost/api/courses", {
+      new Request("http://localhost/api/v1/courses", {
         method: "GET",
         headers: { authorization: "Bearer user-a" },
       }),
     );
     expect(response.status).toBe(403);
-    const body = (await response.json()) as { error?: string };
-    expect(body.error).toBe("Forbidden");
+    const body = (await response.json()) as { error?: { message?: string } | string };
+    const errMsg = typeof body.error === "string" ? body.error : body.error?.message;
+    expect(errMsg).toBe("Forbidden");
     expect(JSON.stringify(body).toLowerCase()).not.toContain("course.view");
   });
 
   test("cross-user course id returns 404", async () => {
     const response = await app.handle(
-      new Request(`http://localhost/api/courses/${COURSE_B}`, {
+      new Request(`http://localhost/api/v1/courses/${COURSE_B}`, {
         method: "GET",
         headers: { authorization: "Bearer user-a" },
       }),
@@ -177,7 +180,7 @@ describe("authorization routes — adversarial", () => {
 
   test("owner can get own course", async () => {
     const response = await app.handle(
-      new Request(`http://localhost/api/courses/${COURSE_A}`, {
+      new Request(`http://localhost/api/v1/courses/${COURSE_A}`, {
         method: "GET",
         headers: { authorization: "Bearer user-a" },
       }),
@@ -187,7 +190,7 @@ describe("authorization routes — adversarial", () => {
 
   test("admin endpoints deny non-admin", async () => {
     const response = await app.handle(
-      new Request("http://localhost/api/admin/roles/assign", {
+      new Request("http://localhost/api/v1/admin/roles/assign", {
         method: "POST",
         headers: {
           authorization: "Bearer user-a",
@@ -204,7 +207,7 @@ describe("authorization routes — adversarial", () => {
 
   test("client role injection does not grant admin", async () => {
     const response = await app.handle(
-      new Request("http://localhost/api/admin/roles/assign", {
+      new Request("http://localhost/api/v1/admin/roles/assign", {
         method: "POST",
         headers: {
           authorization: "Bearer user-a",
@@ -225,7 +228,7 @@ describe("authorization routes — adversarial", () => {
     currentRoles = ["user", "admin"];
     currentCapabilities = [...DOMAIN_CAPABILITIES, ...ADMIN_CAPABILITIES];
     const response = await app.handle(
-      new Request("http://localhost/api/admin/audit", {
+      new Request("http://localhost/api/v1/admin/audit", {
         method: "GET",
         headers: { authorization: "Bearer user-a" },
       }),
@@ -238,7 +241,7 @@ describe("authorization routes — adversarial", () => {
   test("signed-url for another user path is 403", async () => {
     const response = await app.handle(
       new Request(
-        `http://localhost/api/attachments/signed-url?storage_path=attachments/${USER_B}/task/file.pdf`,
+        `http://localhost/api/v1/attachments/signed-url?storage_path=attachments/${USER_B}/task/file.pdf`,
         {
           method: "GET",
           headers: { authorization: "Bearer user-a" },
@@ -252,7 +255,7 @@ describe("authorization routes — adversarial", () => {
     attachmentOwner = null;
     const response = await app.handle(
       new Request(
-        `http://localhost/api/attachments/signed-url?storage_path=attachments/${USER_A}/task/file.pdf`,
+        `http://localhost/api/v1/attachments/signed-url?storage_path=attachments/${USER_A}/task/file.pdf`,
         {
           method: "GET",
           headers: { authorization: "Bearer user-a" },
@@ -266,7 +269,7 @@ describe("authorization routes — adversarial", () => {
     attachmentOwner = USER_A;
     const response = await app.handle(
       new Request(
-        `http://localhost/api/attachments/signed-url?storage_path=attachments/${USER_A}/task/file.pdf`,
+        `http://localhost/api/v1/attachments/signed-url?storage_path=attachments/${USER_A}/task/file.pdf`,
         {
           method: "GET",
           headers: { authorization: "Bearer user-a" },
@@ -274,5 +277,73 @@ describe("authorization routes — adversarial", () => {
       ),
     );
     expect(response.status).toBe(200);
+  });
+
+  test("rejects unknown body fields on course create", async () => {
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/courses", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer user-a",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ name: "Math", isAdmin: true }),
+      }),
+    );
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as {
+      error: { code: string };
+      requestId: string;
+    };
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(body.requestId).toBeTruthy();
+  });
+
+  test("rejects mass-assignment of userId on course create", async () => {
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/courses", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer user-a",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          name: "Math",
+          userId: USER_B,
+        }),
+      }),
+    );
+    expect(response.status).toBe(400);
+  });
+
+  test("rejects oversized pagination limit", async () => {
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/courses?limit=100000", {
+        headers: { authorization: "Bearer user-a" },
+      }),
+    );
+    expect(response.status).toBe(400);
+  });
+
+  test("rejects arbitrary task sort fields", async () => {
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/tasks?sort=drop_table", {
+        headers: { authorization: "Bearer user-a" },
+      }),
+    );
+    expect(response.status).toBe(400);
+  });
+
+  test("echoes trusted UUID X-Request-Id", async () => {
+    const id = "550e8400-e29b-41d4-a716-446655440000";
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/courses", {
+        headers: {
+          authorization: "Bearer user-a",
+          "x-request-id": id,
+        },
+      }),
+    );
+    expect(response.headers.get("X-Request-Id")).toBe(id);
   });
 });

@@ -20,7 +20,7 @@ export async function register(
   const result = await apiJson<{
     redirectTo?: string;
     message?: string;
-  }>("/api/auth/register", {
+  }>("/api/v1/auth/register", {
     method: "POST",
     body: JSON.stringify({
       email: formData.get("email"),
@@ -53,7 +53,7 @@ export async function login(
 ): Promise<AuthActionState> {
   const result = await apiJson<{
     redirectTo?: string;
-  }>("/api/auth/login", {
+  }>("/api/v1/auth/login", {
     method: "POST",
     body: JSON.stringify({
       email: formData.get("email"),
@@ -76,7 +76,7 @@ export async function requestPasswordReset(
   formData: FormData,
 ): Promise<AuthActionState> {
   const result = await apiJson<{ success?: string }>(
-    "/api/auth/forgot-password",
+    "/api/v1/auth/forgot-password",
     {
       method: "POST",
       body: JSON.stringify({ email: formData.get("email") }),
@@ -102,7 +102,7 @@ export async function updatePassword(
   formData: FormData,
 ): Promise<AuthActionState> {
   const result = await apiJson<{ redirectTo?: string }>(
-    "/api/auth/reset-password",
+    "/api/v1/auth/reset-password",
     {
       method: "POST",
       body: JSON.stringify({
@@ -123,7 +123,7 @@ export async function updatePassword(
 }
 
 export async function logout() {
-  await apiJson("/api/auth/logout", { method: "POST" });
+  await apiJson("/api/v1/auth/logout", { method: "POST" });
   const store = await cookies();
   store.delete(ACCESS_COOKIE);
   store.delete(REFRESH_COOKIE);
@@ -131,7 +131,7 @@ export async function logout() {
 }
 
 export async function logoutAll() {
-  await apiJson("/api/auth/logout-all", { method: "POST" });
+  await apiJson("/api/v1/auth/logout-all", { method: "POST" });
   const store = await cookies();
   store.delete(ACCESS_COOKIE);
   store.delete(REFRESH_COOKIE);
@@ -142,7 +142,7 @@ export async function updateTimezone(
   _prev: AuthActionState,
   formData: FormData,
 ): Promise<AuthActionState> {
-  const result = await apiJson("/api/auth/timezone", {
+  const result = await apiJson("/api/v1/auth/timezone", {
     method: "PATCH",
     body: JSON.stringify({ timezone: formData.get("timezone") }),
   });

@@ -28,7 +28,7 @@ export async function createCourse(
   _prev: CourseActionState,
   formData: FormData,
 ): Promise<CourseActionState> {
-  const result = await apiJson("/api/courses", {
+  const result = await apiJson("/api/v1/courses", {
     method: "POST",
     body: JSON.stringify(courseBody(formData)),
   });
@@ -47,7 +47,7 @@ export async function updateCourse(
   if (typeof id !== "string" || !id) {
     return { error: "Course id is required." };
   }
-  const result = await apiJson(`/api/courses/${id}`, {
+  const result = await apiJson(`/api/v1/courses/${id}`, {
     method: "PATCH",
     body: JSON.stringify(courseBody(formData)),
   });
@@ -67,7 +67,7 @@ export async function softDeleteCourse(
   if (typeof id !== "string" || !id) {
     return { error: "Course id is required." };
   }
-  const result = await apiJson(`/api/courses/${id}`, { method: "DELETE" });
+  const result = await apiJson(`/api/v1/courses/${id}`, { method: "DELETE" });
   if (result.error) {
     return { error: result.error, fieldErrors: result.fieldErrors };
   }

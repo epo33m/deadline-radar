@@ -66,8 +66,8 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
       thresholds?: ApiThreshold[];
       attachments?: ApiAttachment[];
       error?: string;
-    }>(`/api/tasks/${id}`),
-    apiJson<{ courses?: ApiCourse[] }>("/api/courses"),
+    }>(`/api/v1/tasks/${id}`),
+    apiJson<{ courses?: ApiCourse[] }>("/api/v1/courses"),
   ]);
 
   if (detailResult.error === "Task not found") {

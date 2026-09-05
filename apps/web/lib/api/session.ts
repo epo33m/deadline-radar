@@ -15,7 +15,7 @@ export async function getSession(): Promise<{
   const result = await apiJson<{
     authenticated?: boolean;
     user?: SessionUser;
-  }>("/api/auth/session");
+  }>("/api/v1/auth/session");
 
   if (!result.authenticated || !result.user) {
     await clearLocalAuthCookies();

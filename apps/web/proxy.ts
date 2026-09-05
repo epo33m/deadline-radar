@@ -4,7 +4,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import {
   ACCESS_COOKIE,
   AUTH_BRIDGE_HEADER,
-  AUTH_BRIDGE_VALUE,
+  authBridgeSecret,
   REFRESH_COOKIE,
   REFRESH_COOKIE_MAX_AGE_SECONDS,
   authCookieOptions,
@@ -127,11 +127,11 @@ async function resolveHasSession(request: NextRequest): Promise<{
   }
 
   try {
-    const upstream = await fetch(`${apiOrigin()}/api/auth/refresh`, {
+    const upstream = await fetch(`${apiOrigin()}/api/v1/auth/refresh`, {
       method: "POST",
       headers: {
         cookie: `${REFRESH_COOKIE}=${refresh}`,
-        [AUTH_BRIDGE_HEADER]: AUTH_BRIDGE_VALUE,
+        [AUTH_BRIDGE_HEADER]: authBridgeSecret(),
         origin: process.env.WEB_ORIGIN ?? "http://127.0.0.1:3025",
       },
       cache: "no-store",

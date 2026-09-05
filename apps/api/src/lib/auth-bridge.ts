@@ -1,9 +1,27 @@
+import { env } from "../env";
+
 /** Internal header: Next auth bridges may receive tokens in JSON; browsers must not. */
 export const AUTH_BRIDGE_HEADER = "x-dr-auth-bridge";
-export const AUTH_BRIDGE_VALUE = "1";
 
+/**
+ * Trusted server bridges must send `x-dr-auth-bridge: <AUTH_BRIDGE_SECRET>`.
+ * The legacy value "1" is never accepted.
+ */
 export function isAuthBridgeRequest(request: Request): boolean {
-  return request.headers.get(AUTH_BRIDGE_HEADER) === AUTH_BRIDGE_VALUE;
+  const secret = env.authBridgeSecret();
+  if (!secret) return false;
+  const header = request.headers.get(AUTH_BRIDGE_HEADER);
+  if (!header) return false;
+  return timingSafeEqualString(header, secret);
+}
+
+function timingSafeEqualString(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let out = 0;
+  for (let i = 0; i < a.length; i++) {
+    out |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return out === 0;
 }
 
 export type SessionTokenPayload = {

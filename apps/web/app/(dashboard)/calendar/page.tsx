@@ -29,7 +29,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
   const month = parseMonthParam(monthParam, timeZone);
   const todayKey = getZonedDayKey(new Date().toISOString(), timeZone) ?? "";
 
-  const result = await apiJson<{ tasks?: ApiTask[] }>("/api/tasks");
+  const result = await apiJson<{ tasks?: ApiTask[] }>("/api/v1/tasks");
   if (result.error || !result.tasks) {
     return (
       <section className="space-y-2">

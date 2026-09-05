@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, lt, or } from "drizzle-orm";
 import {
   authAuditEvents,
   profiles,
@@ -10,6 +10,11 @@ import { getDb } from "../db";
 import { isRoleSlug, type RoleSlug } from "./roles";
 import { recordRoleChange } from "./audit";
 import { invalidateAuthzCache } from "./cache";
+import {
+  decodeCursor,
+  encodeCursor,
+  type CursorPayload,
+} from "../api/pagination";
 
 export type RoleMutationResult =
   | { ok: true; roleSlug: RoleSlug; userId: string }
@@ -124,9 +129,30 @@ export async function revokeRole(input: {
   return { ok: true, roleSlug: input.roleSlug, userId: input.targetUserId };
 }
 
-export async function listAuditEvents(limit: number) {
-  const safeLimit = Math.min(Math.max(limit, 1), 200);
-  return getDb()
+export async function listAuditEvents(options: {
+  limit: number;
+  cursor?: string;
+}): Promise<{
+  events: Array<{
+    id: string;
+    event: string;
+    userId: string | null;
+    sessionId: string | null;
+    result: string;
+    method: string | null;
+    ip: string | null;
+    requestId: string | null;
+    metadata: Record<string, unknown> | null;
+    createdAt: Date;
+  }>;
+  nextCursor: string | null;
+}> {
+  const safeLimit = Math.min(Math.max(options.limit, 1), 100);
+  const decoded: CursorPayload | null = options.cursor
+    ? decodeCursor(options.cursor)
+    : null;
+
+  const rows = await getDb()
     .select({
       id: authAuditEvents.id,
       event: authAuditEvents.event,
@@ -140,6 +166,30 @@ export async function listAuditEvents(limit: number) {
       createdAt: authAuditEvents.createdAt,
     })
     .from(authAuditEvents)
-    .orderBy(desc(authAuditEvents.createdAt))
-    .limit(safeLimit);
+    .where(
+      decoded
+        ? or(
+            lt(authAuditEvents.createdAt, new Date(decoded.k)),
+            and(
+              eq(authAuditEvents.createdAt, new Date(decoded.k)),
+              lt(authAuditEvents.id, decoded.id),
+            ),
+          )
+        : undefined,
+    )
+    .orderBy(desc(authAuditEvents.createdAt), desc(authAuditEvents.id))
+    .limit(safeLimit + 1);
+
+  const pageRows = rows.slice(0, safeLimit);
+  const last = pageRows[pageRows.length - 1];
+  const nextCursor =
+    rows.length > safeLimit && last
+      ? encodeCursor({
+          v: 1,
+          k: new Date(last.createdAt).toISOString(),
+          id: last.id,
+        })
+      : null;
+
+  return { events: pageRows, nextCursor };
 }

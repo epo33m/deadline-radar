@@ -19,7 +19,7 @@ type ApiTask = {
 
 export default async function DashboardPage() {
   const user = await requireSession();
-  const result = await apiJson<{ tasks?: ApiTask[] }>("/api/tasks");
+  const result = await apiJson<{ tasks?: ApiTask[] }>("/api/v1/tasks");
 
   if (result.error || !result.tasks) {
     return (

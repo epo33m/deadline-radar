@@ -26,8 +26,8 @@ export default async function TasksPage() {
   const user = await requireSession();
 
   const [coursesResult, tasksResult] = await Promise.all([
-    apiJson<{ courses?: ApiCourse[] }>("/api/courses"),
-    apiJson<{ tasks?: ApiTask[] }>("/api/tasks"),
+    apiJson<{ courses?: ApiCourse[] }>("/api/v1/courses"),
+    apiJson<{ tasks?: ApiTask[] }>("/api/v1/tasks"),
   ]);
 
   if (coursesResult.error || tasksResult.error) {

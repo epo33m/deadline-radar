@@ -17,7 +17,8 @@
                        ┌────────────────────────┐       ┌──────────┐
                        │  Elysia API (apps/api) │──────▶│  Resend  │
                        │  Bun :4025 + OpenAPI   │       │ (email)  │
-                       └────────────┬───────────┘       └──────────┘
+                       │  /api/v1/*             │       └──────────┘
+                       └────────────┬───────────┘
                                     │
               ┌─────────────────────┼─────────────────────┐
               ▼                     ▼                     ▼
@@ -28,8 +29,8 @@
                                     ▲
                                     │ hourly (scheduler TBD)
                        ┌────────────────────────┐
-                       │ Cron → GET /api/cron/  │
-                       │ evaluate-reminders     │
+                       │ Cron → GET /api/v1/cron│
+                       │ /evaluate-reminders    │
                        └────────────────────────┘
 ```
 
@@ -45,13 +46,47 @@ Main pages (indicative):
 - Header bell — unread count via API
 
 ### 2.2 Backend — Elysia (`apps/api`, port 4025)
-Owns **all auth, domain API, and business logic**:
+Owns **all auth, domain API, and business logic** under **`/api/v1`** (immediate cutover; no coexisting `/api` v0 aliases):
 - Auth: register, login, logout, password reset, session, timezone
-- CRUD: courses, tasks, thresholds, attachments, notifications
-- Cron: `GET /api/cron/evaluate-reminders` (Bearer `CRON_SECRET`)
-- Contract: OpenAPI at `/openapi` (typed client under `apps/web/lib/api`)
+- CRUD + commands: courses, tasks, thresholds, attachments, notifications
+- Admin: role assign/revoke, audit list
+- Cron: `GET /api/v1/cron/evaluate-reminders` (Bearer `CRON_SECRET`; required except `NODE_ENV=test`)
+- Unversioned: `GET /health`, OpenAPI at `/openapi`
 
-Layering: **routes → services → Drizzle repos**. App-layer authorization via RBAC capabilities + ownership (`requireAuthz` + owned-resource helpers). Existing Postgres RLS remains defense-in-depth.
+**Request pipeline:** requestId → error handler → CORS → body limit → rate limit → http-policy → authz → Zod validation → handler → DTO serialize.
+
+Layering: **routes (HTTP/authz/validate/serialize) → thin application services → Drizzle**. App-layer authorization via RBAC capabilities + ownership (`requireAuthz` + owned-resource helpers). Existing Postgres RLS remains defense-in-depth.
+
+### 2.2.1 API contract (v1)
+
+**Error envelope (all failures):**
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Request validation failed",
+    "details": [{ "field": "title", "message": "..." }]
+  },
+  "requestId": "uuid"
+}
+```
+
+Codes include: `VALIDATION_ERROR`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `RATE_LIMITED`, `PAYLOAD_TOO_LARGE`, `DEPENDENCY_FAILURE`, `IDEMPOTENCY_CONFLICT`, `INTERNAL`. Stack traces / SQL / provider messages are never returned.
+
+**Success collections:** `{ <resourceKey>: [...], page: { nextCursor, limit } }` with cursor/keyset pagination (default limit 50, max 100).
+
+**Validation:** Zod in `@deadline-radar/validation` is business SSoT; request objects use `.strict()` (unknown fields rejected). Mass-assignment deny-list blocks ownership/role/system fields.
+
+**Idempotency:** `Idempotency-Key` (8–128 chars) on create POSTs; stored in `idempotency_keys` (24h TTL); same key+body replays; different body → `409 IDEMPOTENCY_CONFLICT`.
+
+**Optimistic concurrency:** course/task `PATCH` may include `updatedAt`; mismatch → `409 CONFLICT`.
+
+**Versioning / deprecation:** current surface is `/api/v1`. Breaking changes require a new version path and a documented migration window. Additive fields are non-breaking. Unversioned `/api/*` domain routes are removed (no aliases).
+
+**N/A for this product (explicit non-goals, not incomplete work):** bulk/import APIs, async job/status APIs, full-text search DSL, multi-tenant orgs.
+
+**Operational requirements:** apply migration `20260905020000_api_contract.sql` (course `updated_at` + `idempotency_keys`) before relying on those features. Set `AUTH_BRIDGE_SECRET` on both API and web. Production boot fails closed without `AUTH_BRIDGE_SECRET` / `CRON_SECRET`. `REDIS_URL` is required for multi-node rate limits; local/dev uses in-memory by design. Optimistic concurrency (`updatedAt`) applies to course/task PATCH — the only domain resources with mutable version columns.
 
 ### 2.3 Database — Supabase Postgres + Drizzle
 - DDL / triggers / RLS: `supabase/migrations/` (source of schema truth for this branch)
@@ -66,9 +101,9 @@ Layering: **routes → services → Drizzle repos**. App-layer authorization via
 - Reminder emails from the API cron/evaluator path
 
 ### 2.6 Scheduler
-- Endpoint lives on Elysia (`/api/cron/evaluate-reminders`)
+- Endpoint lives on Elysia (`/api/v1/cron/evaluate-reminders`)
 - Production runner (pg_cron, external cron, host scheduler) remains **TBD** per `product.md`
-- Local: `curl -H "Authorization: Bearer $CRON_SECRET" http://127.0.0.1:4025/api/cron/evaluate-reminders`
+- Local: `curl -H "Authorization: Bearer $CRON_SECRET" http://127.0.0.1:4025/api/v1/cron/evaluate-reminders`
 
 ## 3. Data Flow: Reminder Evaluation (per run)
 
@@ -91,9 +126,9 @@ Layering: **routes → services → Drizzle repos**. App-layer authorization via
 - **Roles (seeded):** `user` (default on signup / backfill), `admin` (role assign/revoke + audit view only). **No role inheritance.** Flat capability maps only.
 - **Scope:** owned resources (`resource.user_id === subject.id`). **Multi-tenant / org isolation: N/A** (B2C per-profile ownership; no org/workspace).
 - **Enforcement:** domain/admin routes use `authPlugin` / `requireAuthPlugin` + per-handler `requireAuthz('<capability>')` + ownership-scoped queries. Missing capability → `403`; missing identity → `401`; cross-owner resource → `404` (anti-enumeration) except signed-URL path/row mismatches → `403`. Every protected handler must call `requireAuthz` (fail closed).
-- **Admin:** `POST /api/admin/roles/assign|revoke`, `GET /api/admin/audit`. Admin does **not** unlock cross-user course/task access.
-- **Cron:** separate principal via `CRON_SECRET` (not an RBAC role).
-- **Field-level:** mutation deny-list blocks client `userId` / `role` / `capabilities` / `deletedAt` injection; no sensitive financial fields in the product.
+- **Admin:** `POST /api/v1/admin/roles/assign|revoke`, `GET /api/v1/admin/audit`. Admin does **not** unlock cross-user course/task access.
+- **Cron:** separate principal via `CRON_SECRET` (not an RBAC role). Required whenever `NODE_ENV !== test`.
+- **Field-level:** mutation deny-list blocks client `userId` / `role` / `capabilities` / `deletedAt` injection; Zod `.strict()` rejects unknown keys.
 - **Caching:** short-lived in-memory authz snapshot per `userId` (30s TTL). Cache keys are subject ids only (no cross-user collision). Invalidated on `role.assign` / `role.revoke`. Fail closed on load errors (empty capabilities).
 - **RLS:** ownership helpers use `withUserRls` (transaction-local JWT claim GUCs). App-layer RBAC remains primary; RLS applies when `DATABASE_URL` is a non-`BYPASSRLS` role.
 - **Audit:** `auth_audit_events` records auth events plus `authz.denied`, `role.assigned`, `role.revoked` (no secrets).
@@ -101,13 +136,13 @@ Layering: **routes → services → Drizzle repos**. App-layer authorization via
 ### Session / cookies
 - Elysia sets `dr_access_token` / `dr_refresh_token` httpOnly cookies (`Secure` in production, `SameSite=lax`, `Path=/`) after login/register/confirm/refresh.
 - Access lifetime ≈ Supabase `expires_in`; refresh absolute max-age 30 days. Idle timeout N/A (stateless JWT); refresh renews access.
-- `POST /api/auth/refresh` rotates tokens via Supabase `refreshSession`. Next `proxy.ts` silently refreshes when access JWT is invalid but refresh cookie is present.
-- Logout: `POST /api/auth/logout` (current session, `signOut` local) and `POST /api/auth/logout-all` (global). Password reset completion clears cookies and global sign-out.
+- `POST /api/v1/auth/refresh` rotates tokens via Supabase `refreshSession`. Next `proxy.ts` silently refreshes when access JWT is invalid but refresh cookie is present.
+- Logout: `POST /api/v1/auth/logout` (current session, `signOut` local) and `POST /api/v1/auth/logout-all` (global). Password reset completion clears cookies and global sign-out.
 - JWT verified via Supabase **JWKS** (ES256/RS256/EdDSA; legacy HS256 JWT secret optional fallback) on protected API routes **and** in the Next proxy.
-- Invalid/expired tokens are cleared by `/api/auth/session`, refresh failure, and API `401`.
+- Invalid/expired tokens are cleared by `/api/v1/auth/session`, refresh failure, and API `401`.
 
 ### Token transport (no browser JS secrets)
-- Access/refresh tokens appear in JSON **only** when the caller sends `x-dr-auth-bridge: 1` (Next server bridges for login/register/confirm/refresh/proxy).
+- Access/refresh tokens appear in JSON **only** when the caller sends `x-dr-auth-bridge: <AUTH_BRIDGE_SECRET>` (Next server bridges for login/register/confirm/refresh/proxy). The literal value `1` is never accepted.
 - Browser-facing responses strip tokens after setting httpOnly cookies on the **web** origin.
 - Email confirm uses same-origin `/auth/confirm` → server-side bridge (cookies must not be set on `API_ORIGIN`).
 
@@ -117,17 +152,20 @@ Layering: **routes → services → Drizzle repos**. App-layer authorization via
 - CSRF: `SameSite=lax` + same-origin `/api` (no separate CSRF token). CORS locked to `WEB_ORIGIN` with credentials.
 
 ### Abuse protection & errors
-- Backend rate limits (in-memory; hooks registered `as: "global"`): sensitive auth 20/min, other auth 60/min, general 180/min, cron 10/min. **Redis required for multi-node.**
+- Backend rate limits (hooks `as: "global"`): sensitive auth 20/min, other auth 60/min, general 180/min, cron 10/min. **Redis when `REDIS_URL` is set; otherwise in-memory (dev/single-node).**
+- `TRUST_PROXY=true` required before trusting `X-Forwarded-For` / `X-Real-IP` for rate-limit keys.
+- Body limits: 1 MiB JSON; attachments max 10 MiB with MIME allowlist.
 - Progressive delay on repeated failed logins (per email+IP); no permanent lockout.
-- Client errors are generic (`Invalid credentials.`, forgot-password always succeeds generically). Provider details go to server logs only.
+- Client errors use the nested v1 error envelope; auth messages stay generic. Provider details go to server logs only.
 
 ### Observability & headers
+- Every request gets a `requestId` (UUID; client-provided non-UUID ids are replaced). Echoed as `X-Request-Id` and included on error bodies. Propagated into auth audit rows.
 - `auth_audit_events` table + structured `[auth-audit]` logs (no passwords/tokens/secrets).
 - Production: `Strict-Transport-Security`; always `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`; `Cache-Control: private, no-store` on `/api/*`.
-- Serve auth over HTTPS in production. Rotate Supabase JWT/service keys and `CRON_SECRET` via env/secret store (never commit secrets).
+- Serve auth over HTTPS in production. Rotate Supabase JWT/service keys, `CRON_SECRET`, and `AUTH_BRIDGE_SECRET` via env/secret store (never commit secrets).
 
 ### Env
-- See `.env.example`: `DATABASE_URL`, `SUPABASE_*`, `SUPABASE_JWT_SECRET`, `RESEND_*`, `CRON_SECRET`, `WEB_ORIGIN`, `API_ORIGIN`, `API_PORT`.
+- See `.env.example`: `DATABASE_URL`, `SUPABASE_*`, `SUPABASE_JWT_SECRET`, `RESEND_*`, `CRON_SECRET`, `AUTH_BRIDGE_SECRET`, `REDIS_URL` (optional), `TRUST_PROXY` (optional), `WEB_ORIGIN`, `API_ORIGIN`, `API_PORT`.
 
 ## 5. Folder Structure
 
