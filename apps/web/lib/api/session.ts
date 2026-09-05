@@ -1,0 +1,35 @@
+import { apiJson, clearLocalAuthCookies } from "@/lib/api/server";
+
+export type SessionUser = {
+  id: string;
+  email?: string;
+  timezone: string;
+  name: string | null;
+};
+
+export async function getSession(): Promise<{
+  authenticated: boolean;
+  user: SessionUser | null;
+}> {
+  const result = await apiJson<{
+    authenticated?: boolean;
+    user?: SessionUser;
+  }>("/api/auth/session");
+
+  if (!result.authenticated || !result.user) {
+    await clearLocalAuthCookies();
+    return { authenticated: false, user: null };
+  }
+
+  return { authenticated: true, user: result.user };
+}
+
+export async function requireSession(): Promise<SessionUser> {
+  const session = await getSession();
+  if (!session.user) {
+    const { redirect } = await import("next/navigation");
+    redirect("/login");
+    throw new Error("unreachable");
+  }
+  return session.user;
+}

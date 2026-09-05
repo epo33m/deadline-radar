@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": ["bun"],
+    "noEmit": true,
+    "jsx": "preserve",
+    "paths": {
+      "@deadline-radar/db": ["../../packages/db/src/index.ts"],
+      "@deadline-radar/db/*": ["../../packages/db/src/*"],
+      "@deadline-radar/validation": ["../../packages/validation/src/index.ts"],
+      "@deadline-radar/validation/*": ["../../packages/validation/src/*"],
+      "@deadline-radar/domain": ["../../packages/domain/src/index.ts"],
+      "@deadline-radar/domain/*": ["../../packages/domain/src/*"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

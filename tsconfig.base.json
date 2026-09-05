@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "declarationMap": true,
+    "composite": false,
+    "baseUrl": ".",
+    "paths": {
+      "@deadline-radar/db": ["packages/db/src/index.ts"],
+      "@deadline-radar/db/*": ["packages/db/src/*"],
+      "@deadline-radar/validation": ["packages/validation/src/index.ts"],
+      "@deadline-radar/validation/*": ["packages/validation/src/*"],
+      "@deadline-radar/domain": ["packages/domain/src/index.ts"],
+      "@deadline-radar/domain/*": ["packages/domain/src/*"]
+    }
+  }
+}

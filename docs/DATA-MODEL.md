@@ -2,6 +2,7 @@
 
 > **Source of truth:** `product.md` (Baseline v0.1) + `DOMAIN.md`
 > Target: Supabase PostgreSQL
+> Access path: Elysia API queries via **Drizzle** (`packages/db`) using `DATABASE_URL`. RLS policies below remain **defense-in-depth**; the API is the primary authorization boundary (scoped by authenticated `user_id`).
 
 ---
 

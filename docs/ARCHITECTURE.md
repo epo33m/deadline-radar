@@ -7,127 +7,109 @@
 ## 1. High-Level Architecture
 
 ```
-┌─────────────┐        ┌──────────────────────────┐       ┌──────────┐
-│   Browser   │◀──────▶│   Next.js App (Vercel?)  │──────▶│  Resend  │
-│ (user)      │        │   App Router + RSC       │       │ (email)  │
-└─────────────┘        └────────────┬─────────────┘       └──────────┘
-                                     │
-                                     ▼
-                        ┌────────────────────────┐
-                        │        Supabase         │
-                        │  Postgres + Auth +      │
-                        │  Storage + RLS          │
-                        └────────────┬────────────┘
-                                     ▲
-                                     │ (triggers evaluation, hourly)
-                        ┌────────────────────────┐
-                        │   Scheduler (TBD)       │
-                        │  pg_cron / Vercel Cron  │
-                        └────────────────────────┘
+┌─────────────┐        ┌──────────────────────────┐
+│   Browser   │◀──────▶│  Next.js UI (apps/web)   │
+│ (user)      │ :3025  │  App Router + RSC        │
+└─────────────┘        └────────────┬─────────────┘
+                                    │ same-origin rewrite /api/*
+                                    │ httpOnly session cookies
+                                    ▼
+                       ┌────────────────────────┐       ┌──────────┐
+                       │  Elysia API (apps/api) │──────▶│  Resend  │
+                       │  Bun :4025 + OpenAPI   │       │ (email)  │
+                       └────────────┬───────────┘       └──────────┘
+                                    │
+              ┌─────────────────────┼─────────────────────┐
+              ▼                     ▼                     ▼
+     ┌────────────────┐   ┌────────────────┐   ┌──────────────────┐
+     │ Supabase Auth  │   │ Postgres       │   │ Supabase Storage │
+     │ (identity)     │   │ via Drizzle    │   │ (attachments)    │
+     └────────────────┘   └────────────────┘   └──────────────────┘
+                                    ▲
+                                    │ hourly (scheduler TBD)
+                       ┌────────────────────────┐
+                       │ Cron → GET /api/cron/  │
+                       │ evaluate-reminders     │
+                       └────────────────────────┘
 ```
 
 ## 2. Components
 
-### 2.1 Frontend — Next.js (App Router)
-Main pages (indicative, may change during implementation):
+### 2.1 Frontend — Next.js (`apps/web`, port 3025)
+UI only: pages, forms, and thin server actions that call the API over same-origin `/api/*` (Next rewrite → Elysia). Session gate uses the `dr_access_token` httpOnly cookie.
+
+Main pages (indicative):
 - `/login`, `/register`
-- `/dashboard` — summary of tasks approaching deadline, overdue, and recently completed
-- `/courses` — course CRUD
-- `/tasks`, `/tasks/[id]` — task list & detail/edit (incl. threshold & attachment management)
-- `/calendar` — calendar view
-- `/preferences` — account and time zone
-- `/preferences/notifications` — in-app notification history (opened from the header bell)
-- Header bell — unread count + link to `/preferences/notifications`
+- `/dashboard`, `/courses`, `/tasks`, `/tasks/[id]`, `/calendar`
+- `/preferences`, `/preferences/notifications`
+- Header bell — unread count via API
 
-Server Components for data fetching (via the Supabase server client), Client Components for interactive parts (forms, calendar widget, bell icon dropdown). Form validation uses Zod schemas shared between the client and server actions.
+### 2.2 Backend — Elysia (`apps/api`, port 4025)
+Owns **all auth, domain API, and business logic**:
+- Auth: register, login, logout, password reset, session, timezone
+- CRUD: courses, tasks, thresholds, attachments, notifications
+- Cron: `GET /api/cron/evaluate-reminders` (Bearer `CRON_SECRET`)
+- Contract: OpenAPI at `/openapi` (typed client under `apps/web/lib/api`)
 
-### 2.2 Backend / API Layer
-- Most CRUD operations **don't need a custom API route** — they go directly through the Supabase client (server actions/RSC), protected by RLS.
-- One dedicated endpoint for reminder evaluation: `/api/cron/evaluate-reminders` (Next.js Route Handler) — or the equivalent Supabase Edge Function, depending on the scheduler choice (§6).
-- Supabase Auth manages sessions (via the `@supabase/ssr` helper for Next.js).
+Layering: **routes → services → Drizzle repos**. App-layer authorization by authenticated `user_id`. Existing Postgres RLS remains defense-in-depth.
 
-### 2.3 Database — Supabase Postgres
-- Tables: `profiles`, `courses`, `tasks`, `reminder_thresholds`, `notification_deliveries`, `attachments` (full detail in `DATA-MODEL.md`).
-- RLS enabled on all tables, scoped to `auth.uid()`.
-- **Trigger 1:** `on auth.users insert → auto-create profiles row`.
-- **Trigger 2:** `on tasks insert → auto-generate 4 reminder_thresholds (H-7/H-3/H-1/H-0)`, per the rule in `DOMAIN.md`.
+### 2.3 Database — Supabase Postgres + Drizzle
+- DDL / triggers / RLS: `supabase/migrations/` (source of schema truth for this branch)
+- Query layer: `@deadline-radar/db` (Drizzle schema mirroring `DATA-MODEL.md`)
+- Privileged `DATABASE_URL` from the API (service DB role)
 
 ### 2.4 Storage — Supabase Storage
-- One bucket (e.g. `attachments`), **private**, access controlled via RLS/signed URLs.
-- Path convention: `attachments/{user_id}/{task_id}/{filename}`.
-- When a task is deleted → its related files in storage also need to be cleaned up (via an Edge Function trigger or a cleanup job — **implementation detail TBD**).
+- Private bucket `attachments`; API uses service role for upload/signed URLs
+- Path: `attachments/{user_id}/{task_id}/{filename}`
 
 ### 2.5 Email — Resend
-- Sends reminder emails per `notification_deliveries` row with status `pending` and `channel = email`.
-- MVP: a single email template with a dynamic urgency label (e.g. "H-7", "H-0 — today!"). A separate template per tier can be a future improvement.
+- Reminder emails from the API cron/evaluator path
 
-### 2.6 Scheduler — two candidates (not yet decided)
-
-| | **Option A: Supabase pg_cron + Edge Function** | **Option B: Vercel Cron + Next.js API route** |
-|---|---|---|
-| Execution location | Within the Supabase ecosystem | Within the Vercel/Next.js ecosystem |
-| Pros | Close to the DB, no Next.js cold-start, works even if hosting isn't Vercel | Easier to debug since it's the same language/codebase as the app, easy to trigger manually |
-| Cons | Requires writing a separate Edge Function (Deno runtime) | Depends on Vercel Cron (subject to plan/limits) |
-| Requirement | Runs at least every hour | Runs at least every hour |
-
-> Final decision pending the hosting decision (`product.md` §10).
+### 2.6 Scheduler
+- Endpoint lives on Elysia (`/api/cron/evaluate-reminders`)
+- Production runner (pg_cron, external cron, host scheduler) remains **TBD** per `product.md`
+- Local: `curl -H "Authorization: Bearer $CRON_SECRET" http://127.0.0.1:4025/api/cron/evaluate-reminders`
 
 ## 3. Data Flow: Reminder Evaluation (per run)
 
-1. Scheduler triggers the job (hourly).
-2. The job (using the `service_role` key, bypassing RLS) queries all `tasks` with `status != done` that have `reminder_thresholds` that are "due" (see the trigger-time rule in `DOMAIN.md` §4) and don't yet have a `notification_deliveries` row (`sent`/`pending`) for that combination.
-3. For each match: insert 2 `notification_deliveries` rows (`email` + `in_app`), status `pending`.
-4. Process the `email` delivery → call the Resend API → update status to `sent`/`failed`.
-5. Process the `in_app` delivery → the insert itself already counts as `sent` (immediately available for the user to read).
-6. The `/dashboard` client & bell icon display new notifications — MVP uses simple polling; Supabase Realtime can be an upgrade later (§7).
+1. Scheduler hits the API cron route (hourly).
+2. Job loads open tasks + thresholds + deliveries via Drizzle.
+3. Pure domain logic (`@deadline-radar/domain` `evaluateReminders`) decides create/retry actions.
+4. Insert/update `notification_deliveries`; send email via Resend; in-app rows marked `sent`.
+5. UI polls notifications via API.
 
 ## 4. Auth & Security
 
-- Supabase Auth, email/password for MVP (`product.md` §5.1).
-- RLS policy overview (details in `DATA-MODEL.md` §5):
-  - `profiles`: user can only access their own row.
-  - `courses`, `tasks`, `attachments`, `reminder_thresholds`: scoped to the owner (directly via `user_id` or via a join to `tasks`).
-  - `notification_deliveries`: insert/update only via `service_role` (the scheduler job); the user can only `select` and update `read_at` for their own rows.
-- Environment variables:
-  - `NEXT_PUBLIC_SUPABASE_URL`
-  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-  - `SUPABASE_SERVICE_ROLE_KEY` (server-only, used by the scheduler job for cross-user evaluation)
-  - `RESEND_API_KEY`
+- Supabase Auth for identity (email/password MVP).
+- Elysia sets `dr_access_token` / `dr_refresh_token` httpOnly cookies after login/register/confirm.
+- JWT verified via Supabase **JWKS** (ES256/RS256; legacy HS256 JWT secret optional fallback) on protected API routes **and** in the Next proxy.
+- Invalid/expired tokens are cleared by `/api/auth/session` and on any API `401`.
+- Backend rate limits (in-memory MVP): auth 30/min, general 180/min, cron 10/min; `Cache-Control: private, no-store` on `/api/*`.
+- Browser talks to web origin only; Next rewrites `/api/*` to the API so cookies stay same-site.
+- Env (see `.env.example`): `DATABASE_URL`, `SUPABASE_*`, `SUPABASE_JWT_SECRET`, `RESEND_*`, `CRON_SECRET`, `WEB_ORIGIN`, `API_ORIGIN`, `API_PORT`.
 
-## 5. Folder Structure (proposed)
+## 5. Folder Structure
 
 ```
-/app
-  /(auth)/login
-  /(auth)/register
-  /(dashboard)/dashboard
-  /(dashboard)/courses
-  /(dashboard)/tasks
-  /(dashboard)/tasks/[id]
-  /(dashboard)/calendar
-  /(dashboard)/preferences
-  /(dashboard)/preferences/notifications
-  /api/cron/evaluate-reminders/route.ts
-/components
-  /ui        (shadcn/ui components)
-  /tasks
-  /courses
-  /notifications
-  /preferences
-/lib
-  /supabase  (client.ts, server.ts)
-  /validation (zod schemas)
-  /email     (resend templates/helpers)
-/types
+/
+  apps/web/                 # Next.js UI :3025
+  apps/api/                 # Elysia + Bun :4025
+  packages/db/              # Drizzle schema + client
+  packages/validation/      # shared Zod schemas
+  packages/domain/          # pure reminder evaluation
+  supabase/migrations/      # SQL DDL / RLS / triggers
+  docs/
+  nx.json
+  package.json              # Bun workspaces
 ```
 
 ## 6. Deployment
-- Hosting: **TBD** (`product.md` §10).
-- CI/CD: **TBD** — default assumption: auto-deploy from git if hosting = Vercel.
+- Hosting: **TBD** (`product.md` §10). Local: Bun + Nx (`bun run dev`).
+- Production scheduler / API host: **TBD**.
 
 ## 7. Open Architecture Questions
-- [ ] Final scheduler choice: Option A vs Option B.
-- [ ] Final hosting choice.
-- [ ] Realtime notifications (Supabase Realtime) vs simple polling for MVP — suggestion: start with polling, upgrade later.
-- [ ] Cleanup strategy for storage files when a task/attachment is deleted.
-- [ ] Max retry attempts & backoff for failed email deliveries (related to `DOMAIN.md` §7).
+- [ ] Final production host for `apps/api` and cron runner.
+- [ ] Final hosting for `apps/web`.
+- [ ] Realtime notifications vs polling (MVP: polling).
+- [ ] Storage cleanup when attachments/tasks are deleted.
+- [ ] Max retry / backoff for failed emails (`DOMAIN.md` §7).
