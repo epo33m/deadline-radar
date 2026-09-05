@@ -1,0 +1,50 @@
+{
+  "name": "web",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "next dev --port 3025",
+    "build": "next build",
+    "start": "next start --port 3025",
+    "lint": "eslint .",
+    "test": "bun test",
+    "generate-api": "openapi-typescript http://127.0.0.1:4025/openapi/json -o lib/api/schema.d.ts"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.7.0",
+    "@deadline-radar/domain": "workspace:*",
+    "@deadline-radar/validation": "workspace:*",
+    "@supabase/ssr": "^0.12.5",
+    "@supabase/supabase-js": "^2.112.4",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "jose": "^6.2.12",
+    "lucide-react": "^1.38.0",
+    "next": "^16.3.4",
+    "openapi-fetch": "^0.17.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "shadcn": "^4.19.1",
+    "tailwind-merge": "^3.6.0",
+    "tw-animate-css": "^1.4.0",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "eslint": "9",
+    "eslint-config-next": "^16.3.4",
+    "openapi-typescript": "^7.10.1",
+    "postcss": "^8.5.26",
+    "tailwindcss": "^4.3.3",
+    "typescript": "5"
+  },
+  "nx": {
+    "targets": {
+      "dev": {
+        "continuous": true
+      }
+    }
+  }
+}

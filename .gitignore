@@ -8,6 +8,7 @@ node_modules/
 out/
 build/
 dist/
+.nx/
 
 # env / secrets
 .env
@@ -43,6 +44,7 @@ supabase/.temp/
 graphify-out/
 raw/
 AGENTS.md
+CLAUDE.md
 
 # mattpocock skills (local only)
 .agents/skills/

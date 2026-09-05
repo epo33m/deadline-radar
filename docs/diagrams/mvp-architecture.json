@@ -11,20 +11,20 @@
       {
         "id": "primary-path",
         "label": "Primary app path",
-        "focus": ["browser", "nextjs", "auth", "postgres"],
-        "note": "Student UI and server actions talk to Supabase Auth and Postgres under RLS."
+        "focus": ["browser", "nextjs", "api", "auth", "postgres"],
+        "note": "Browser hits Next UI; same-origin /api rewrites to Elysia. Auth + data via API (Drizzle)."
       },
       {
         "id": "reminders",
         "label": "Reminder delivery",
-        "focus": ["cron", "nextjs", "postgres", "resend"],
-        "note": "Hourly cron evaluates due thresholds; email via Resend; in-app via client polling."
+        "focus": ["cron", "api", "postgres", "resend"],
+        "note": "Hourly cron hits Elysia evaluate-reminders; email via Resend; in-app via client polling."
       },
       {
         "id": "attachments",
         "label": "Attachments",
-        "focus": ["browser", "nextjs", "storage"],
-        "note": "Private file uploads land in Supabase Storage with signed URL access."
+        "focus": ["browser", "nextjs", "api", "storage"],
+        "note": "Uploads go through the API to Supabase Storage with signed URL access."
       }
     ]
   },
@@ -40,10 +40,19 @@
     {
       "id": "nextjs",
       "type": "frontend",
-      "label": "Next.js App",
-      "sublabel": "App Router + RSC",
-      "tag": "Zod + shadcn",
-      "pos": [300, 292],
+      "label": "Next.js UI",
+      "sublabel": "apps/web :3025",
+      "tag": "RSC + shadcn",
+      "pos": [260, 200],
+      "size": [170, 80]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "Elysia API",
+      "sublabel": "apps/api :4025",
+      "tag": "OpenAPI + Drizzle",
+      "pos": [260, 360],
       "size": [170, 80]
     },
     {
@@ -58,7 +67,7 @@
       "id": "postgres",
       "type": "database",
       "label": "Postgres",
-      "sublabel": "RLS + triggers",
+      "sublabel": "Drizzle + RLS",
       "pos": [600, 300],
       "size": [160, 64]
     },
@@ -73,10 +82,10 @@
     {
       "id": "cron",
       "type": "backend",
-      "label": "Vercel Cron",
+      "label": "Scheduler",
       "sublabel": "evaluate-reminders",
-      "tag": "hourly",
-      "pos": [300, 500],
+      "tag": "hourly TBD",
+      "pos": [60, 500],
       "size": [170, 72]
     },
     {
@@ -93,6 +102,11 @@
       "kind": "region",
       "label": "Supabase",
       "wraps": ["auth", "postgres", "storage"]
+    },
+    {
+      "kind": "region",
+      "label": "Nx monorepo",
+      "wraps": ["nextjs", "api"]
     }
   ],
   "connections": [
@@ -100,79 +114,48 @@
       "id": "browser-to-nextjs",
       "from": "browser",
       "to": "nextjs",
-      "label": "HTTPS",
-      "variant": "emphasis"
+      "label": "HTTPS"
     },
     {
-      "id": "nextjs-to-auth",
+      "id": "nextjs-to-api",
       "from": "nextjs",
+      "to": "api",
+      "label": "/api rewrite"
+    },
+    {
+      "id": "api-to-auth",
+      "from": "api",
       "to": "auth",
-      "label": "session",
-      "variant": "security",
-      "fromSide": "top",
-      "toSide": "left"
+      "label": "identity"
     },
     {
-      "id": "nextjs-to-postgres",
-      "from": "nextjs",
+      "id": "api-to-postgres",
+      "from": "api",
       "to": "postgres",
-      "label": "CRUD + RLS",
-      "labelDy": -28
+      "label": "Drizzle"
     },
     {
-      "id": "nextjs-to-storage",
-      "from": "nextjs",
+      "id": "api-to-storage",
+      "from": "api",
       "to": "storage",
-      "label": "upload",
-      "fromSide": "bottom",
-      "toSide": "left",
-      "labelDy": 36
+      "label": "files"
     },
     {
-      "id": "cron-to-nextjs",
-      "from": "cron",
-      "to": "nextjs",
-      "label": "invoke",
-      "variant": "dashed",
-      "fromSide": "top",
-      "toSide": "bottom",
-      "labelDx": 48
-    },
-    {
-      "id": "nextjs-to-resend",
-      "from": "nextjs",
+      "id": "api-to-resend",
+      "from": "api",
       "to": "resend",
-      "label": "send email",
-      "fromSide": "top",
-      "toSide": "top",
-      "via": [[385, 80], [965, 80]],
-      "labelAt": [640, 68]
+      "label": "email"
+    },
+    {
+      "id": "cron-to-api",
+      "from": "cron",
+      "to": "api",
+      "label": "Bearer CRON_SECRET"
     }
   ],
-  "cards": [
-    {
-      "dot": "cyan",
-      "title": "App",
-      "items": [
-        "Next.js App Router with server actions",
-        "Browser polls for in-app notifications"
-      ]
-    },
-    {
-      "dot": "emerald",
-      "title": "Data",
-      "items": [
-        "Postgres holds profiles, courses, tasks, thresholds, deliveries",
-        "Private attachments bucket with signed URLs"
-      ]
-    },
-    {
-      "dot": "rose",
-      "title": "Reminders",
-      "items": [
-        "Vercel Cron hourly; job uses service_role to evaluate thresholds",
-        "Email via Resend; dual-channel notification_deliveries"
-      ]
-    }
+  "notes": [
+    "Next.js is UI-only; Elysia owns auth, API, and reminder evaluation.",
+    "OpenAPI contract at /openapi; session cookies are httpOnly on the web origin.",
+    "Scheduler runner is TBD; endpoint is GET /api/cron/evaluate-reminders."
   ]
 }

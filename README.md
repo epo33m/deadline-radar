@@ -15,12 +15,17 @@ Personal academic task tracker that helps students monitor coursework and meet d
 
 | Layer | Choice |
 |---|---|
-| Package manager | Bun |
-| Framework | Next.js (App Router) |
+| Package manager | Bun (workspaces) |
+| Monorepo | Nx |
+| UI | Next.js App Router (`apps/web` :3025) |
+| API | Elysia on Bun (`apps/api` :4025) |
 | Language | TypeScript |
 | Styling | Tailwind CSS + shadcn/ui |
-| Validation | Zod |
-| Backend | Supabase (PostgreSQL, Auth, Storage) |
+| Validation | Zod (`packages/validation`) |
+| ORM | Drizzle (`packages/db`) |
+| Domain | Reminder evaluation (`packages/domain`) |
+| Auth / DB / Storage | Supabase (Auth + Postgres + Storage) |
+| API contract | OpenAPI |
 | Email | Resend |
 
 Use `bun` / `bunx` for install, scripts, and package adds. Do not use npm, npx, yarn, or pnpm in this repo.
@@ -43,7 +48,7 @@ Product docs under `docs/` are the source of truth. Engineering work follows the
 
 ```bash
 bun install
-cp .env.example .env.local   # fill Supabase + Resend + CRON_SECRET as needed
+cp .env.example .env.local   # fill DATABASE_URL, Supabase, JWT secret, Resend, CRON_SECRET
 ```
 
 Apply migrations in the Supabase SQL Editor (in order):
@@ -54,19 +59,23 @@ Apply migrations in the Supabase SQL Editor (in order):
 4. `supabase/migrations/20260901030000_attachments.sql`
 5. `supabase/migrations/20260901040000_notification_deliveries.sql`
 
-In Supabase Auth settings for local MVP: disable **Confirm email**, and set Site URL to `http://localhost:3000`.
+In Supabase Auth settings for local MVP: disable **Confirm email**, and set Site URL to `http://127.0.0.1:3025`.
 
 ```bash
-bun run dev
-bun test
+bun run dev          # API :4025 + web :3025
+bun run dev:web      # UI only
+bun run dev:api      # API only
+bunx nx run-many -t test
 ```
+
+OpenAPI UI: [http://127.0.0.1:4025/openapi](http://127.0.0.1:4025/openapi) (also rewritten via the web origin).
 
 Trigger reminder evaluation locally (no `CRON_SECRET` required outside production):
 
 ```bash
-curl http://localhost:3000/api/cron/evaluate-reminders
+curl http://127.0.0.1:4025/api/cron/evaluate-reminders
 ```
 
 ## Status
 
-MVP tickets in progress. Reminder delivery is issue #9.
+MVP in progress on Nx + Elysia backend. Set `DATABASE_URL` and `SUPABASE_JWT_SECRET` before exercising authenticated API routes.

@@ -100,7 +100,7 @@ Per `product.md` §9 — **intentionally not built** in the MVP:
 
 ## 7. Still-Pending Decisions (don't block starting development, but must be finalized before launch)
 
-- [ ] Scheduler choice: Supabase pg_cron vs Vercel Cron (`ARCHITECTURE.md` §6)
+- [ ] Scheduler runner for Elysia cron endpoint (`ARCHITECTURE.md` §2.6)
 - [ ] Final hosting
 - [ ] `estimated_duration` unit
 - [ ] Attachment file size & type limits

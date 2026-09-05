@@ -2,7 +2,7 @@
 
 > **Status:** Baseline v0.1 (locked)
 > **Owner:** (add your name)
-> **Last updated:** 2026-09-01
+> **Last updated:** 2026-09-05
 
 ---
 
@@ -30,17 +30,21 @@ The app is hosted and multi-user (each user has their own account, with data iso
 
 | Layer | Choice |
 |---|---|
-| Framework | Next.js (App Router) |
+| Monorepo | Nx + Bun workspaces |
+| UI | Next.js (App Router) — `apps/web` :3025 |
+| API | Elysia (Bun) — `apps/api` :4025 |
 | Language | TypeScript |
 | Styling | Tailwind CSS |
 | UI Components | shadcn/ui |
-| Schema validation | Zod |
+| Schema validation | Zod (`packages/validation`) |
+| ORM | Drizzle (`packages/db`) |
 | Database | Supabase PostgreSQL |
-| Auth | Supabase Auth |
+| Auth | Supabase Auth (session owned by API) |
+| API contract | OpenAPI |
 | Storage | Supabase Storage |
 | Email | Resend |
 | Hosting | **TBD** |
-| Scheduler | **TBD** — implementation (Supabase pg_cron + Edge Function vs Vercel Cron + API route) decided separately, not locked in this PRD |
+| Scheduler | **TBD** — hits Elysia `GET /api/cron/evaluate-reminders` (at least hourly) |
 
 ## 5. Core Features (MVP)
 
@@ -192,7 +196,7 @@ The following features are **intentionally excluded from the MVP**, noted as can
 
 ## 10. Open Questions / Decisions Needed
 
-- [ ] Final scheduler implementation: Supabase pg_cron + Edge Function, or Vercel Cron + API route? (requirement: at least hourly)
+- [ ] Final scheduler runner for Elysia `/api/cron/evaluate-reminders` (host cron, pg_cron, etc.; requirement: at least hourly)
 - [ ] Final hosting: Vercel or something else?
 - [ ] Size limit & allowed file types for attachments (`type = file`)?
 - [ ] `estimated_duration` format: stored as integer minutes, or free text (e.g. "2h")?

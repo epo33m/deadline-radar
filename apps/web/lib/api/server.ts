@@ -1,0 +1,129 @@
+import { cookies, headers } from "next/headers";
+
+const API_ORIGIN = process.env.API_ORIGIN ?? "http://127.0.0.1:4025";
+const ACCESS_COOKIE = "dr_access_token";
+const REFRESH_COOKIE = "dr_refresh_token";
+
+export type ApiErrorBody = {
+  error?: string;
+  fieldErrors?: Partial<Record<string, string[]>>;
+  message?: string;
+  success?: string;
+};
+
+function parseSetCookie(header: string): {
+  name: string;
+  value: string;
+  options: {
+    httpOnly?: boolean;
+    secure?: boolean;
+    path?: string;
+    maxAge?: number;
+    sameSite?: "lax" | "strict" | "none";
+  };
+} | null {
+  const parts = header.split(";").map((p) => p.trim());
+  const [nv, ...attrs] = parts;
+  const eq = nv.indexOf("=");
+  if (eq <= 0) return null;
+  const name = nv.slice(0, eq);
+  const value = nv.slice(eq + 1);
+  const options: {
+    httpOnly?: boolean;
+    secure?: boolean;
+    path?: string;
+    maxAge?: number;
+    sameSite?: "lax" | "strict" | "none";
+  } = {};
+  for (const attr of attrs) {
+    const lower = attr.toLowerCase();
+    if (lower === "httponly") options.httpOnly = true;
+    else if (lower === "secure") options.secure = true;
+    else if (lower.startsWith("path=")) options.path = attr.slice(5);
+    else if (lower.startsWith("max-age="))
+      options.maxAge = Number(attr.slice(8));
+    else if (lower.startsWith("samesite=")) {
+      const v = attr.slice(9).toLowerCase();
+      if (v === "lax" || v === "strict" || v === "none") options.sameSite = v;
+    }
+  }
+  return { name, value, options };
+}
+
+async function cookieHeader(): Promise<string> {
+  const store = await cookies();
+  return store
+    .getAll()
+    .map((c) => `${c.name}=${c.value}`)
+    .join("; ");
+}
+
+async function applySetCookies(response: Response): Promise<void> {
+  const store = await cookies();
+  const raw =
+    typeof response.headers.getSetCookie === "function"
+      ? response.headers.getSetCookie()
+      : [];
+  for (const header of raw) {
+    const parsed = parseSetCookie(header);
+    if (!parsed) continue;
+    store.set(parsed.name, parsed.value, parsed.options);
+  }
+}
+
+/** Drop stale auth cookies so middleware cannot loop on invalid JWTs. */
+export async function clearLocalAuthCookies(): Promise<void> {
+  const store = await cookies();
+  store.delete(ACCESS_COOKIE);
+  store.delete(REFRESH_COOKIE);
+}
+
+export async function apiFetch<T = unknown>(
+  path: string,
+  init: RequestInit = {},
+): Promise<{ data: T; response: Response }> {
+  const headerStore = await headers();
+  const cookie = await cookieHeader();
+  const headersInit = new Headers(init.headers);
+  if (cookie) headersInit.set("cookie", cookie);
+  if (
+    !headersInit.has("content-type") &&
+    init.body &&
+    !(init.body instanceof FormData)
+  ) {
+    headersInit.set("content-type", "application/json");
+  }
+  const fwdHost =
+    headerStore.get("x-forwarded-host") ?? headerStore.get("host");
+  if (fwdHost) headersInit.set("x-forwarded-host", fwdHost);
+  const fwdProto = headerStore.get("x-forwarded-proto") ?? "http";
+  headersInit.set("x-forwarded-proto", fwdProto);
+  headersInit.set("origin", process.env.WEB_ORIGIN ?? "http://127.0.0.1:3025");
+
+  const response = await fetch(`${API_ORIGIN}${path}`, {
+    ...init,
+    headers: headersInit,
+    cache: "no-store",
+  });
+
+  await applySetCookies(response);
+
+  if (response.status === 401) {
+    await clearLocalAuthCookies();
+  }
+
+  const text = await response.text();
+  const data = (text ? JSON.parse(text) : {}) as T;
+  return { data, response };
+}
+
+export async function apiJson<T = unknown>(
+  path: string,
+  init: RequestInit = {},
+): Promise<T & ApiErrorBody> {
+  const { data, response } = await apiFetch<T & ApiErrorBody>(path, init);
+  if (!response.ok && !data.error) {
+    return { ...data, error: `Request failed (${response.status})` };
+  }
+  return data;
+}
