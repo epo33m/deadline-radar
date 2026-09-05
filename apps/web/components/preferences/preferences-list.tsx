@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronRight } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { TimezoneForm } from "@/components/preferences/timezone-form";
 import { Dialog } from "@/components/ui/dialog";
@@ -14,11 +14,14 @@ export function PreferencesList({ timezone }: PreferencesListProps) {
   const [open, setOpen] = useState(false);
   const [currentTimezone, setCurrentTimezone] = useState(timezone);
   const [summary, setSummary] = useState(timezone);
+  const [trackedTimezone, setTrackedTimezone] = useState(timezone);
 
-  useEffect(() => {
+  // Sync from server prop without an effect (avoids cascading renders).
+  if (trackedTimezone !== timezone) {
+    setTrackedTimezone(timezone);
     setCurrentTimezone(timezone);
     setSummary(timezone);
-  }, [timezone]);
+  }
 
   return (
     <>

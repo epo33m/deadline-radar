@@ -1,10 +1,16 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { type NextRequest, NextResponse } from "next/server";
 
+import {
+  ACCESS_COOKIE,
+  AUTH_BRIDGE_HEADER,
+  AUTH_BRIDGE_VALUE,
+  REFRESH_COOKIE,
+  REFRESH_COOKIE_MAX_AGE_SECONDS,
+  authCookieOptions,
+  type AuthTokenBody,
+} from "@/lib/auth/cookies";
 import { resolveSessionGate } from "@/lib/auth/session-gate";
-
-export const ACCESS_COOKIE = "dr_access_token";
-export const REFRESH_COOKIE = "dr_refresh_token";
 
 function supabaseUrl(): string {
   return (
@@ -16,6 +22,10 @@ function supabaseUrl(): string {
 
 function issuer(): string {
   return `${supabaseUrl()}/auth/v1`;
+}
+
+function apiOrigin(): string {
+  return process.env.API_ORIGIN ?? "http://127.0.0.1:4025";
 }
 
 let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
@@ -40,6 +50,23 @@ function clearAuthCookies(response: NextResponse) {
     path: "/",
     maxAge: 0,
   });
+}
+
+function applySessionCookies(
+  response: NextResponse,
+  data: AuthTokenBody,
+): void {
+  if (!data.accessToken || !data.refreshToken) return;
+  response.cookies.set(
+    ACCESS_COOKIE,
+    data.accessToken,
+    authCookieOptions(data.expiresIn ?? 60 * 60),
+  );
+  response.cookies.set(
+    REFRESH_COOKIE,
+    data.refreshToken,
+    authCookieOptions(REFRESH_COOKIE_MAX_AGE_SECONDS),
+  );
 }
 
 async function verifyToken(token: string): Promise<boolean> {
@@ -69,22 +96,81 @@ async function verifyToken(token: string): Promise<boolean> {
   }
 }
 
-/** Only treat the access cookie as a session if the JWT verifies. */
-async function resolveHasSession(
-  request: NextRequest,
-): Promise<{ hasSession: boolean; shouldClearCookies: boolean }> {
-  const token = request.cookies.get(ACCESS_COOKIE)?.value;
-  if (!token) {
-    return { hasSession: false, shouldClearCookies: false };
+/**
+ * Resolve session from access JWT, or silently refresh using the refresh cookie.
+ */
+async function resolveHasSession(request: NextRequest): Promise<{
+  hasSession: boolean;
+  shouldClearCookies: boolean;
+  refreshTokens: AuthTokenBody | null;
+}> {
+  const access = request.cookies.get(ACCESS_COOKIE)?.value;
+  const refresh = request.cookies.get(REFRESH_COOKIE)?.value;
+
+  if (access) {
+    const ok = await verifyToken(access);
+    if (ok) {
+      return {
+        hasSession: true,
+        shouldClearCookies: false,
+        refreshTokens: null,
+      };
+    }
   }
 
-  const ok = await verifyToken(token);
-  if (ok) return { hasSession: true, shouldClearCookies: false };
-  return { hasSession: false, shouldClearCookies: true };
+  if (!refresh) {
+    return {
+      hasSession: false,
+      shouldClearCookies: Boolean(access),
+      refreshTokens: null,
+    };
+  }
+
+  try {
+    const upstream = await fetch(`${apiOrigin()}/api/auth/refresh`, {
+      method: "POST",
+      headers: {
+        cookie: `${REFRESH_COOKIE}=${refresh}`,
+        [AUTH_BRIDGE_HEADER]: AUTH_BRIDGE_VALUE,
+        origin: process.env.WEB_ORIGIN ?? "http://127.0.0.1:3025",
+      },
+      cache: "no-store",
+    });
+
+    if (!upstream.ok) {
+      return {
+        hasSession: false,
+        shouldClearCookies: true,
+        refreshTokens: null,
+      };
+    }
+
+    const data = (await upstream.json()) as AuthTokenBody;
+    if (!data.accessToken || !data.refreshToken) {
+      return {
+        hasSession: false,
+        shouldClearCookies: true,
+        refreshTokens: null,
+      };
+    }
+
+    return {
+      hasSession: true,
+      shouldClearCookies: false,
+      refreshTokens: data,
+    };
+  } catch {
+    return {
+      hasSession: false,
+      shouldClearCookies: true,
+      refreshTokens: null,
+    };
+  }
 }
 
 export async function proxy(request: NextRequest) {
-  const { hasSession, shouldClearCookies } = await resolveHasSession(request);
+  const { hasSession, shouldClearCookies, refreshTokens } =
+    await resolveHasSession(request);
   const gate = resolveSessionGate({
     hasSession,
     pathname: request.nextUrl.pathname,
@@ -95,11 +181,13 @@ export async function proxy(request: NextRequest) {
     url.pathname = gate.to;
     const response = NextResponse.redirect(url);
     if (shouldClearCookies) clearAuthCookies(response);
+    else if (refreshTokens) applySessionCookies(response, refreshTokens);
     return response;
   }
 
   const response = NextResponse.next();
   if (shouldClearCookies) clearAuthCookies(response);
+  else if (refreshTokens) applySessionCookies(response, refreshTokens);
   return response;
 }
 

@@ -3,6 +3,7 @@
 import { Info } from "lucide-react";
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useId,
@@ -64,13 +65,13 @@ export function FieldInfoButton({ info }: { info: string }) {
 
   const open = fieldInfo ? fieldInfo.openId === id : localOpen;
 
-  function close() {
+  const close = useCallback(() => {
     if (fieldInfo) {
       fieldInfo.setOpenId(null);
       return;
     }
     setLocalOpen(false);
-  }
+  }, [fieldInfo]);
 
   function setOpen(nextOpen: boolean) {
     if (fieldInfo) {
@@ -88,21 +89,20 @@ export function FieldInfoButton({ info }: { info: string }) {
       setPosition(measureInfoPopoverPosition(buttonRef.current));
     }
 
-    updatePosition();
+    // Defer initial measure so setState is not synchronous in the effect body.
+    const frame = window.requestAnimationFrame(updatePosition);
     window.addEventListener("resize", updatePosition);
     window.addEventListener("scroll", updatePosition, true);
 
     return () => {
+      window.cancelAnimationFrame(frame);
       window.removeEventListener("resize", updatePosition);
       window.removeEventListener("scroll", updatePosition, true);
     };
   }, [open]);
 
   useEffect(() => {
-    if (!open) {
-      setPosition(null);
-      return;
-    }
+    if (!open) return;
 
     function isInsideTooltip(target: Node) {
       return (
@@ -142,7 +142,7 @@ export function FieldInfoButton({ info }: { info: string }) {
       document.removeEventListener("focusin", handleFocusIn, true);
       document.removeEventListener("keydown", handleEscape, true);
     };
-  }, [open, fieldInfo]);
+  }, [open, close]);
 
   const popover =
     open && position

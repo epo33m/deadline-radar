@@ -1,13 +1,17 @@
-import { createRemoteJWKSet, jwtVerify } from "jose";
+import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 
 import { resolveSupabaseUrl } from "../env";
 
 export const ACCESS_COOKIE = "dr_access_token";
 export const REFRESH_COOKIE = "dr_refresh_token";
 
+export const REFRESH_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
+
 export type AuthUser = {
   id: string;
   email: string | undefined;
+  /** Supabase session id from JWT `session_id` when present. */
+  sessionId: string | undefined;
 };
 
 let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
@@ -61,14 +65,13 @@ export async function verifyAccessToken(
   }
 }
 
-function claimsToUser(payload: {
-  sub?: string;
-  email?: unknown;
-}): AuthUser | null {
+export function claimsToUser(payload: JWTPayload): AuthUser | null {
   const sub = payload.sub;
   if (!sub || typeof sub !== "string") return null;
   const email = typeof payload.email === "string" ? payload.email : undefined;
-  return { id: sub, email };
+  const sessionId =
+    typeof payload.session_id === "string" ? payload.session_id : undefined;
+  return { id: sub, email, sessionId };
 }
 
 export function cookieOptions(maxAgeSeconds: number) {

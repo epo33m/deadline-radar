@@ -1,6 +1,7 @@
 import {
   boolean,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   text,
@@ -33,6 +34,23 @@ export const profiles = pgTable("profiles", {
   email: text("email").notNull(),
   name: text("name"),
   timezone: text("timezone").notNull().default("UTC"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+    .notNull()
+    .defaultNow(),
+});
+
+/** Append-only auth security events. Never store secrets/tokens/passwords. */
+export const authAuditEvents = pgTable("auth_audit_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  event: text("event").notNull(),
+  userId: uuid("user_id"),
+  sessionId: text("session_id"),
+  result: text("result").notNull(),
+  method: text("method"),
+  ip: text("ip"),
+  userAgent: text("user_agent"),
+  requestId: text("request_id"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
     .notNull()
     .defaultNow(),

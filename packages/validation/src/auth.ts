@@ -5,11 +5,23 @@ const emailSchema = z
   .min(1, "Email is required")
   .pipe(z.email("Enter a valid email"));
 
-/** Matches Supabase Auth's default minimum password length. */
+/**
+ * Password policy for registration and resets.
+ * Hashing / storage is owned by Supabase Auth.
+ */
 const passwordSchema = z
   .string()
   .min(1, "Password is required")
-  .min(6, "Password must be at least 6 characters");
+  .min(8, "Password must be at least 8 characters")
+  .refine((value) => !/^\s+$/.test(value), {
+    message: "Password cannot be only whitespace",
+  })
+  .refine((value) => !/^(.)\1+$/.test(value), {
+    message: "Password is too weak",
+  })
+  .refine((value) => !/^(password|12345678|qwertyui|abcdefgh)$/i.test(value), {
+    message: "Password is too weak",
+  });
 
 export const registerSchema = z.object({
   email: emailSchema,
