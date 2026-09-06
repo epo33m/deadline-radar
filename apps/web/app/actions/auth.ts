@@ -122,6 +122,58 @@ export async function updatePassword(
   redirect(result.redirectTo ?? "/login");
 }
 
+export async function changePassword(
+  _prev: AuthActionState,
+  formData: FormData,
+): Promise<AuthActionState> {
+  const result = await apiJson("/api/v1/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify({
+      currentPassword: formData.get("currentPassword"),
+      password: formData.get("password"),
+      confirmPassword: formData.get("confirmPassword"),
+    }),
+  });
+
+  if (result.error) {
+    return {
+      error: result.error,
+      fieldErrors: result.fieldErrors,
+    };
+  }
+
+  return { success: "Password updated." };
+}
+
+export async function changeEmail(
+  _prev: AuthActionState,
+  formData: FormData,
+): Promise<AuthActionState> {
+  const result = await apiJson<{ pendingEmail?: string }>(
+    "/api/v1/auth/change-email",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        email: formData.get("email"),
+        currentPassword: formData.get("currentPassword"),
+      }),
+    },
+  );
+
+  if (result.error) {
+    return {
+      error: result.error,
+      fieldErrors: result.fieldErrors,
+    };
+  }
+
+  return {
+    success:
+      result.message ??
+      "Check the new address to confirm the change. Your email stays unchanged until then.",
+  };
+}
+
 export async function logout() {
   await apiJson("/api/v1/auth/logout", { method: "POST" });
   const store = await cookies();

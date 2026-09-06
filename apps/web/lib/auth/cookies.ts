@@ -50,9 +50,9 @@ export function stripAuthTokens<T extends AuthTokenBody>(
   data: T,
 ): Omit<T, "accessToken" | "refreshToken" | "expiresIn"> {
   const normalized = normalizeErrorField(data);
-  const safe = { ...normalized };
+  const safe = { ...normalized } as Partial<T>;
   delete safe.accessToken;
   delete safe.refreshToken;
   delete safe.expiresIn;
-  return safe;
+  return safe as Omit<T, "accessToken" | "refreshToken" | "expiresIn">;
 }

@@ -105,6 +105,21 @@ export const openApiBodies = {
     },
     ["password", "confirmPassword"],
   ),
+  changePassword: objectSchema(
+    {
+      currentPassword: string,
+      password: string,
+      confirmPassword: string,
+    },
+    ["currentPassword", "password", "confirmPassword"],
+  ),
+  changeEmail: objectSchema(
+    {
+      email: string,
+      currentPassword: string,
+    },
+    ["email", "currentPassword"],
+  ),
   timezone: objectSchema({ timezone: string }, ["timezone"]),
   threshold: objectSchema({ days_before: { type: "number" } }, ["days_before"]),
 } as const;

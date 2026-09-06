@@ -24,8 +24,11 @@
 ### 2.1 Profile
 - Created automatically when the user registers (auto-provisioned, see `ARCHITECTURE.md`).
 - Stores `timezone` — used for all reminder time calculations for that user.
+- Stores `email` — a mirror of the Auth email, used by account UI and reminder delivery.
 - All Courses & Tasks are owned by exactly one Profile.
 - Receives the default `user` role on signup (RBAC). Roles are never trusted from the client.
+- **Rule — account email lifecycle:** the account email is owned by Supabase Auth. A signed-in user may request a change; the **new address only** confirms the change (project setting "Confirm email change"). Until confirmed, the Profile email stays unchanged. After Auth confirms, `profiles.email` is updated to match via the `on_auth_user_email_changed` trigger (`DATA-MODEL.md` §4.3). The app never writes `profiles.email` directly for account changes.
+- **Rule — sign-in email reauth:** signed-in password change and email change require the user's **current password** before the Auth update is accepted.
 
 ### 2.2 Course
 - Purely organizational, scoped to its owner.

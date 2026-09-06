@@ -5,6 +5,8 @@ import {
   loginSchema,
   registerSchema,
   resetPasswordSchema,
+  changePasswordSchema,
+  changeEmailSchema,
   timezoneUpdateSchema,
 } from "@deadline-radar/validation";
 import { profiles } from "@deadline-radar/db";
@@ -484,6 +486,186 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
       },
     },
   )
+  .post(
+    "/change-password",
+    async ({ cookie, accessToken, requireAuthz, request }) => {
+      const ctx = await requireAuthz("profile.password.update");
+      const body = await readJsonBody(request);
+      const parsed = changePasswordSchema.safeParse(body);
+      if (!parsed.success) {
+        throw validationFromZod(
+          AUTH_ERRORS.invalidDetails,
+          parsed.error.flatten().fieldErrors,
+        );
+      }
+
+      const email = ctx.subject.email;
+      if (!email) {
+        throw ApiError.unauthorized(AUTH_ERRORS.invalidCurrentPassword);
+      }
+
+      const supabase = createAnonClient();
+      const verify = await supabase.auth.signInWithPassword({
+        email,
+        password: parsed.data.currentPassword,
+      });
+      if (verify.error || !verify.data.session || !verify.data.user) {
+        logAuthProviderError("change-password.verify", verify.error);
+        await recordAuthEvent({
+          event: "password_change.failure",
+          result: "failure",
+          userId: ctx.subject.id,
+          sessionId: ctx.subject.sessionId,
+          method: "password",
+          request,
+          metadata: { reason: "invalid_current_password" },
+        });
+        throw ApiError.validation(AUTH_ERRORS.invalidCurrentPassword);
+      }
+
+      const userClient = createUserClient(accessToken!);
+      const result = await userClient.auth.updateUser({
+        password: parsed.data.password,
+      });
+      if (result.error) {
+        logAuthProviderError("change-password", result.error);
+        await recordAuthEvent({
+          event: "password_change.failure",
+          result: "failure",
+          userId: ctx.subject.id,
+          sessionId: ctx.subject.sessionId,
+          method: "password",
+          request,
+          metadata: { reason: "provider_error" },
+        });
+        throw ApiError.validation(AUTH_ERRORS.unableToComplete);
+      }
+
+      await recordAuthEvent({
+        event: "password_change.success",
+        result: "success",
+        userId: ctx.subject.id,
+        sessionId: ctx.subject.sessionId,
+        method: "password",
+        request,
+      });
+
+      // Keep the session but rotate tokens so the new password is enforced
+      // and old access/refresh JWTs are invalidated by Supabase.
+      const refreshToken =
+        typeof cookie[REFRESH_COOKIE]?.value === "string"
+          ? cookie[REFRESH_COOKIE].value
+          : null;
+      if (refreshToken) {
+        try {
+          const rotated = await supabase.auth.refreshSession({
+            refresh_token: refreshToken,
+          });
+          if (rotated.data.session) {
+            setSessionCookies(
+              cookie as never,
+              rotated.data.session.access_token,
+              rotated.data.session.refresh_token,
+              rotated.data.session.expires_in,
+            );
+          }
+        } catch (error) {
+          console.warn(
+            "[auth] change-password refresh:",
+            error instanceof Error ? error.message : "unknown",
+          );
+        }
+      }
+
+      return { ok: true };
+    },
+    {
+      detail: {
+        tags: ["Auth"],
+        summary: "Change password (signed in)",
+        requestBody: jsonBodyDetail(openApiBodies.changePassword),
+      },
+    },
+  )
+  .post(
+    "/change-email",
+    async ({ accessToken, requireAuthz, request }) => {
+      const ctx = await requireAuthz("profile.email.update");
+      const body = await readJsonBody(request);
+      const parsed = changeEmailSchema.safeParse(body);
+      if (!parsed.success) {
+        throw validationFromZod(
+          AUTH_ERRORS.invalidDetails,
+          parsed.error.flatten().fieldErrors,
+        );
+      }
+
+      const email = ctx.subject.email;
+      if (!email) {
+        throw ApiError.unauthorized(AUTH_ERRORS.invalidCurrentPassword);
+      }
+
+      const supabase = createAnonClient();
+      const verify = await supabase.auth.signInWithPassword({
+        email,
+        password: parsed.data.currentPassword,
+      });
+      if (verify.error || !verify.data.session || !verify.data.user) {
+        logAuthProviderError("change-email.verify", verify.error);
+        await recordAuthEvent({
+          event: "email_change.request_failed",
+          result: "failure",
+          userId: ctx.subject.id,
+          sessionId: ctx.subject.sessionId,
+          method: "password",
+          request,
+          metadata: { reason: "invalid_current_password" },
+        });
+        throw ApiError.validation(AUTH_ERRORS.invalidCurrentPassword);
+      }
+
+      const userClient = createUserClient(accessToken!);
+      const result = await userClient.auth.updateUser({
+        email: parsed.data.email,
+      });
+      if (result.error) {
+        logAuthProviderError("change-email", result.error);
+        await recordAuthEvent({
+          event: "email_change.request_failed",
+          result: "failure",
+          userId: ctx.subject.id,
+          sessionId: ctx.subject.sessionId,
+          method: "email",
+          request,
+          metadata: { reason: "provider_error" },
+        });
+        throw ApiError.validation(AUTH_ERRORS.emailUnavailable);
+      }
+
+      await recordAuthEvent({
+        event: "email_change.requested",
+        result: "success",
+        userId: ctx.subject.id,
+        sessionId: ctx.subject.sessionId,
+        method: "email",
+        request,
+        metadata: { to: parsed.data.email },
+      });
+
+      return {
+        ok: true,
+        message: "Check the new address to confirm the change.",
+        pendingEmail: parsed.data.email,
+      };
+    },
+    {
+      detail: {
+        tags: ["Auth"],
+        summary: "Change email (signed in)",
+        requestBody: jsonBodyDetail(openApiBodies.changeEmail),
+      },
+    },
+  )
   .get(
     "/confirm",
     async ({ query, cookie, set, request }) => {
@@ -520,7 +702,12 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
       } else if (query.token_hash && query.type) {
         const { data, error } = await supabase.auth.verifyOtp({
           token_hash: query.token_hash,
-          type: query.type as "email" | "recovery" | "signup" | "invite",
+          type: query.type as
+            | "email"
+            | "recovery"
+            | "signup"
+            | "invite"
+            | "email_change",
         });
         if (error || !data.session) {
           logAuthProviderError("confirm.otp", error);
@@ -601,6 +788,21 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
         .where(eq(profiles.id, user.id))
         .limit(1);
 
+      // Surface a pending email change so the UI can show confirmation status.
+      let pendingEmail: string | null = null;
+      if (accessToken) {
+        try {
+          const userClient = createUserClient(accessToken);
+          const current = await userClient.auth.getUser();
+          const newEmail = current.data.user?.new_email;
+          if (typeof newEmail === "string" && newEmail.length > 0) {
+            pendingEmail = newEmail;
+          }
+        } catch {
+          // best-effort; do not fail the session read
+        }
+      }
+
       return {
         authenticated: true,
         user: {
@@ -609,6 +811,7 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
           timezone: profile?.timezone ?? "UTC",
           name: profile?.name ?? null,
           sessionId: user.sessionId ?? null,
+          pendingEmail,
         },
       };
     },
