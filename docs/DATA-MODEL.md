@@ -270,6 +270,27 @@ create trigger on_task_created
   for each row execute function generate_default_thresholds();
 ```
 
+### 4.3 Keep `profiles.email` in sync when the Auth email changes
+```sql
+create or replace function handle_user_email_change()
+returns trigger as $$
+begin
+  if new.email is distinct from old.email then
+    update public.profiles
+    set email = new.email
+    where id = new.id;
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+create trigger on_auth_user_email_changed
+  after update of email on auth.users
+  for each row execute function handle_user_email_change();
+```
+
+> `profiles.email` is provisioned from `auth.users` at signup (§4.1) and kept aligned by this trigger. The app never writes `profiles.email` directly for account changes — email changes always flow through Supabase Auth (confirm new address only), then this trigger mirrors the update.
+
 > Note: per `DOMAIN.md` §4, thresholds whose trigger time has already passed when the task is created are **still stored** in this table (not deleted) — it's the scheduler job's responsibility to skip such thresholds during evaluation (not handled at the DB trigger level).
 
 ## 5. Row Level Security (RLS) — policy sketch

@@ -53,6 +53,27 @@ const updateUser = mock(async () => ({
   data: { user: { id: "user-1" } },
   error: null,
 }));
+const getUser = mock(async () => ({
+  data: { user: { id: "user-1", email: "student@example.com" } },
+  error: null,
+}));
+
+const exchangeCodeForSession = mock(
+  async (): Promise<{
+    data: {
+      session: {
+        access_token: string;
+        refresh_token: string;
+        expires_in: number;
+      } | null;
+      user?: { id: string; email: string } | null;
+    };
+    error: { message: string } | null;
+  }> => ({
+    data: { session: null },
+    error: { message: "bad" },
+  }),
+);
 
 mock.module("./supabase", () => ({
   createAnonClient: () => ({
@@ -61,10 +82,7 @@ mock.module("./supabase", () => ({
       signUp,
       refreshSession,
       resetPasswordForEmail,
-      exchangeCodeForSession: mock(async () => ({
-        data: { session: null },
-        error: { message: "bad" },
-      })),
+      exchangeCodeForSession,
       verifyOtp: mock(async () => ({
         data: { session: null },
         error: { message: "bad" },
@@ -75,6 +93,7 @@ mock.module("./supabase", () => ({
     auth: {
       signOut,
       updateUser,
+      getUser,
     },
   }),
   createServiceClient: () => ({
@@ -115,6 +134,11 @@ const { AUTH_BRIDGE_HEADER } = await import("./auth-bridge");
 const AUTH_BRIDGE_VALUE = process.env.AUTH_BRIDGE_SECRET!;
 const { AUTH_ERRORS } = await import("./auth-errors");
 const { resetRateLimitBuckets } = await import("../plugins/rate-limit");
+const { setVerifyAccessTokenOverride } = await import("./auth-tokens");
+const {
+  setLoadAuthorizationContextOverride,
+  createAuthorizationContext,
+} = await import("./authorization");
 
 // Import app after mocks are registered.
 const { app } = await import("../app");
@@ -123,11 +147,16 @@ describe("auth routes integration / security", () => {
   beforeEach(() => {
     resetLoginAttemptStore();
     resetRateLimitBuckets();
+    setVerifyAccessTokenOverride(null);
+    setLoadAuthorizationContextOverride(null);
     signInWithPassword.mockClear();
     signUp.mockClear();
     refreshSession.mockClear();
     resetPasswordForEmail.mockClear();
     signOut.mockClear();
+    updateUser.mockClear();
+    getUser.mockClear();
+    exchangeCodeForSession.mockClear();
   });
 
   test("login returns generic invalid credentials without leaking provider text", async () => {
@@ -395,5 +424,416 @@ describe("auth routes integration / security", () => {
       }
     }
     expect(limited).toBe(true);
+  });
+
+  test("reset-password without a valid session returns invalid reset", async () => {
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/auth/reset-password", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          password: "new-secret12",
+          confirmPassword: "new-secret12",
+        }),
+      }),
+    );
+    expect(response.status).toBe(401);
+    const body = (await response.json()) as { error?: { code?: string; message?: string } | string };
+    const errMsg = typeof body.error === "string" ? body.error : body.error?.message;
+    expect(errMsg).toBe(AUTH_ERRORS.invalidReset);
+  });
+
+  test("reset-password happy path updates the password and clears the session", async () => {
+    setVerifyAccessTokenOverride(async () => ({
+      id: "user-1",
+      email: "student@example.com",
+      sessionId: "sess-1",
+    }));
+
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/auth/reset-password", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer recovery-session-token",
+        },
+        body: JSON.stringify({
+          password: "new-secret12",
+          confirmPassword: "new-secret12",
+        }),
+      }),
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { ok?: boolean; redirectTo?: string };
+    expect(body.ok).toBe(true);
+    expect(body.redirectTo).toBe("/login");
+    expect(updateUser).toHaveBeenCalledTimes(1);
+    expect(signOut).toHaveBeenCalledTimes(1);
+  });
+
+  test("reset-password rejects a weak password via validation", async () => {
+    setVerifyAccessTokenOverride(async () => ({
+      id: "user-1",
+      email: "student@example.com",
+      sessionId: "sess-1",
+    }));
+
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/auth/reset-password", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer recovery-session-token",
+        },
+        body: JSON.stringify({
+          password: "short",
+          confirmPassword: "short",
+        }),
+      }),
+    );
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error?: { code?: string; message?: string } | string };
+    const errMsg = typeof body.error === "string" ? body.error : body.error?.message;
+    expect(errMsg).toBe(AUTH_ERRORS.invalidDetails);
+    expect(updateUser).not.toHaveBeenCalled();
+  });
+
+  test("confirm with an invalid or expired code returns unable to complete", async () => {
+    const response = await app.handle(
+      new Request(
+        "http://localhost/api/v1/auth/confirm?code=expired-or-invalid-code",
+      ),
+    );
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error?: { code?: string; message?: string } | string };
+    const errMsg = typeof body.error === "string" ? body.error : body.error?.message;
+    expect(errMsg).toBe(AUTH_ERRORS.unableToComplete);
+  });
+
+  test("confirm happy path exchanges the code and redirects to the next page", async () => {
+    exchangeCodeForSession.mockImplementationOnce(async () => ({
+      data: {
+        session: {
+          access_token: "recovery-access",
+          refresh_token: "recovery-refresh",
+          expires_in: 3600,
+        },
+        user: { id: "user-1", email: "student@example.com" },
+      },
+      error: null,
+    }));
+
+    const response = await app.handle(
+      new Request(
+        "http://localhost/api/v1/auth/confirm?code=valid-code&next=/reset-password",
+        { headers: { [AUTH_BRIDGE_HEADER]: AUTH_BRIDGE_VALUE } },
+      ),
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      accessToken?: string;
+      redirectTo?: string;
+    };
+    expect(body.accessToken).toBe("recovery-access");
+    expect(body.redirectTo).toBe("/reset-password");
+  });
+
+  test("change-password rejects an incorrect current password", async () => {
+    setVerifyAccessTokenOverride(async () => ({
+      id: "user-1",
+      email: "student@example.com",
+      sessionId: "sess-1",
+    }));
+    setLoadAuthorizationContextOverride(async (subject) =>
+      createAuthorizationContext({
+        subject,
+        roles: ["user"],
+        capabilities: ["profile.password.update"],
+      }),
+    );
+    signInWithPassword.mockImplementationOnce(async () => ({
+      data: { session: null, user: null },
+      error: { message: "Invalid login credentials" },
+    }));
+
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/auth/change-password", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer signed-in-token",
+        },
+        body: JSON.stringify({
+          currentPassword: "wrong-password",
+          password: "new-secret12",
+          confirmPassword: "new-secret12",
+        }),
+      }),
+    );
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error?: { code?: string; message?: string } | string };
+    const errMsg = typeof body.error === "string" ? body.error : body.error?.message;
+    expect(errMsg).toBe(AUTH_ERRORS.invalidCurrentPassword);
+    expect(updateUser).not.toHaveBeenCalled();
+  });
+
+  test("change-password happy path updates the password", async () => {
+    setVerifyAccessTokenOverride(async () => ({
+      id: "user-1",
+      email: "student@example.com",
+      sessionId: "sess-1",
+    }));
+    setLoadAuthorizationContextOverride(async (subject) =>
+      createAuthorizationContext({
+        subject,
+        roles: ["user"],
+        capabilities: ["profile.password.update"],
+      }),
+    );
+    signInWithPassword.mockImplementationOnce(async () => ({
+      data: {
+        session: {
+          access_token: "verify-access",
+          refresh_token: "verify-refresh",
+          expires_in: 3600,
+        },
+        user: { id: "user-1", email: "student@example.com" },
+      },
+      error: null,
+    }));
+
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/auth/change-password", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer signed-in-token",
+        },
+        body: JSON.stringify({
+          currentPassword: "old-secret12",
+          password: "new-secret12",
+          confirmPassword: "new-secret12",
+        }),
+      }),
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { ok?: boolean };
+    expect(body.ok).toBe(true);
+    expect(signInWithPassword).toHaveBeenCalledWith({
+      email: "student@example.com",
+      password: "old-secret12",
+    });
+    expect(updateUser).toHaveBeenCalledTimes(1);
+    expect(updateUser).toHaveBeenCalledWith({ password: "new-secret12" });
+  });
+
+  test("change-password rejects a weak new password via validation", async () => {
+    setVerifyAccessTokenOverride(async () => ({
+      id: "user-1",
+      email: "student@example.com",
+      sessionId: "sess-1",
+    }));
+    setLoadAuthorizationContextOverride(async (subject) =>
+      createAuthorizationContext({
+        subject,
+        roles: ["user"],
+        capabilities: ["profile.password.update"],
+      }),
+    );
+
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/auth/change-password", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer signed-in-token",
+        },
+        body: JSON.stringify({
+          currentPassword: "old-secret12",
+          password: "short",
+          confirmPassword: "short",
+        }),
+      }),
+    );
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error?: { code?: string; message?: string } | string };
+    const errMsg = typeof body.error === "string" ? body.error : body.error?.message;
+    expect(errMsg).toBe(AUTH_ERRORS.invalidDetails);
+    expect(updateUser).not.toHaveBeenCalled();
+  });
+
+  test("change-password requires the profile.password.update capability", async () => {
+    setVerifyAccessTokenOverride(async () => ({
+      id: "user-1",
+      email: "student@example.com",
+      sessionId: "sess-1",
+    }));
+    setLoadAuthorizationContextOverride(async (subject) =>
+      createAuthorizationContext({
+        subject,
+        roles: ["user"],
+        capabilities: ["profile.view"],
+      }),
+    );
+
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/auth/change-password", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer signed-in-token",
+        },
+        body: JSON.stringify({
+          currentPassword: "old-secret12",
+          password: "new-secret12",
+          confirmPassword: "new-secret12",
+        }),
+      }),
+    );
+    expect(response.status).toBe(403);
+  });
+
+  test("change-email happy path requests a change and returns the pending email", async () => {
+    setVerifyAccessTokenOverride(async () => ({
+      id: "user-1",
+      email: "student@example.com",
+      sessionId: "sess-1",
+    }));
+    setLoadAuthorizationContextOverride(async (subject) =>
+      createAuthorizationContext({
+        subject,
+        roles: ["user"],
+        capabilities: ["profile.email.update"],
+      }),
+    );
+    signInWithPassword.mockImplementationOnce(async () => ({
+      data: {
+        session: {
+          access_token: "verify-access",
+          refresh_token: "verify-refresh",
+          expires_in: 3600,
+        },
+        user: { id: "user-1", email: "student@example.com" },
+      },
+      error: null,
+    }));
+    updateUser.mockImplementationOnce(async () => ({
+      data: {
+        user: {
+          id: "user-1",
+          email: "student@example.com",
+          new_email: "new@example.com",
+        },
+      },
+      error: null,
+    }));
+
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/auth/change-email", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer signed-in-token",
+        },
+        body: JSON.stringify({
+          email: "new@example.com",
+          currentPassword: "old-secret12",
+        }),
+      }),
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      ok?: boolean;
+      pendingEmail?: string;
+    };
+    expect(body.ok).toBe(true);
+    expect(body.pendingEmail).toBe("new@example.com");
+    expect(updateUser).toHaveBeenCalledTimes(1);
+    expect(updateUser).toHaveBeenCalledWith({ email: "new@example.com" });
+  });
+
+  test("change-email rejects an unavailable address with a friendly error", async () => {
+    setVerifyAccessTokenOverride(async () => ({
+      id: "user-1",
+      email: "student@example.com",
+      sessionId: "sess-1",
+    }));
+    setLoadAuthorizationContextOverride(async (subject) =>
+      createAuthorizationContext({
+        subject,
+        roles: ["user"],
+        capabilities: ["profile.email.update"],
+      }),
+    );
+    signInWithPassword.mockImplementationOnce(async () => ({
+      data: {
+        session: {
+          access_token: "verify-access",
+          refresh_token: "verify-refresh",
+          expires_in: 3600,
+        },
+        user: { id: "user-1", email: "student@example.com" },
+      },
+      error: null,
+    }));
+    updateUser.mockImplementationOnce(async () => ({
+      data: { user: null },
+      error: { message: "Email already in use" },
+    }));
+
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/auth/change-email", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer signed-in-token",
+        },
+        body: JSON.stringify({
+          email: "taken@example.com",
+          currentPassword: "old-secret12",
+        }),
+      }),
+    );
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error?: { code?: string; message?: string } | string };
+    const errMsg = typeof body.error === "string" ? body.error : body.error?.message;
+    expect(errMsg).toBe(AUTH_ERRORS.emailUnavailable);
+    expect(errMsg).not.toContain("already in use");
+  });
+
+  test("session surfaces a pending email change from the Auth user", async () => {
+    setVerifyAccessTokenOverride(async () => ({
+      id: "user-1",
+      email: "student@example.com",
+      sessionId: "sess-1",
+    }));
+    setLoadAuthorizationContextOverride(async (subject) =>
+      createAuthorizationContext({
+        subject,
+        roles: ["user"],
+        capabilities: ["profile.view"],
+      }),
+    );
+    getUser.mockImplementationOnce(async () => ({
+      data: {
+        user: {
+          id: "user-1",
+          email: "student@example.com",
+          new_email: "new@example.com",
+        },
+      },
+      error: null,
+    }));
+
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/auth/session", {
+        headers: { authorization: "Bearer signed-in-token" },
+      }),
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      user?: { pendingEmail?: string | null };
+    };
+    expect(body.user?.pendingEmail).toBe("new@example.com");
   });
 });

@@ -55,6 +55,25 @@ export const resetPasswordSchema = z
     path: ["confirmPassword"],
   });
 
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Enter your current password"),
+    password: passwordSchema,
+    confirmPassword: z.string().min(1, "Confirm your password"),
+  })
+  .strict()
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
+
+export const changeEmailSchema = z
+  .object({
+    email: emailSchema,
+    currentPassword: z.string().min(1, "Enter your current password"),
+  })
+  .strict();
+
 export const timezoneUpdateSchema = z
   .object({
     timezone: z.string().trim().min(1, "Timezone is required").max(64),

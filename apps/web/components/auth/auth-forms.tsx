@@ -1,7 +1,8 @@
 "use client";
 
 import { Eye, EyeOff } from "lucide-react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   useActionState,
   useState,
@@ -197,6 +198,7 @@ function AuthFormActions({
 
 export function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [fieldErrors, setFieldErrors] = useState<
@@ -204,6 +206,8 @@ export function LoginForm() {
   >({});
   const [showPassword, setShowPassword] = useState(false);
   const [clientErrors, setClientErrors] = useState<ClientFieldErrors>({});
+
+  const confirmError = searchParams.get("error") === "confirm";
 
   const emailError =
     fieldErrors.email?.[0] ?? clientErrors.email ?? undefined;
@@ -260,6 +264,21 @@ export function LoginForm() {
 
   return (
     <form onSubmit={handleSubmit} className="flex w-full flex-col" noValidate>
+      {confirmError ? (
+        <p
+          className="mb-4 rounded-[11px] border border-hairline bg-canvas px-4 py-3 text-sm leading-[1.43] tracking-[-0.224px] text-ink-muted-80"
+          role="status"
+        >
+          This link is invalid or has expired.{" "}
+          <Link
+            href="/forgot-password"
+            className="font-medium text-primary hover:underline focus-visible:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus"
+          >
+            Request a new link
+          </Link>
+          .
+        </p>
+      ) : null}
       <AuthEmailField
         idPrefix="login"
         error={emailError}

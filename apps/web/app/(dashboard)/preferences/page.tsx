@@ -1,3 +1,4 @@
+import { AccountList } from "@/components/preferences/account-list";
 import { PreferencesList } from "@/components/preferences/preferences-list";
 import { requireSession } from "@/lib/api/session";
 
@@ -26,16 +27,7 @@ export default async function PreferencesPage() {
           >
             Account
           </h2>
-          <ul className="list-none overflow-hidden rounded-xl border border-hairline bg-canvas">
-            <li className="flex min-h-12 items-center justify-between gap-4 px-3 py-3 sm:px-4 sm:py-3.5">
-              <span className="shrink-0 text-[17px] font-medium leading-snug tracking-[-0.2px] text-ink">
-                Email
-              </span>
-              <span className="min-w-0 truncate text-[15px] text-ink-muted-80 sm:text-[17px]">
-                {user.email}
-              </span>
-            </li>
-          </ul>
+          <AccountList email={user.email ?? ""} pendingEmail={user.pendingEmail} />
         </section>
 
         <section

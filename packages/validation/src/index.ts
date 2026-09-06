@@ -3,6 +3,8 @@ export {
   loginSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  changePasswordSchema,
+  changeEmailSchema,
   timezoneUpdateSchema,
 } from "./auth";
 export {

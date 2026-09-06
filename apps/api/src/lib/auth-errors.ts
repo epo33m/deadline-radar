@@ -9,6 +9,8 @@ export const AUTH_ERRORS = {
   sessionExpired: "Session expired. Please sign in again.",
   invalidReset: "Invalid or expired reset session. Request a new reset link.",
   registrationFailed: "Unable to complete registration. Please try again.",
+  invalidCurrentPassword: "Your current password is incorrect.",
+  emailUnavailable: "That email is unavailable. Try a different address.",
 } as const;
 
 export function logAuthProviderError(
