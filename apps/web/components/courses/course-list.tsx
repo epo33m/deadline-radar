@@ -380,7 +380,6 @@ export function CourseList({ courses, onAddCourse }: CourseListProps) {
           <CourseForm
             course={editingCourse}
             submitLabel="Save changes"
-            namePlaceholder="Edit course"
             onCancel={() => setEditingCourse(null)}
             onSuccess={() => setEditingCourse(null)}
           />

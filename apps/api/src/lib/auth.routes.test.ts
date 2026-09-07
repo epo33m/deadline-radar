@@ -49,10 +49,15 @@ const resetPasswordForEmail = mock(
 );
 
 const signOut = mock(async () => ({ error: null }));
-const updateUser = mock(async () => ({
-  data: { user: { id: "user-1" } },
-  error: null,
-}));
+const updateUser = mock(
+  async (): Promise<
+    | { data: { user: { id: string } }; error: null }
+    | { data: { user: null }; error: { message: string } }
+  > => ({
+    data: { user: { id: "user-1" } },
+    error: null,
+  }),
+);
 const getUser = mock(async () => ({
   data: { user: { id: "user-1", email: "student@example.com" } },
   error: null,

@@ -17,13 +17,16 @@ import { ApiError } from "../lib/api/errors";
 import {
   extractClientRequestId,
   normalizeRequestId,
+  requestIdPlugin,
 } from "../lib/api/request-id";
 
 /**
  * Authentication + authorization derive.
  * Identity from JWT/cookie; roles/capabilities from DB (never from the client).
  */
-export const authPlugin = new Elysia({ name: "auth" }).derive(
+export const authPlugin = new Elysia({ name: "auth" })
+  .use(requestIdPlugin)
+  .derive(
   { as: "scoped" },
   async ({ cookie, request, requestId }) => {
     const header = request.headers.get("authorization");

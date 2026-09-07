@@ -8,6 +8,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
+import { formActionGapClassName } from "@/components/ui/dialog-form";
 import { cn } from "@/lib/utils";
 
 type DialogProps = {
@@ -26,15 +27,19 @@ const dialogTitleClassName =
   "font-display text-[21px] font-semibold leading-[1.07] tracking-[-0.2px] text-ink";
 
 const dialogBodyClassName =
-  "flex w-full flex-col items-center px-5 pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom))] text-center sm:px-8";
+  "flex w-full flex-col items-center px-6 pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom))] text-center";
 
-export const dialogActionsClassName = "flex w-full flex-col gap-2.5 pt-4";
+export const dialogActionsClassName = cn(
+  "flex w-full flex-col pt-3",
+  formActionGapClassName,
+);
 
-export const dialogPrimaryActionClassName =
-  "min-h-11 w-full rounded-full px-5 font-sans text-[17px] font-normal leading-[1.47] tracking-[-0.374px]";
+const dialogActionBaseClassName =
+  "min-h-11 w-full rounded-lg px-5 font-sans text-[17px] font-normal leading-[1.47] tracking-[-0.374px]";
 
-export const dialogSecondaryActionClassName =
-  "min-h-11 w-full rounded-full px-5 font-sans text-[17px] font-normal leading-[1.47] tracking-[-0.374px]";
+export const dialogPrimaryActionClassName = dialogActionBaseClassName;
+
+export const dialogSecondaryActionClassName = dialogActionBaseClassName;
 
 export function getFocusableElements(container: HTMLElement) {
   return Array.from(
@@ -44,24 +49,8 @@ export function getFocusableElements(container: HTMLElement) {
   ).filter((element) => element.offsetParent !== null);
 }
 
-function isColorPickerMenuOpen() {
-  return Boolean(document.querySelector("[data-color-picker-menu]"));
-}
-
-function isFieldInfoMenuOpen() {
-  return Boolean(document.querySelector("[data-field-info-menu]"));
-}
-
-function isTimezonePickerMenuOpen() {
-  return Boolean(document.querySelector("[data-timezone-picker-menu]"));
-}
-
 function isDialogOverlayMenuOpen() {
-  return (
-    isColorPickerMenuOpen() ||
-    isFieldInfoMenuOpen() ||
-    isTimezonePickerMenuOpen()
-  );
+  return Boolean(document.querySelector("[data-portal-menu]"));
 }
 
 export function Dialog({

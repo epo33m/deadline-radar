@@ -8,8 +8,18 @@ import {
   type TaskActionState,
 } from "@/app/actions/tasks";
 import { Button } from "@/components/ui/button";
+import {
+  dialogActionsClassName,
+  dialogPrimaryActionClassName,
+  dialogSecondaryActionClassName,
+} from "@/components/ui/dialog";
+import {
+  DialogFormRow,
+  dialogFormListClassName,
+  dialogInputClassName,
+} from "@/components/ui/dialog-form";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { SelectMenu } from "@/components/ui/select-menu";
 import { toDatetimeLocalValue } from "@/lib/datetime";
 import type { TaskStatus } from "@/lib/validation/task";
 import type { CourseListItem } from "@/types/course";
@@ -35,6 +45,7 @@ type TaskFormProps = {
   > & { description?: string | null };
   courses: CourseListItem[];
   onSuccess?: () => void;
+  onCancel?: () => void;
   submitLabel: string;
   defaultStatus?: TaskStatus;
   /** When set, course is fixed and not shown as a selectable field. */
@@ -47,6 +58,7 @@ export function TaskForm({
   task,
   courses,
   onSuccess,
+  onCancel,
   submitLabel,
   defaultStatus = "todo",
   lockedCourseId,
@@ -85,111 +97,126 @@ export function TaskForm({
 
   const fieldId = (name: string) => (task ? `${name}-${task.id}` : name);
 
+  const courseOptions = courses.map((course) => ({
+    value: course.id,
+    label: course.code ? `${course.name} (${course.code})` : course.name,
+  }));
+
   return (
-    <form action={formAction} className="flex max-w-lg flex-col gap-4">
+    <form action={formAction} className="flex w-full flex-col">
       {task ? <input type="hidden" name="id" value={task.id} /> : null}
       {returnTo ? <input type="hidden" name="return_to" value={returnTo} /> : null}
-      <div className="space-y-2">
-        <Label htmlFor={fieldId("title")}>Title</Label>
-        <Input
-          id={fieldId("title")}
-          name="title"
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          required
-          aria-invalid={Boolean(state.fieldErrors?.title)}
-        />
-      </div>
-      {lockedCourseId ? (
-        <input type="hidden" name="course_id" value={lockedCourseId} />
-      ) : (
-        <div className="space-y-2">
-          <Label htmlFor={fieldId("course_id")}>Course</Label>
-          <select
-            id={fieldId("course_id")}
-            name="course_id"
-            value={courseId}
-            onChange={(event) => setCourseId(event.target.value)}
+
+      <ul className={dialogFormListClassName}>
+        <DialogFormRow label="Title" htmlFor={fieldId("title")}>
+          <Input
+            id={fieldId("title")}
+            name="title"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
             required
-            className="flex h-9 w-full rounded-md border border-hairline bg-canvas px-3 text-sm text-ink outline-none focus-visible:border-primary"
-            aria-invalid={Boolean(state.fieldErrors?.course_id)}
-          >
-            {courses.map((course) => (
-              <option key={course.id} value={course.id}>
-                {course.name}
-                {course.code ? ` (${course.code})` : ""}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-      <div className="space-y-2">
-        <Label htmlFor={fieldId("deadline")}>Deadline</Label>
-        <Input
-          id={fieldId("deadline")}
-          name="deadline"
-          type="datetime-local"
-          value={deadline}
-          onChange={(event) => setDeadline(event.target.value)}
-          required
-          aria-invalid={Boolean(state.fieldErrors?.deadline)}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor={fieldId("status")}>Status</Label>
-        <select
-          id={fieldId("status")}
-          name="status"
-          value={status}
-          onChange={(event) => setStatus(event.target.value as TaskStatus)}
-          className="flex h-9 w-full rounded-md border border-hairline bg-canvas px-3 text-sm text-ink outline-none focus-visible:border-primary"
+            aria-invalid={Boolean(state.fieldErrors?.title)}
+            className={dialogInputClassName}
+          />
+        </DialogFormRow>
+
+        {lockedCourseId ? (
+          <input type="hidden" name="course_id" value={lockedCourseId} />
+        ) : (
+          <DialogFormRow label="Course" htmlFor={fieldId("course_id")}>
+            <SelectMenu
+              id={fieldId("course_id")}
+              name="course_id"
+              value={courseId}
+              onChange={setCourseId}
+              options={courseOptions}
+              ariaLabel="Course"
+              searchable
+              aria-invalid={Boolean(state.fieldErrors?.course_id)}
+            />
+          </DialogFormRow>
+        )}
+
+        <DialogFormRow label="Deadline" htmlFor={fieldId("deadline")}>
+          <Input
+            id={fieldId("deadline")}
+            name="deadline"
+            type="datetime-local"
+            value={deadline}
+            onChange={(event) => setDeadline(event.target.value)}
+            required
+            aria-invalid={Boolean(state.fieldErrors?.deadline)}
+            className={dialogInputClassName}
+          />
+        </DialogFormRow>
+
+        <DialogFormRow label="Status" htmlFor={fieldId("status")}>
+          <SelectMenu
+            id={fieldId("status")}
+            name="status"
+            value={status}
+            onChange={(value) => setStatus(value as TaskStatus)}
+            options={STATUS_OPTIONS}
+            ariaLabel="Status"
+          />
+        </DialogFormRow>
+
+        <DialogFormRow label="Description" htmlFor={fieldId("description")}>
+          <textarea
+            id={fieldId("description")}
+            name="description"
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            rows={3}
+            className="w-full rounded-none border-0 bg-transparent px-0 py-1 font-sans text-[15px] font-normal leading-normal tracking-[-0.2px] text-ink shadow-none outline-none placeholder:text-ink-muted-48 focus-visible:border-0 focus-visible:ring-0 focus-visible:outline-none aria-invalid:text-destructive"
+          />
+        </DialogFormRow>
+
+        <DialogFormRow
+          label="Estimated duration"
+          htmlFor={fieldId("estimated_duration")}
         >
-          {STATUS_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor={fieldId("description")}>
-          Description <span className="text-ink-muted-48">(optional)</span>
-        </Label>
-        <textarea
-          id={fieldId("description")}
-          name="description"
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
-          rows={3}
-          className="flex w-full rounded-md border border-hairline bg-canvas px-3 py-2 text-sm text-ink outline-none focus-visible:border-primary"
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor={fieldId("estimated_duration")}>
-          Estimated duration{" "}
-          <span className="text-ink-muted-48">(optional minutes)</span>
-        </Label>
-        <Input
-          id={fieldId("estimated_duration")}
-          name="estimated_duration"
-          type="number"
-          min={1}
-          step={1}
-          inputMode="numeric"
-          value={estimatedDuration}
-          onChange={(event) => setEstimatedDuration(event.target.value)}
-          placeholder="90"
-          aria-invalid={Boolean(state.fieldErrors?.estimated_duration)}
-        />
-      </div>
-      <Button type="submit" disabled={pending}>
-        {pending ? "Saving…" : submitLabel}
-      </Button>
+          <Input
+            id={fieldId("estimated_duration")}
+            name="estimated_duration"
+            type="number"
+            min={1}
+            step={1}
+            inputMode="numeric"
+            value={estimatedDuration}
+            onChange={(event) => setEstimatedDuration(event.target.value)}
+            aria-invalid={Boolean(state.fieldErrors?.estimated_duration)}
+            className={dialogInputClassName}
+          />
+        </DialogFormRow>
+      </ul>
+
       {state.error ? (
-        <p className="text-sm text-destructive" role="alert">
+        <p className="pt-4 text-center text-sm text-destructive" role="alert">
           {state.error}
         </p>
       ) : null}
+
+      <div className={dialogActionsClassName}>
+        <Button
+          type="submit"
+          disabled={pending}
+          className={dialogPrimaryActionClassName}
+        >
+          {pending ? "Saving…" : submitLabel}
+        </Button>
+        {onCancel ? (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={pending}
+            className={dialogSecondaryActionClassName}
+          >
+            Cancel
+          </Button>
+        ) : null}
+      </div>
     </form>
   );
 }
@@ -199,10 +226,12 @@ export function AddTaskForm({
   courses,
   lockedCourseId,
   returnTo,
+  onCancel,
 }: {
   courses: CourseListItem[];
   lockedCourseId?: string;
   returnTo?: string;
+  onCancel?: () => void;
 }) {
   const [formKey, setFormKey] = useState(0);
   return (
@@ -212,6 +241,7 @@ export function AddTaskForm({
       lockedCourseId={lockedCourseId}
       returnTo={returnTo}
       submitLabel="Add task"
+      onCancel={onCancel}
       onSuccess={() => setFormKey((current) => current + 1)}
     />
   );

@@ -5,6 +5,7 @@ import {
   toErrorBody,
   normalizeRequestId,
   extractClientRequestId,
+  requestIdPlugin,
 } from "../lib/api";
 import { env } from "../env";
 import { getRedis } from "../lib/redis";
@@ -127,7 +128,9 @@ export function setRateLimitStoreForTests(store: RateLimitStore | null): void {
 /**
  * Rate limit: Redis when REDIS_URL is set; otherwise in-memory (dev/single-node).
  */
-export const rateLimitPlugin = new Elysia({ name: "rate-limit" }).onBeforeHandle(
+export const rateLimitPlugin = new Elysia({ name: "rate-limit" })
+  .use(requestIdPlugin)
+  .onBeforeHandle(
   { as: "global" },
   async ({ request, set, requestId }) => {
     const pathname = new URL(request.url).pathname;

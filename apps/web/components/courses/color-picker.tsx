@@ -1,11 +1,10 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { ChevronDown, ChevronsUpDown } from "lucide-react";
+import { useId, useRef, useState } from "react";
 
 import { FieldInfoButton } from "@/components/courses/field-info-button";
-import { getFocusableElements } from "@/components/ui/dialog";
+import { PortalMenu } from "@/components/ui/portal-menu";
 import {
   COURSE_COLOR_GROUPS,
   findCourseColorOption,
@@ -22,23 +21,11 @@ type ColorPickerProps = {
   value: string;
   onChange: (value: string) => void;
   info?: string;
+  /** Render a small trailing-edge control (dot + chevron) instead of a full-width field. */
+  compact?: boolean;
   className?: string;
   "aria-describedby"?: string;
 };
-
-type MenuPosition = {
-  variant: "dropdown" | "sheet";
-  top?: number;
-  bottom?: number;
-  left: number;
-  width: number;
-  maxHeight: number;
-};
-
-const MENU_MIN_WIDTH = 260;
-const MENU_MARGIN = 16;
-const MENU_MAX_HEIGHT = 360;
-const MOBILE_SHEET_BREAKPOINT = 640;
 
 function ColorDot({ color }: { color: string | null }) {
   const lightFill = color ? isLightCourseColor(color) : false;
@@ -82,70 +69,19 @@ function ColorOption({
   );
 }
 
-function measureMenuPosition(trigger: HTMLButtonElement): MenuPosition {
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-
-  if (viewportWidth < MOBILE_SHEET_BREAKPOINT) {
-    return {
-      variant: "sheet",
-      bottom: MENU_MARGIN,
-      left: MENU_MARGIN,
-      width: viewportWidth - MENU_MARGIN * 2,
-      maxHeight: Math.min(MENU_MAX_HEIGHT, viewportHeight - MENU_MARGIN * 2),
-    };
-  }
-
-  const rect = trigger.getBoundingClientRect();
-  const width = Math.min(
-    Math.max(rect.width, MENU_MIN_WIDTH),
-    viewportWidth - MENU_MARGIN * 2,
-  );
-  const left = Math.min(
-    Math.max(MENU_MARGIN, rect.left),
-    viewportWidth - width - MENU_MARGIN,
-  );
-  const gap = 6;
-  const spaceBelow = viewportHeight - rect.bottom - gap - MENU_MARGIN;
-  const spaceAbove = rect.top - gap - MENU_MARGIN;
-  const maxHeight = Math.min(
-    MENU_MAX_HEIGHT,
-    Math.max(Math.min(spaceBelow, spaceAbove), 120),
-  );
-
-  if (spaceBelow >= 160 || spaceBelow >= spaceAbove) {
-    return {
-      variant: "dropdown",
-      top: rect.bottom + gap,
-      left,
-      width,
-      maxHeight,
-    };
-  }
-
-  return {
-    variant: "dropdown",
-    top: Math.max(MENU_MARGIN, rect.top - gap - maxHeight),
-    left,
-    width,
-    maxHeight,
-  };
-}
-
 export function ColorPicker({
   id,
   value,
   onChange,
   info,
+  compact = false,
   className,
   "aria-describedby": ariaDescribedByExternal,
 }: ColorPickerProps) {
   const menuId = useId();
   const helpId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null);
 
   const selectedLabel = getCourseColorLabel(value);
   const displayValue = normalizeCourseColorForStorage(value);
@@ -153,104 +89,12 @@ export function ColorPicker({
     .filter(Boolean)
     .join(" ");
 
-  const closeMenu = useCallback(() => {
+  function closeMenu() {
     setOpen(false);
-    window.requestAnimationFrame(() => {
-      triggerRef.current?.focus();
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!open || !triggerRef.current) return;
-
-    function updatePosition() {
-      if (!triggerRef.current) return;
-      setMenuPosition(measureMenuPosition(triggerRef.current));
-    }
-
-    updatePosition();
-    window.addEventListener("resize", updatePosition);
-    window.addEventListener("scroll", updatePosition, true);
-
-    return () => {
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updatePosition, true);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open || !menuRef.current) return;
-
-    const frame = window.requestAnimationFrame(() => {
-      const first = getFocusableElements(menuRef.current!)[0];
-      first?.focus();
-    });
-
-    function handlePointerDown(event: MouseEvent) {
-      const target = event.target as Node;
-      if (
-        menuRef.current?.contains(target) ||
-        triggerRef.current?.contains(target)
-      ) {
-        return;
-      }
-      closeMenu();
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        closeMenu();
-        return;
-      }
-
-      if (!menuRef.current) return;
-      const items = getFocusableElements(menuRef.current);
-      if (items.length === 0) return;
-
-      const currentIndex = items.findIndex(
-        (item) => item === document.activeElement,
-      );
-
-      if (event.key === "ArrowDown") {
-        event.preventDefault();
-        items[(currentIndex + 1 + items.length) % items.length]?.focus();
-      } else if (event.key === "ArrowUp") {
-        event.preventDefault();
-        items[(currentIndex - 1 + items.length) % items.length]?.focus();
-      } else if (event.key === "Home") {
-        event.preventDefault();
-        items[0]?.focus();
-      } else if (event.key === "End") {
-        event.preventDefault();
-        items[items.length - 1]?.focus();
-      } else if (event.key === "Tab") {
-        event.preventDefault();
-        if (event.shiftKey) {
-          items[(currentIndex - 1 + items.length) % items.length]?.focus();
-        } else {
-          items[(currentIndex + 1) % items.length]?.focus();
-        }
-      }
-    }
-
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown, true);
-
-    return () => {
-      window.cancelAnimationFrame(frame);
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown, true);
-    };
-  }, [open, closeMenu]);
+  }
 
   function toggleMenu() {
-    if (open) {
-      closeMenu();
-      return;
-    }
-    setOpen(true);
+    setOpen((current) => !current);
   }
 
   function selectPreset(nextValue: string) {
@@ -263,63 +107,8 @@ export function ColorPicker({
     return findCourseColorOption(value)?.token === option.token;
   }
 
-  const menu =
-    open && menuPosition
-      ? createPortal(
-          <div
-            ref={menuRef}
-            id={menuId}
-            data-color-picker-menu=""
-            role="listbox"
-            aria-label="Course color options"
-            style={{
-              ...(menuPosition.variant === "sheet"
-                ? {
-                    bottom: `max(${menuPosition.bottom ?? MENU_MARGIN}px, env(safe-area-inset-bottom, 0px))`,
-                    left: menuPosition.left,
-                    width: menuPosition.width,
-                    maxHeight: menuPosition.maxHeight,
-                  }
-                : {
-                    top: menuPosition.top,
-                    left: menuPosition.left,
-                    width: menuPosition.width,
-                    maxHeight: menuPosition.maxHeight,
-                  }),
-            }}
-            className={cn(
-              "fixed z-[60] overflow-y-auto overscroll-contain border border-hairline bg-canvas py-1 shadow-sm",
-              menuPosition.variant === "sheet" ? "rounded-2xl" : "rounded-xl",
-            )}
-          >
-            <ColorOption
-              option={NO_COURSE_COLOR}
-              selected={isOptionSelected(NO_COURSE_COLOR)}
-              onSelect={() => selectPreset(NO_COURSE_COLOR.light)}
-            />
-
-            {COURSE_COLOR_GROUPS.map((group) => (
-              <div key={group.label} role="presentation">
-                <div className="px-3 py-1.5 text-xs font-medium tracking-normal text-ink-muted-48">
-                  {group.label}
-                </div>
-                {group.options.map((option) => (
-                  <ColorOption
-                    key={option.token}
-                    option={option}
-                    selected={isOptionSelected(option)}
-                    onSelect={() => selectPreset(option.light)}
-                  />
-                ))}
-              </div>
-            ))}
-          </div>,
-          document.body,
-        )
-      : null;
-
   return (
-    <div className="relative min-w-0">
+    <div className={cn("relative min-w-0", compact && "flex items-center justify-end")}>
       {info ? (
         <span id={helpId} className="sr-only">
           {info}
@@ -334,42 +123,77 @@ export function ColorPicker({
         aria-controls={menuId}
         aria-describedby={ariaDescribedBy || undefined}
         onClick={toggleMenu}
-        className={cn(
-          "relative flex w-full items-center gap-2.5 text-left",
-          className,
-        )}
+        className={
+          compact
+            ? "flex h-8 min-w-10 shrink-0 items-center justify-center gap-1 rounded-md border border-hairline bg-canvas px-1.5 text-ink-muted-80 transition-colors hover:bg-muted outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            : cn("flex w-full items-center justify-end gap-2", className)
+        }
       >
-        <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center">
-          <ColorDot color={displayValue || null} />
-        </span>
-        <span
-          className={cn(
-            "min-w-0 flex-1 truncate pl-8",
-            info ? "pr-14" : "pr-10",
-            !displayValue && "text-ink-muted-48",
-          )}
-        >
-          {selectedLabel}
-        </span>
-        <span
-          className={cn(
-            "pointer-events-none absolute inset-y-0 flex items-center",
-            info ? "right-10" : "right-3.5",
-          )}
-        >
-          <ChevronDown
-            className="size-4 text-ink-muted-48"
+        <ColorDot color={displayValue || null} />
+        {!compact ? (
+          <span
+            className={cn(
+              "min-w-0 truncate",
+              !displayValue && "text-ink-muted-48",
+            )}
+          >
+            {selectedLabel}
+          </span>
+        ) : null}
+        {compact ? (
+          <ChevronsUpDown
+            className="size-3.5 shrink-0 text-ink-muted-80"
             aria-hidden="true"
             strokeWidth={1.75}
           />
-        </span>
+        ) : (
+          <ChevronDown
+            className="size-4 shrink-0 text-ink-muted-48"
+            aria-hidden="true"
+            strokeWidth={1.75}
+          />
+        )}
       </button>
       {info ? (
-        <div className="absolute inset-y-0 right-2.5 z-10 flex items-center">
+        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 flex items-center">
           <FieldInfoButton info={info} />
         </div>
       ) : null}
-      {menu}
+
+      <PortalMenu
+        open={open}
+        onClose={closeMenu}
+        triggerRef={triggerRef}
+        menuId={menuId}
+        label="Course color options"
+        arrowNav
+        focusFirstOnOpen
+        measureOptions={{ minWidth: 260, maxHeight: 360, minSpace: 120, belowThreshold: 160 }}
+      >
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-1">
+          <ColorOption
+            option={NO_COURSE_COLOR}
+            selected={isOptionSelected(NO_COURSE_COLOR)}
+            onSelect={() => selectPreset(NO_COURSE_COLOR.light)}
+          />
+
+          {COURSE_COLOR_GROUPS.map((group) => (
+            <div key={group.label} role="presentation">
+              <div className="px-3 py-1.5 text-xs font-medium tracking-normal text-ink-muted-48">
+                {group.label}
+              </div>
+              {group.options.map((option) => (
+                <ColorOption
+                  key={option.token}
+                  option={option}
+                  selected={isOptionSelected(option)}
+                  onSelect={() => selectPreset(option.light)}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+      </PortalMenu>
     </div>
   );
 }

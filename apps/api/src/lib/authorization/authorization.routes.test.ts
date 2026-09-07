@@ -106,6 +106,7 @@ describe("authorization routes — adversarial", () => {
             code: null,
             color: null,
             createdAt: new Date(),
+            updatedAt: new Date(),
             deletedAt: null,
           };
         }

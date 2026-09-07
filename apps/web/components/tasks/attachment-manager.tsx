@@ -45,7 +45,6 @@ function AddLinkForm({ taskId }: { taskId: string }) {
             name="name"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder="Syllabus"
             required
             className="w-48"
             aria-invalid={Boolean(state.fieldErrors?.name)}
@@ -59,7 +58,6 @@ function AddLinkForm({ taskId }: { taskId: string }) {
             type="url"
             value={url}
             onChange={(event) => setUrl(event.target.value)}
-            placeholder="https://…"
             required
             aria-invalid={Boolean(state.fieldErrors?.url)}
           />
@@ -105,7 +103,6 @@ function AddFileForm({ taskId }: { taskId: string }) {
             name="name"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder="Defaults to filename"
             className="w-48"
             aria-invalid={Boolean(state.fieldErrors?.name)}
           />
