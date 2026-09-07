@@ -550,6 +550,7 @@ export function CourseDetail({ course, tasks, timeZone }: CourseDetailProps) {
             courses={[course]}
             lockedCourseId={course.id}
             returnTo={coursePath}
+            onCancel={() => setAddOpen(false)}
           />
         </div>
       </Dialog>
@@ -558,7 +559,6 @@ export function CourseDetail({ course, tasks, timeZone }: CourseDetailProps) {
         <CourseForm
           course={course}
           submitLabel="Save changes"
-          namePlaceholder="Edit course"
           onCancel={() => setEditOpen(false)}
           onSuccess={() => setEditOpen(false)}
         />

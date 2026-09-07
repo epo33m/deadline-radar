@@ -195,6 +195,74 @@
         "operationId": "postApiV1AuthReset-password"
       }
     },
+    "/api/v1/auth/change-password": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Change password (signed in)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "currentPassword": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "confirmPassword": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "currentPassword",
+                  "password",
+                  "confirmPassword"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        },
+        "operationId": "postApiV1AuthChange-password"
+      }
+    },
+    "/api/v1/auth/change-email": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Change email (signed in)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string"
+                  },
+                  "currentPassword": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "email",
+                  "currentPassword"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        },
+        "operationId": "postApiV1AuthChange-email"
+      }
+    },
     "/api/v1/auth/confirm": {
       "get": {
         "tags": [
@@ -316,16 +384,12 @@
                     "type": "string"
                   },
                   "code": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
+                    "type": "string",
+                    "nullable": true
                   },
                   "color": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
+                    "type": "string",
+                    "nullable": true
                   }
                 },
                 "required": [
@@ -374,16 +438,12 @@
                     "type": "string"
                   },
                   "code": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
+                    "type": "string",
+                    "nullable": true
                   },
                   "color": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
+                    "type": "string",
+                    "nullable": true
                   },
                   "updatedAt": {
                     "type": "string"
@@ -506,23 +566,19 @@
                     ]
                   },
                   "description": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
+                    "type": "string",
+                    "nullable": true
                   },
                   "estimated_duration": {
-                    "anyOf": [
+                    "oneOf": [
                       {
                         "type": "number"
                       },
                       {
                         "type": "string"
-                      },
-                      {
-                        "type": "null"
                       }
-                    ]
+                    ],
+                    "nullable": true
                   }
                 },
                 "required": [
@@ -589,23 +645,19 @@
                     ]
                   },
                   "description": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
+                    "type": "string",
+                    "nullable": true
                   },
                   "estimated_duration": {
-                    "anyOf": [
+                    "oneOf": [
                       {
                         "type": "number"
                       },
                       {
                         "type": "string"
-                      },
-                      {
-                        "type": "null"
                       }
-                    ]
+                    ],
+                    "nullable": true
                   },
                   "updatedAt": {
                     "type": "string"

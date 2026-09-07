@@ -6,6 +6,8 @@ import { useState } from "react";
 import { ChangeEmailForm } from "@/components/preferences/change-email-form";
 import { ChangePasswordForm } from "@/components/preferences/change-password-form";
 import { Dialog } from "@/components/ui/dialog";
+import { formCardClassName } from "@/components/ui/dialog-form";
+import { cn } from "@/lib/utils";
 
 type AccountListProps = {
   email: string;
@@ -18,12 +20,12 @@ export function AccountList({ email, pendingEmail }: AccountListProps) {
 
   return (
     <>
-      <ul className="list-none overflow-hidden rounded-xl border border-hairline bg-canvas">
+      <ul className={cn("list-none divide-y divide-divider-soft", formCardClassName)}>
         <li>
           <button
             type="button"
             onClick={() => setEmailOpen(true)}
-            className="flex min-h-12 w-full items-center justify-between gap-4 px-3 py-3 text-left outline-none transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset sm:px-4 sm:py-3.5"
+            className="flex min-h-12 w-full items-center justify-between gap-4 py-3 text-left outline-none transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset sm:py-3.5"
           >
             <span className="shrink-0 text-[17px] font-medium leading-snug tracking-[-0.2px] text-ink">
               Email
@@ -51,7 +53,7 @@ export function AccountList({ email, pendingEmail }: AccountListProps) {
           <button
             type="button"
             onClick={() => setPasswordOpen(true)}
-            className="flex min-h-12 w-full items-center justify-between gap-4 px-3 py-3 text-left outline-none transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset sm:px-4 sm:py-3.5"
+            className="flex min-h-12 w-full items-center justify-between gap-4 py-3 text-left outline-none transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset sm:py-3.5"
           >
             <span className="shrink-0 text-[17px] font-medium leading-snug tracking-[-0.2px] text-ink">
               Password
@@ -73,7 +75,10 @@ export function AccountList({ email, pendingEmail }: AccountListProps) {
         onOpenChange={setEmailOpen}
         title="Change email"
       >
-        <ChangeEmailForm onEmailChanged={() => setEmailOpen(false)} />
+        <ChangeEmailForm
+          onEmailChanged={() => setEmailOpen(false)}
+          onCancel={() => setEmailOpen(false)}
+        />
       </Dialog>
 
       <Dialog
@@ -81,7 +86,10 @@ export function AccountList({ email, pendingEmail }: AccountListProps) {
         onOpenChange={setPasswordOpen}
         title="Change password"
       >
-        <ChangePasswordForm onPasswordChanged={() => setPasswordOpen(false)} />
+        <ChangePasswordForm
+          onPasswordChanged={() => setPasswordOpen(false)}
+          onCancel={() => setPasswordOpen(false)}
+        />
       </Dialog>
     </>
   );

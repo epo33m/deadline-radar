@@ -50,7 +50,6 @@ function AddThresholdForm({ taskId }: { taskId: string }) {
           inputMode="numeric"
           value={daysBefore}
           onChange={(event) => setDaysBefore(event.target.value)}
-          placeholder="e.g. 14"
           required
           className="w-36"
           aria-invalid={Boolean(state.fieldErrors?.days_before)}

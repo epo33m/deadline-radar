@@ -474,7 +474,11 @@ export function TasksCollection({
       >
         {hasCourses ? (
           <div className="w-full text-left">
-            <AddTaskForm courses={courses} returnTo="/tasks" />
+            <AddTaskForm
+              courses={courses}
+              returnTo="/tasks"
+              onCancel={() => setAddOpen(false)}
+            />
           </div>
         ) : (
           <div className="w-full space-y-4 text-left">

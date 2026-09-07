@@ -4,21 +4,25 @@
  * or it strips unknown fields before .strict() can reject them.
  */
 
+import type { OpenAPIV3 } from "openapi-types";
+
+type Schema = OpenAPIV3.SchemaObject;
+
 function objectSchema(
-  properties: Record<string, unknown>,
+  properties: Record<string, Schema>,
   required: string[] = [],
-) {
+): Schema {
   return {
-    type: "object" as const,
+    type: "object",
     properties,
     required,
     additionalProperties: false,
   };
 }
 
-const string = { type: "string" as const };
-const uuid = { type: "string" as const, format: "uuid" };
-const nullableString = { type: ["string", "null"] as const };
+const string: Schema = { type: "string" };
+const uuid: Schema = { type: "string", format: "uuid" };
+const nullableString: Schema = { type: "string", nullable: true };
 
 export const openApiBodies = {
   courseCreate: objectSchema(
@@ -47,7 +51,8 @@ export const openApiBodies = {
       status: { type: "string", enum: ["todo", "in_progress", "done"] },
       description: nullableString,
       estimated_duration: {
-        anyOf: [{ type: "number" }, { type: "string" }, { type: "null" }],
+        oneOf: [{ type: "number" }, { type: "string" }],
+        nullable: true,
       },
     },
     ["title", "course_id", "deadline", "status"],
@@ -60,7 +65,8 @@ export const openApiBodies = {
       status: { type: "string", enum: ["todo", "in_progress", "done"] },
       description: nullableString,
       estimated_duration: {
-        anyOf: [{ type: "number" }, { type: "string" }, { type: "null" }],
+        oneOf: [{ type: "number" }, { type: "string" }],
+        nullable: true,
       },
       updatedAt: string,
       updated_at: string,
@@ -121,10 +127,15 @@ export const openApiBodies = {
     ["email", "currentPassword"],
   ),
   timezone: objectSchema({ timezone: string }, ["timezone"]),
-  threshold: objectSchema({ days_before: { type: "number" } }, ["days_before"]),
-} as const;
+  threshold: objectSchema(
+    { days_before: { type: "number" } },
+    ["days_before"],
+  ),
+};
 
-export function jsonBodyDetail(schema: (typeof openApiBodies)[keyof typeof openApiBodies]) {
+export function jsonBodyDetail(
+  schema: Schema,
+): OpenAPIV3.RequestBodyObject {
   return {
     content: {
       "application/json": { schema },

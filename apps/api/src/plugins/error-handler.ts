@@ -6,6 +6,7 @@ import {
   toErrorBody,
   normalizeRequestId,
   extractClientRequestId,
+  requestIdPlugin,
 } from "../lib/api";
 import { ForbiddenFieldError } from "../lib/authorization/field-policy";
 
@@ -25,7 +26,9 @@ function requestIdFromContext(ctx: {
  */
 export const errorHandlerPlugin = new Elysia({
   name: "error-handler",
-}).onError({ as: "global" }, ({ error, set, request, requestId }) => {
+})
+  .use(requestIdPlugin)
+  .onError({ as: "global" }, ({ error, set, request, requestId }) => {
   const rid = requestIdFromContext({ requestId, request });
   set.headers["X-Request-Id"] = rid;
   set.headers["content-type"] = "application/json";

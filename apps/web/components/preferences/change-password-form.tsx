@@ -12,16 +12,26 @@ import type { z } from "zod";
 
 import { changePassword, type AuthActionState } from "@/app/actions/auth";
 import { Button } from "@/components/ui/button";
+import {
+  dialogActionsClassName,
+  dialogPrimaryActionClassName,
+  dialogSecondaryActionClassName,
+} from "@/components/ui/dialog";
+import {
+  DialogFormRow,
+  dialogFormListClassName,
+  dialogInputClassName,
+} from "@/components/ui/dialog-form";
 import { Input } from "@/components/ui/input";
 import { changePasswordSchema } from "@/lib/validation/auth";
 
 const initialState: AuthActionState = {};
 
-const fieldClassName =
-  "h-11 w-full rounded-[11px] border-hairline bg-canvas px-3 font-sans text-[17px] font-normal leading-[1.47] tracking-[-0.374px] text-ink shadow-none placeholder:text-ink-muted-48 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 aria-invalid:border-destructive aria-invalid:ring-destructive/20";
-
 const errorClassName =
-  "w-full text-left text-sm leading-[1.43] tracking-[-0.224px] text-destructive";
+  "pt-4 w-full text-left text-sm leading-[1.43] tracking-[-0.224px] text-destructive";
+
+const successClassName =
+  "pt-4 w-full text-left text-sm leading-[1.43] tracking-[-0.224px] text-success";
 
 function clientFieldErrors<T extends z.ZodType>(
   schema: T,
@@ -39,10 +49,9 @@ function clientFieldErrors<T extends z.ZodType>(
 }
 
 type PasswordFieldProps = {
-  idPrefix: string;
+  id: string;
   name: string;
-  placeholder: string;
-  ariaLabel: string;
+  label: string;
   autoComplete: "current-password" | "new-password";
   error?: string;
   showPassword: boolean;
@@ -52,10 +61,9 @@ type PasswordFieldProps = {
 };
 
 function PasswordField({
-  idPrefix,
+  id,
   name,
-  placeholder,
-  ariaLabel,
+  label,
   autoComplete,
   error,
   showPassword,
@@ -63,54 +71,54 @@ function PasswordField({
   onClearError,
   onBlur,
 }: PasswordFieldProps) {
-  const fieldId = `${idPrefix}-${name}`;
-
   return (
-    <div className="w-full space-y-2.5">
-      <div className="relative">
-        <Input
-          id={fieldId}
-          name={name}
-          type={showPassword ? "text" : "password"}
-          autoComplete={autoComplete}
-          placeholder={placeholder}
-          aria-label={ariaLabel}
-          aria-invalid={Boolean(error)}
-          aria-describedby={error ? `${fieldId}-error` : undefined}
-          className={fieldClassName}
-          onBlur={onBlur}
-          onChange={() => {
-            if (error) onClearError();
-          }}
-        />
-        <button
-          type="button"
-          onClick={onTogglePassword}
-          aria-label={showPassword ? "Hide password" : "Show password"}
-          className="absolute top-1/2 right-3 -translate-y-1/2 rounded-md p-1 text-ink-muted-48 outline-none transition-colors hover:text-ink focus-visible:text-ink focus-visible:ring-2 focus-visible:ring-primary-focus"
-        >
-          {showPassword ? (
-            <EyeOff className="size-4" aria-hidden="true" strokeWidth={1.75} />
-          ) : (
-            <Eye className="size-4" aria-hidden="true" strokeWidth={1.75} />
-          )}
-        </button>
+    <DialogFormRow label={label} htmlFor={id}>
+      <div className="space-y-2">
+        <div className="relative">
+          <Input
+            id={id}
+            name={name}
+            type={showPassword ? "text" : "password"}
+            autoComplete={autoComplete}
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? `${id}-error` : undefined}
+            className={`${dialogInputClassName} pr-11`}
+            onBlur={onBlur}
+            onChange={() => {
+              if (error) onClearError();
+            }}
+          />
+          <button
+            type="button"
+            onClick={onTogglePassword}
+            aria-label={showPassword ? "Hide password" : "Show password"}
+            className="absolute top-1/2 right-3 -translate-y-1/2 rounded-md p-1 text-ink-muted-48 outline-none transition-colors hover:text-ink focus-visible:text-ink focus-visible:ring-2 focus-visible:ring-primary-focus"
+          >
+            {showPassword ? (
+              <EyeOff className="size-4" aria-hidden="true" strokeWidth={1.75} />
+            ) : (
+              <Eye className="size-4" aria-hidden="true" strokeWidth={1.75} />
+            )}
+          </button>
+        </div>
+        {error ? (
+          <p id={`${id}-error`} className={errorClassName} role="alert">
+            {error}
+          </p>
+        ) : null}
       </div>
-      {error ? (
-        <p id={`${fieldId}-error`} className={errorClassName} role="alert">
-          {error}
-        </p>
-      ) : null}
-    </div>
+    </DialogFormRow>
   );
 }
 
 type ChangePasswordFormProps = {
   onPasswordChanged?: () => void;
+  onCancel?: () => void;
 };
 
 export function ChangePasswordForm({
   onPasswordChanged,
+  onCancel,
 }: ChangePasswordFormProps) {
   const [state, formAction, pending] = useActionState(
     changePassword,
@@ -160,69 +168,83 @@ export function ChangePasswordForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="w-full space-y-4" noValidate>
-      <PasswordField
-        idPrefix="change"
-        name="currentPassword"
-        placeholder="Current password"
-        ariaLabel="Current password"
-        autoComplete="current-password"
-        error={currentPasswordError}
-        showPassword={showPassword}
-        onTogglePassword={() => setShowPassword((visible) => !visible)}
-        onClearError={() =>
-          setClientErrors((current) => ({
-            ...current,
-            currentPassword: undefined,
-          }))
-        }
-      />
-      <PasswordField
-        idPrefix="change"
-        name="password"
-        placeholder="New password"
-        ariaLabel="New password"
-        autoComplete="new-password"
-        error={passwordError}
-        showPassword={showPassword}
-        onTogglePassword={() => setShowPassword((visible) => !visible)}
-        onClearError={() =>
-          setClientErrors((current) => ({ ...current, password: undefined }))
-        }
-      />
-      <PasswordField
-        idPrefix="change"
-        name="confirmPassword"
-        placeholder="Confirm new password"
-        ariaLabel="Confirm new password"
-        autoComplete="new-password"
-        error={confirmError}
-        showPassword={showPassword}
-        onTogglePassword={() => setShowPassword((visible) => !visible)}
-        onClearError={() =>
-          setClientErrors((current) => ({
-            ...current,
-            confirmPassword: undefined,
-          }))
-        }
-      />
+    <form onSubmit={handleSubmit} className="flex w-full flex-col" noValidate>
+      <ul className={dialogFormListClassName}>
+        <PasswordField
+          id="change-current-password"
+          name="currentPassword"
+          label="Current password"
+          autoComplete="current-password"
+          error={currentPasswordError}
+          showPassword={showPassword}
+          onTogglePassword={() => setShowPassword((visible) => !visible)}
+          onClearError={() =>
+            setClientErrors((current) => ({
+              ...current,
+              currentPassword: undefined,
+            }))
+          }
+        />
+        <PasswordField
+          id="change-password"
+          name="password"
+          label="New password"
+          autoComplete="new-password"
+          error={passwordError}
+          showPassword={showPassword}
+          onTogglePassword={() => setShowPassword((visible) => !visible)}
+          onClearError={() =>
+            setClientErrors((current) => ({ ...current, password: undefined }))
+          }
+        />
+        <PasswordField
+          id="change-confirm-password"
+          name="confirmPassword"
+          label="Confirm new password"
+          autoComplete="new-password"
+          error={confirmError}
+          showPassword={showPassword}
+          onTogglePassword={() => setShowPassword((visible) => !visible)}
+          onClearError={() =>
+            setClientErrors((current) => ({
+              ...current,
+              confirmPassword: undefined,
+            }))
+          }
+        />
+      </ul>
+
       {state.error ? (
         <p className={errorClassName} role="alert">
           {state.error}
         </p>
       ) : null}
       {state.success ? (
-        <p className="w-full text-left text-sm leading-[1.43] tracking-[-0.224px] text-success" role="status">
+        <p className={successClassName} role="status">
           {state.success}
         </p>
       ) : null}
-      <Button
-        type="submit"
-        disabled={pending}
-        className="min-h-11 w-full rounded-full px-5 font-sans text-[17px] font-normal leading-[1.47] tracking-[-0.374px]"
-      >
-        {pending ? "Updating…" : "Update password"}
-      </Button>
+
+      <div className={dialogActionsClassName}>
+        <Button
+          type="submit"
+          disabled={pending}
+          className={dialogPrimaryActionClassName}
+        >
+          {pending ? "Updating…" : "Update password"}
+        </Button>
+        {onCancel ? (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={pending}
+            className={dialogSecondaryActionClassName}
+          >
+            Cancel
+          </Button>
+        ) : null}
+      </div>
     </form>
   );
 }

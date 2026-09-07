@@ -18,6 +18,12 @@ import {
 } from "@/app/actions/auth";
 import { apiBrowser } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
+import {
+  dialogActionsClassName,
+  dialogPrimaryActionClassName,
+} from "@/components/ui/dialog";
+import { dialogInputClassName } from "@/components/ui/dialog-form";
+import { DialogFormRow, dialogFormListClassName } from "@/components/ui/dialog-form";
 import { Input } from "@/components/ui/input";
 import { detectBrowserTimeZone } from "@/lib/timezone";
 import {
@@ -29,16 +35,7 @@ import {
 
 const initialState: AuthActionState = {};
 
-const authInputClassName =
-  "h-11 rounded-[11px] border-hairline bg-canvas px-3 font-sans text-[17px] font-normal leading-[1.47] tracking-[-0.374px] text-ink shadow-none placeholder:text-ink-muted-48 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 aria-invalid:border-destructive aria-invalid:ring-destructive/20";
-
-const authSubmitBaseClassName =
-  "h-auto w-full rounded-full px-[22px] py-[11px] font-sans text-[17px] font-normal leading-[1.47] tracking-[-0.374px] transition-transform active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:pointer-events-none disabled:opacity-50 disabled:active:scale-100";
-
-const authSubmitVariants = {
-  primary: `${authSubmitBaseClassName} bg-primary text-on-primary hover:bg-primary/90 focus-visible:outline-primary-focus`,
-  ink: `${authSubmitBaseClassName} bg-ink text-on-dark hover:bg-ink-muted-80 focus-visible:outline-ink-muted-80`,
-} as const;
+const authInputClassName = dialogInputClassName;
 
 const authErrorClassName =
   "text-sm leading-[1.43] tracking-[-0.224px] text-destructive";
@@ -79,98 +76,94 @@ function AuthEmailField({
   const fieldId = `${idPrefix}-email`;
 
   return (
-    <div className="space-y-2.5">
-      <Input
-        id={fieldId}
-        name="email"
-        type="email"
-        autoComplete="email"
-        placeholder="Enter email"
-        aria-label="Email"
-        aria-invalid={Boolean(error)}
-        aria-describedby={error ? `${fieldId}-error` : undefined}
-        className={authInputClassName}
-        onBlur={onBlur}
-        onChange={() => {
-          if (error) onClearError();
-        }}
-      />
-      {error ? (
-        <p id={`${fieldId}-error`} className={authErrorClassName} role="alert">
-          {error}
-        </p>
-      ) : null}
-    </div>
+    <DialogFormRow label="Email" htmlFor={fieldId}>
+      <div className="space-y-2.5">
+        <Input
+          id={fieldId}
+          name="email"
+          type="email"
+          autoComplete="email"
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? `${fieldId}-error` : undefined}
+          className={authInputClassName}
+          onBlur={onBlur}
+          onChange={() => {
+            if (error) onClearError();
+          }}
+        />
+        {error ? (
+          <p id={`${fieldId}-error`} className={authErrorClassName} role="alert">
+            {error}
+          </p>
+        ) : null}
+      </div>
+    </DialogFormRow>
   );
 }
 
 type AuthPasswordFieldProps = {
   idPrefix: string;
   name?: string;
-  placeholder?: string;
   ariaLabel?: string;
   autoComplete: "current-password" | "new-password";
   error?: string;
   showPassword: boolean;
   onTogglePassword: () => void;
   onClearError: () => void;
-  withTopMargin?: boolean;
   onBlur?: (event: FocusEvent<HTMLInputElement>) => void;
 };
 
 function AuthPasswordField({
   idPrefix,
   name = "password",
-  placeholder = "Enter password",
   ariaLabel = "Password",
   autoComplete,
   error,
   showPassword,
   onTogglePassword,
   onClearError,
-  withTopMargin = true,
   onBlur,
 }: AuthPasswordFieldProps) {
   const fieldId = `${idPrefix}-password`;
 
   return (
-    <div className={withTopMargin ? "mt-6 space-y-2.5" : "space-y-2.5"}>
-      <div className="relative">
-        <Input
-          id={fieldId}
-          name={name}
-          type={showPassword ? "text" : "password"}
-          autoComplete={autoComplete}
-          placeholder={placeholder}
-          aria-label={ariaLabel}
-          aria-invalid={Boolean(error)}
-          aria-describedby={error ? `${fieldId}-error` : undefined}
-          className={`${authInputClassName} pr-11`}
-          onBlur={onBlur}
-          onChange={() => {
-            if (error) onClearError();
-          }}
-        />
-        <button
-          type="button"
-          onClick={onTogglePassword}
-          aria-label={showPassword ? "Hide password" : "Show password"}
-          aria-pressed={showPassword}
-          className="absolute top-1/2 right-3 -translate-y-1/2 rounded-sm text-ink-muted-48 transition-colors hover:text-ink focus-visible:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus"
-        >
-          {showPassword ? (
-            <EyeOff className="size-4" aria-hidden="true" />
-          ) : (
-            <Eye className="size-4" aria-hidden="true" />
-          )}
-        </button>
+    <DialogFormRow label={ariaLabel} htmlFor={fieldId}>
+      <div className="space-y-2.5">
+        <div className="relative">
+          <Input
+            id={fieldId}
+            name={name}
+            type={showPassword ? "text" : "password"}
+            autoComplete={autoComplete}
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? `${fieldId}-error` : undefined}
+            className={`${authInputClassName} pr-11`}
+            onBlur={onBlur}
+            onChange={() => {
+              if (error) onClearError();
+            }}
+          />
+          <button
+            type="button"
+            onClick={onTogglePassword}
+            aria-label={showPassword ? "Hide password" : "Show password"}
+            aria-pressed={showPassword}
+            className="absolute top-1/2 right-3 -translate-y-1/2 rounded-sm text-ink-muted-48 transition-colors hover:text-ink focus-visible:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus"
+          >
+            {showPassword ? (
+              <EyeOff className="size-4" aria-hidden="true" />
+            ) : (
+              <Eye className="size-4" aria-hidden="true" />
+            )}
+          </button>
+        </div>
+        {error ? (
+          <p id={`${fieldId}-error`} className={authErrorClassName} role="alert">
+            {error}
+          </p>
+        ) : null}
       </div>
-      {error ? (
-        <p id={`${fieldId}-error`} className={authErrorClassName} role="alert">
-          {error}
-        </p>
-      ) : null}
-    </div>
+    </DialogFormRow>
   );
 }
 
@@ -178,21 +171,21 @@ function AuthFormActions({
   pending,
   pendingLabel,
   submitLabel,
-  variant = "primary",
 }: {
   pending: boolean;
   pendingLabel: string;
   submitLabel: string;
-  variant?: keyof typeof authSubmitVariants;
 }) {
   return (
-    <Button
-      type="submit"
-      disabled={pending}
-      className={`${authSubmitVariants[variant]} mt-8`}
-    >
-      {pending ? pendingLabel : submitLabel}
-    </Button>
+    <div className={dialogActionsClassName}>
+      <Button
+        type="submit"
+        disabled={pending}
+        className={dialogPrimaryActionClassName}
+      >
+        {pending ? pendingLabel : submitLabel}
+      </Button>
+    </div>
   );
 }
 
@@ -279,23 +272,25 @@ export function LoginForm() {
           .
         </p>
       ) : null}
-      <AuthEmailField
-        idPrefix="login"
-        error={emailError}
-        onClearError={() =>
-          setClientErrors((current) => ({ ...current, email: undefined }))
-        }
-      />
-      <AuthPasswordField
-        idPrefix="login"
-        autoComplete="current-password"
-        error={passwordError}
-        showPassword={showPassword}
-        onTogglePassword={() => setShowPassword((visible) => !visible)}
-        onClearError={() =>
-          setClientErrors((current) => ({ ...current, password: undefined }))
-        }
-      />
+      <ul className={dialogFormListClassName}>
+        <AuthEmailField
+          idPrefix="login"
+          error={emailError}
+          onClearError={() =>
+            setClientErrors((current) => ({ ...current, email: undefined }))
+          }
+        />
+        <AuthPasswordField
+          idPrefix="login"
+          autoComplete="current-password"
+          error={passwordError}
+          showPassword={showPassword}
+          onTogglePassword={() => setShowPassword((visible) => !visible)}
+          onClearError={() =>
+            setClientErrors((current) => ({ ...current, password: undefined }))
+          }
+        />
+      </ul>
       {error ? (
         <p className={`${authErrorClassName} mt-4`} role="alert">
           {error}
@@ -384,23 +379,25 @@ export function RegisterForm() {
 
   return (
     <form onSubmit={handleSubmit} className="flex w-full flex-col" noValidate>
-      <AuthEmailField
-        idPrefix="register"
-        error={emailError}
-        onClearError={() =>
-          setClientErrors((current) => ({ ...current, email: undefined }))
-        }
-      />
-      <AuthPasswordField
-        idPrefix="register"
-        autoComplete="new-password"
-        error={passwordError}
-        showPassword={showPassword}
-        onTogglePassword={() => setShowPassword((visible) => !visible)}
-        onClearError={() =>
-          setClientErrors((current) => ({ ...current, password: undefined }))
-        }
-      />
+      <ul className={dialogFormListClassName}>
+        <AuthEmailField
+          idPrefix="register"
+          error={emailError}
+          onClearError={() =>
+            setClientErrors((current) => ({ ...current, email: undefined }))
+          }
+        />
+        <AuthPasswordField
+          idPrefix="register"
+          autoComplete="new-password"
+          error={passwordError}
+          showPassword={showPassword}
+          onTogglePassword={() => setShowPassword((visible) => !visible)}
+          onClearError={() =>
+            setClientErrors((current) => ({ ...current, password: undefined }))
+          }
+        />
+      </ul>
       {error ? (
         <p className={`${authErrorClassName} mt-4`} role="alert">
           {error}
@@ -410,7 +407,6 @@ export function RegisterForm() {
         pending={pending}
         pendingLabel="Creating account…"
         submitLabel="Create account"
-        variant="ink"
       />
     </form>
   );
@@ -445,13 +441,15 @@ export function ForgotPasswordForm() {
 
   return (
     <form onSubmit={handleSubmit} className="flex w-full flex-col" noValidate>
-      <AuthEmailField
-        idPrefix="forgot"
-        error={emailError}
-        onClearError={() =>
-          setClientErrors((current) => ({ ...current, email: undefined }))
-        }
-      />
+      <ul className={dialogFormListClassName}>
+        <AuthEmailField
+          idPrefix="forgot"
+          error={emailError}
+          onClearError={() =>
+            setClientErrors((current) => ({ ...current, email: undefined }))
+          }
+        />
+      </ul>
       {state.error ? (
         <p className={`${authErrorClassName} mt-4`} role="alert">
           {state.error}
@@ -508,33 +506,33 @@ export function ResetPasswordForm() {
 
   return (
     <form onSubmit={handleSubmit} className="flex w-full flex-col" noValidate>
-      <AuthPasswordField
-        idPrefix="reset"
-        autoComplete="new-password"
-        error={passwordError}
-        showPassword={showPassword}
-        onTogglePassword={() => setShowPassword((visible) => !visible)}
-        onClearError={() =>
-          setClientErrors((current) => ({ ...current, password: undefined }))
-        }
-        withTopMargin={false}
-      />
-      <AuthPasswordField
-        idPrefix="reset-confirm"
-        name="confirmPassword"
-        placeholder="Confirm password"
-        ariaLabel="Confirm password"
-        autoComplete="new-password"
-        error={confirmError}
-        showPassword={showPassword}
-        onTogglePassword={() => setShowPassword((visible) => !visible)}
-        onClearError={() =>
-          setClientErrors((current) => ({
-            ...current,
-            confirmPassword: undefined,
-          }))
-        }
-      />
+      <ul className={dialogFormListClassName}>
+        <AuthPasswordField
+          idPrefix="reset"
+          autoComplete="new-password"
+          error={passwordError}
+          showPassword={showPassword}
+          onTogglePassword={() => setShowPassword((visible) => !visible)}
+          onClearError={() =>
+            setClientErrors((current) => ({ ...current, password: undefined }))
+          }
+        />
+        <AuthPasswordField
+          idPrefix="reset-confirm"
+          name="confirmPassword"
+          ariaLabel="Confirm password"
+          autoComplete="new-password"
+          error={confirmError}
+          showPassword={showPassword}
+          onTogglePassword={() => setShowPassword((visible) => !visible)}
+          onClearError={() =>
+            setClientErrors((current) => ({
+              ...current,
+              confirmPassword: undefined,
+            }))
+          }
+        />
+      </ul>
       {state.error ? (
         <p className={`${authErrorClassName} mt-4`} role="alert">
           {state.error}
