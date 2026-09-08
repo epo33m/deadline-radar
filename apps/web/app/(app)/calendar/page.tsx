@@ -33,7 +33,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
   if (result.error || !result.tasks) {
     return (
       <section className="space-y-2">
-        <h1 className="font-display text-3xl font-semibold">Calendar</h1>
+        <h1 className="font-display text-[32px] font-semibold leading-[1.07] tracking-[-0.28px] text-ink sm:text-[36px] lg:text-[44px]">Calendar</h1>
         <p className="text-sm text-destructive" role="alert">
           Could not load calendar deadlines. Ensure the API is running.
         </p>
@@ -57,10 +57,10 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
   const cells = buildMonthGrid(month.year, month.month, timeZone);
 
   return (
-    <section className="space-y-8">
+    <section className="space-y-6 sm:space-y-8">
       <div className="space-y-2">
-        <h1 className="font-display text-3xl font-semibold">Calendar</h1>
-        <p className="text-ink-muted-48">
+        <h1 className="font-display text-[32px] font-semibold leading-[1.07] tracking-[-0.28px] text-ink sm:text-[36px] lg:text-[44px]">Calendar</h1>
+        <p className="max-w-xl text-[15px] font-normal leading-[1.47] tracking-[-0.374px] text-ink-muted-64 sm:text-[17px]">
           Monthly view of your task deadlines in {timeZone}.
         </p>
       </div>

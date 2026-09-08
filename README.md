@@ -1,6 +1,6 @@
 # Deadline Radar
 
-Personal academic task tracker that helps students monitor coursework and meet deadlines through a centralized dashboard and tiered reminders (email + in-app).
+Personal academic task tracker that helps students monitor coursework and meet deadlines through a centralized Overview and tiered reminders (email + in-app).
 
 ## Features
 
@@ -9,7 +9,7 @@ Personal academic task tracker that helps students monitor coursework and meet d
 - **Tasks** — CRUD with deadline, status, estimated duration, and course assignment
 - **Attachments** — File uploads or external links per task
 - **Reminders** — Default thresholds H-7 / H-3 / H-1 / H-0; customizable per task; email (Resend) and in-app delivery
-- **Dashboard & calendar** — Approaching, overdue, and recently completed tasks; monthly deadline view
+- **Overview & calendar** — Approaching, overdue, and recently completed tasks; monthly deadline view
 
 ## Tech stack
 

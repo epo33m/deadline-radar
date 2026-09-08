@@ -68,7 +68,7 @@ export async function login(
     };
   }
 
-  redirect(result.redirectTo ?? "/dashboard");
+  redirect(result.redirectTo ?? "/overview");
 }
 
 export async function requestPasswordReset(

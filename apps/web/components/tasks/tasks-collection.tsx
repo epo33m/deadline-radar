@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { formatDeadline } from "@/lib/datetime";
-import { formatRelativeDeadline } from "@/lib/dashboard/deadline-relative";
+import { formatRelativeDeadline } from "@/lib/deadline-relative";
 import {
   filterTasksByStatusView,
   groupTasksByHorizon,
@@ -304,7 +304,7 @@ export function TasksCollection({
             type="button"
             onClick={openAdd}
             aria-label="Add task"
-            className="mt-0.5 hidden size-11 shrink-0 rounded-full p-0 lg:inline-flex"
+            className="mt-0.5 hidden size-11 shrink-0 rounded-full p-0 md:inline-flex"
           >
             <Plus className="size-5" strokeWidth={2} aria-hidden="true" />
           </Button>
@@ -315,7 +315,7 @@ export function TasksCollection({
         <div
           className={
             emptyState === "ready" || emptyState === "no-results"
-              ? "space-y-4 pb-20 sm:space-y-5 lg:pb-0"
+              ? "space-y-4 pb-20 sm:space-y-5 md:pb-0"
               : "space-y-4"
           }
         >
@@ -461,7 +461,7 @@ export function TasksCollection({
           type="button"
           onClick={openAdd}
           aria-label="Add task"
-          className="fixed right-4 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-40 size-14 rounded-full p-0 shadow-lg lg:hidden"
+          className="fixed right-4 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-40 size-14 rounded-full p-0 shadow-lg md:hidden"
         >
           <Plus className="size-5" strokeWidth={2} aria-hidden="true" />
         </Button>

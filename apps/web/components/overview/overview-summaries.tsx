@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { ChevronRight, MoreHorizontal } from "lucide-react";
 
-import type { DashboardSummaries } from "@/lib/dashboard/summaries";
+import type { OverviewSummaries } from "@/lib/overview/summaries";
 import { cn } from "@/lib/utils";
 
 import { OverviewCard } from "./overview-card";
 import { TaskSummaryList } from "./task-summary-list";
 
-type DashboardSummariesProps = {
-  summaries: DashboardSummaries;
+type OverviewSummariesProps = {
+  summaries: OverviewSummaries;
   timeZone: string;
 };
 
@@ -73,10 +73,10 @@ function SummarySection({
   );
 }
 
-export function DashboardSummariesPanel({
+export function OverviewSummariesPanel({
   summaries,
   timeZone,
-}: DashboardSummariesProps) {
+}: OverviewSummariesProps) {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-5">
       <SummarySection

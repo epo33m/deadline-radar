@@ -13,7 +13,7 @@ function SkeletonCard({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function DashboardLoading() {
+export default function OverviewLoading() {
   return (
     <section className="space-y-6 sm:space-y-8" aria-busy="true" aria-label="Loading overview">
       <div className="space-y-2 sm:space-y-3">

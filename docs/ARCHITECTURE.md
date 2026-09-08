@@ -41,7 +41,7 @@ UI only: pages, forms, and thin server actions that call the API over same-origi
 
 Main pages (indicative):
 - `/login`, `/register`
-- `/dashboard`, `/courses`, `/tasks`, `/tasks/[id]`, `/calendar`
+- `/overview`, `/courses`, `/tasks`, `/tasks/[id]`, `/calendar`
 - `/preferences`, `/preferences/notifications`
 - Header bell — unread count via API
 

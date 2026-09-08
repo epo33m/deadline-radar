@@ -10,7 +10,8 @@ export type AttachmentActionState = {
 };
 
 function revalidateTask(taskId: string) {
-  revalidatePath("/tasks");
+  // Attachments are only rendered on the task detail page; the task list and
+  // other views are unaffected by attachment mutations.
   revalidatePath(`/tasks/${taskId}`);
 }
 

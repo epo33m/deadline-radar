@@ -27,6 +27,17 @@ export type MeasureMenuOptions = {
   maxHeight?: number;
   minSpace?: number;
   belowThreshold?: number;
+  /** Keep the dropdown anchored to the trigger on small viewports instead of switching to a bottom sheet. */
+  disableSheet?: boolean;
+  /** Span the viewport width minus gutters instead of sizing to the trigger. */
+  fullWidth?: boolean;
+  /**
+   * Anchor the menu to the trigger's edge: "start" aligns the menu's left
+   * edge to the trigger's left edge (default), "end" aligns the menu's
+   * right edge to the trigger's right edge. Either way the menu stays
+   * within the viewport margins.
+   */
+  align?: "start" | "end";
 };
 
 export const PORTAL_MENU_MARGIN = 16;
@@ -43,7 +54,7 @@ export function measureMenuPosition(
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
 
-  if (viewportWidth < PORTAL_MENU_SHEET_BREAKPOINT) {
+  if (!options.disableSheet && viewportWidth < PORTAL_MENU_SHEET_BREAKPOINT) {
     return {
       variant: "sheet",
       bottom: PORTAL_MENU_MARGIN,
@@ -54,21 +65,24 @@ export function measureMenuPosition(
   }
 
   const rect = trigger.getBoundingClientRect();
-  const width = Math.min(
-    Math.max(rect.width, minWidth),
-    viewportWidth - PORTAL_MENU_MARGIN * 2,
-  );
+  const width = options.fullWidth
+    ? viewportWidth - PORTAL_MENU_MARGIN * 2
+    : Math.min(
+        Math.max(rect.width, minWidth),
+        viewportWidth - PORTAL_MENU_MARGIN * 2,
+      );
   const left = Math.min(
-    Math.max(PORTAL_MENU_MARGIN, rect.left),
+    Math.max(
+      PORTAL_MENU_MARGIN,
+      options.align === "end" ? rect.right - width : rect.left,
+    ),
     viewportWidth - width - PORTAL_MENU_MARGIN,
   );
   const gap = 6;
   const spaceBelow = viewportHeight - rect.bottom - gap - PORTAL_MENU_MARGIN;
   const spaceAbove = rect.top - gap - PORTAL_MENU_MARGIN;
-  const resolvedMaxHeight = Math.min(
-    maxHeight,
-    Math.max(Math.min(spaceBelow, spaceAbove), minSpace),
-  );
+  const clampTo = (space: number) =>
+    Math.min(maxHeight, Math.max(space, minSpace));
 
   if (spaceBelow >= belowThreshold || spaceBelow >= spaceAbove) {
     return {
@@ -76,16 +90,17 @@ export function measureMenuPosition(
       top: rect.bottom + gap,
       left,
       width,
-      maxHeight: resolvedMaxHeight,
+      maxHeight: clampTo(spaceBelow),
     };
   }
 
+  const aboveHeight = clampTo(spaceAbove);
   return {
     variant: "dropdown",
-    top: Math.max(PORTAL_MENU_MARGIN, rect.top - gap - resolvedMaxHeight),
+    top: Math.max(PORTAL_MENU_MARGIN, rect.top - gap - aboveHeight),
     left,
     width,
-    maxHeight: resolvedMaxHeight,
+    maxHeight: aboveHeight,
   };
 }
 
@@ -95,7 +110,7 @@ type PortalMenuProps = {
   triggerRef: RefObject<HTMLElement | null>;
   menuId: string;
   label: string;
-  role?: "listbox" | "tooltip";
+  role?: "listbox" | "tooltip" | "menu" | "group" | "none";
   className?: string;
   measureOptions?: MeasureMenuOptions;
   /** Enable arrow/home/end/tab cycling among focusable options. */
@@ -126,6 +141,7 @@ export function PortalMenu({
 }: PortalMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<PortalMenuPosition | null>(null);
+  const focusFrameRef = useRef<number | null>(null);
 
   const onCloseRef = useRef(onClose);
   useEffect(() => {
@@ -144,12 +160,34 @@ export function PortalMenu({
     dismissOnOutsideRef.current = dismissOnOutside;
   });
 
-  const close = useCallback(() => {
-    onCloseRef.current();
-    window.requestAnimationFrame(() => {
-      triggerRef.current?.focus();
-    });
-  }, [triggerRef]);
+  /**
+   * Close the menu. When `restoreFocus` is true (default), focus returns to
+   * the trigger on the next frame. Callers that dismiss because focus moved
+   * away naturally (e.g. Tab leaving the menu) pass `false` so the focus
+   * stays where the keyboard user moved it. A later `close(false)` also
+   * cancels a focus-restore scheduled by an earlier `close(true)` in the
+   * same interaction (e.g. pointerdown outside followed by focusin).
+   */
+  const close = useCallback(
+    (restoreFocus = true) => {
+      onCloseRef.current();
+      if (focusFrameRef.current !== null) {
+        window.cancelAnimationFrame(focusFrameRef.current);
+        focusFrameRef.current = null;
+      }
+      if (restoreFocus) {
+        focusFrameRef.current = window.requestAnimationFrame(() => {
+          focusFrameRef.current = null;
+          triggerRef.current?.focus();
+        });
+      }
+    },
+    [triggerRef],
+  );
+
+  if (!open && position !== null) {
+    setPosition(null);
+  }
 
   useEffect(() => {
     if (!open || !triggerRef.current) return;
@@ -205,7 +243,9 @@ export function PortalMenu({
       ) {
         return;
       }
-      close();
+      // Focus moved out of the menu (e.g. Tab). Close without yanking focus
+      // back to the trigger, so the keyboard user's focus continues forward.
+      close(false);
     }
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -282,8 +322,8 @@ export function PortalMenu({
       ref={menuRef}
       id={menuId}
       data-portal-menu=""
-      role={role}
-      aria-label={label}
+      role={role === "none" ? undefined : role}
+      aria-label={role === "none" ? undefined : label}
       style={{
         ...(position.variant === "sheet"
           ? {

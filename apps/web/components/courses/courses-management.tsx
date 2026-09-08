@@ -35,14 +35,14 @@ export function CoursesManagement({ courses }: CoursesManagementProps) {
             type="button"
             onClick={openAdd}
             aria-label="New Course"
-            className="mt-0.5 hidden size-11 shrink-0 rounded-full p-0 lg:inline-flex"
+            className="mt-0.5 hidden size-11 shrink-0 rounded-full p-0 md:inline-flex"
           >
             <Plus className="size-5" strokeWidth={2} aria-hidden="true" />
           </Button>
         ) : null}
       </header>
 
-      <div className={hasCourses ? "space-y-3 pb-20 sm:space-y-4 lg:pb-0" : undefined}>
+      <div className={hasCourses ? "space-y-3 pb-20 sm:space-y-4 md:pb-0" : undefined}>
         {hasCourses ? (
           <h2 className="font-display text-[19px] font-semibold tracking-[-0.2px] text-ink sm:text-[21px]">
             My Courses
@@ -56,7 +56,7 @@ export function CoursesManagement({ courses }: CoursesManagementProps) {
           type="button"
           onClick={openAdd}
           aria-label="New Course"
-          className="fixed right-4 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-40 size-14 rounded-full p-0 shadow-lg lg:hidden"
+          className="fixed right-4 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-40 size-14 rounded-full p-0 shadow-lg md:hidden"
         >
           <Plus className="size-5" strokeWidth={2} aria-hidden="true" />
         </Button>

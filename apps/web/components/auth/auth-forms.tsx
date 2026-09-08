@@ -251,7 +251,7 @@ export function LoginForm() {
       return;
     }
 
-    router.replace(result.redirectTo ?? "/dashboard");
+    router.replace(result.redirectTo ?? "/overview");
     router.refresh();
   }
 

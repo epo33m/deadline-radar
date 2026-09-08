@@ -22,7 +22,7 @@ export type SessionGateInput = {
 
 export type SessionGateResult =
   | { action: "allow" }
-  | { action: "redirect"; to: "/login" | "/dashboard" };
+  | { action: "redirect"; to: "/login" | "/overview" };
 
 function matchesPrefix(pathname: string, prefix: string): boolean {
   return pathname === prefix || pathname.startsWith(`${prefix}/`);
@@ -47,7 +47,7 @@ export function resolveSessionGate({
   }
 
   if (hasSession && isAuthPage) {
-    return { action: "redirect", to: "/dashboard" };
+    return { action: "redirect", to: "/overview" };
   }
 
   return { action: "allow" };

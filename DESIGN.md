@@ -319,6 +319,10 @@ Store and shop surfaces retain the same chassis but switch modes. The product co
 - **Ink Muted 80** (`{colors.ink-muted-80}` — #333333): Body text on the white Pearl Button surface — slightly softer than pure black.
 - **Ink Muted 48** (`{colors.ink-muted-48}` — #7a7a7a): Disabled button text and legal fine-print.
 
+**Application Shell Adaptation**
+
+The implemented app shell adds **Ink Muted 64** (`{colors.ink-muted-64}` — #6e6e73) as its secondary text color for body copy and page descriptions on light surfaces — this is Apple's `secondaryLabel` color in light mode. It computes to 5.07:1 contrast on white, passing WCAG AA's 4.5:1 minimum. `{colors.ink-muted-48}` is reserved for disabled button text and legal fine-print ONLY: at 4.29:1 on white it fails WCAG AA 4.5:1 for body text, so app-shell copy and page descriptions must use `{colors.ink-muted-64}` instead. Icons may still use `{colors.ink-muted-48}` — the 3:1 non-text contrast minimum is met at 4.12:1.
+
 ### Hairlines & Borders
 - **Divider Soft** (`{colors.divider-soft}` — #f0f0f0): The "border" tone on secondary buttons — functions as a ring shadow rather than a hard line. In production, often applied as `rgba(0, 0, 0, 0.04)`.
 - **Hairline** (`{colors.hairline}` — #e0e0e0): The 1px hairline border on store utility cards and configurator chips.
@@ -434,6 +438,10 @@ Apple's whitespace is the product's pedestal. Every tile begins with at least 64
 
 **`sub-nav-frosted`** — Surface-specific nav that sticks below the global nav. Background `{colors.canvas-parchment}` at 80% opacity with backdrop-filter blur, creating a frosted-glass effect. Height 52px. Content on left: product category name ("iPhone", "Store", "Accessories") in `{typography.tagline}` (21px / 600). Content right: inline nav links in `{typography.button-utility}` (14px), ending in a persistent `{component.button-primary}` ("Buy") or a utility link.
 
+**Application Shell Adaptation**
+
+**`app-top-nav`** — The application shell's sticky top navigation (implemented in `apps/web/components/shell/top-navigation.tsx`). It is an app-shell adaptation of `{component.sub-nav-frosted}`, NOT the marketing site's `{component.global-nav}` (which stays black at 44px on apple.com). Background `{colors.surface-pearl}` at 80% opacity with `backdrop-filter: blur(24px) saturate(150%)` (Tailwind `backdrop-blur-xl` + `backdrop-saturate-150`) when supported, opaque fallback when backdrop-filter is unavailable; height 52px (`h-13`) with no bottom border — the header separates from page content by surface color alone. Content: brand link (17px / 600 / -0.374px tracking) and primary nav links (Overview / Courses / Tasks / Calendar, 14px / 400 / -0.224px tracking, spaced ~24px apart; active = `{colors.ink}` at weight 600), both in a left-aligned cluster, with a right-aligned utility cluster — notifications icon button 44×44px, account menu trigger, hamburger trigger below 768px. Layout: shared container `max-w-6xl` with `px-4 sm:px-6 lg:px-8`, aligning header content with page content. On mobile (<768px) the primary nav collapses into a full-width dropdown panel opening downward from the header — background `{colors.canvas}` with no border, `motion-safe` entrance animation respecting reduced motion, internal scroll, Escape closes and restores focus to the trigger. The panel is a Disclosure Navigation pattern — no `menu` ARIA role.
+
 ### Buttons
 
 **`button-primary`** — The signature Apple action. Background `{colors.primary}` (Action Blue #0071E3), text `{colors.on-primary}` in `{typography.body}` (SF Pro Text 17px / 400), rounded `{rounded.pill}` (full pill — capsule-shaped), padding 11px × 22px. The full-pill radius IS the brand action signal.
@@ -529,6 +537,10 @@ The structural breakpoints that matter for agents: 1440px (content lock), 1068px
 - Minimum 44 × 44px. `{component.button-primary}` lands at ~44 × 100px (with the full-pill radius making the visible hit area more generous than the label suggests).
 - `{component.button-icon-circular}` is exactly 44 × 44px.
 - Global nav utility links are smaller (~32 × 80px) — they deliberately sit at a tighter target because they're precision desktop actions, and the mobile hamburger replaces them at ≤ 833px.
+
+**Application Shell Adaptation**
+
+The app shell (`app-top-nav`) collapses the primary nav to the hamburger at **768px** (Tailwind `md`), not the marketing site's 834px — a deliberate project decision. Between 768–833px the app therefore shows the ~33px-tall desktop nav links on touch-capable tablets: an accepted deviation from the 44×44pt HIG guideline, with WCAG 2.2 SC 2.5.8 Target Size (Minimum, AA, 24×24 CSS px) still satisfied. This is a documented decision — future agents must not "fix" it unknowingly. Interactive shell targets meet guideline size: the notifications and hamburger icon buttons are exactly 44×44px (`size-11`), the account trigger meets 44px via `min-h-11` (flexible width), and account menu items and mobile menu links are `min-h-11` (44px).
 
 ### Collapsing Strategy
 - **Global nav**: full horizontal link row on desktop → collapses to Apple logo + hamburger + bag icon at 834px and below.

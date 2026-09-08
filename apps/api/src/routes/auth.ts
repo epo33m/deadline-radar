@@ -254,7 +254,7 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
       return withBridgeTokens(
         {
           user: { id: data.user.id, email: data.user.email },
-          redirectTo: "/dashboard",
+          redirectTo: "/overview",
         },
         {
           accessToken: data.session.access_token,
@@ -674,7 +674,7 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
       const next =
         typeof query.next === "string" && query.next.startsWith("/")
           ? query.next
-          : "/dashboard";
+          : "/overview";
 
       let session: {
         access_token: string;

@@ -17,7 +17,7 @@ The app is hosted and multi-user (each user has their own account, with data iso
 **Problem:** Students often miss or forget assignments because deadlines are scattered across many courses, there's no single centralized place to track them, and generic reminders (a regular calendar) aren't "urgent" enough as the deadline approaches.
 
 **Goals:**
-- One centralized dashboard for all tasks across all courses.
+- One centralized Overview for all tasks across all courses.
 - Automatic reminders that escalate in intensity as the deadline approaches, via email and in-app notifications.
 - Fast setup: create a course, create a task, deadline & reminders are set automatically without extra effort (but still customizable).
 
@@ -61,7 +61,7 @@ Data isolation: each user can only view/edit their own courses & tasks (Supabase
 
 ### 5.2 Course Management
 - User creates their own list of courses (separate CRUD, not free-text tags).
-- Basic fields: course name, code/abbreviation (optional), label color (optional, to differentiate in dashboard/calendar).
+- Basic fields: course name, code/abbreviation (optional), label color (optional, to differentiate in Overview/calendar).
 - Tasks are later assigned to one of these courses.
 
 ### 5.3 Task & Deadline Management
@@ -80,12 +80,12 @@ Data isolation: each user can only view/edit their own courses & tasks (Supabase
 - User can add, change, or remove these thresholds at any time, per task.
 - Two reminder channels, sent together whenever a threshold is met:
   - **Email** (via Resend)
-  - **In-app notification** (bell icon / notification center on the dashboard)
+  - **In-app notification** (bell icon / notification center on the Overview)
 - A reminder that's already been sent is not resent for the same task + threshold + channel combination.
 - Reminders automatically stop/become irrelevant once the task status is "Done".
 
-### 5.5 Dashboard & Calendar View
-- Main dashboard shows a task summary: approaching deadline, overdue, and recently completed.
+### 5.5 Overview & Calendar View
+- The Overview shows a task summary: approaching deadline, overdue, and recently completed.
 - Calendar view (monthly, at minimum) to visually see the spread of deadlines.
 - Notification bell icon shows the in-app reminder history (read/unread).
 
@@ -205,4 +205,4 @@ The following features are **intentionally excluded from the MVP**, noted as can
 ## 11. Success Metrics (optional, fill in if relevant)
 
 - % of tasks completed before the deadline (compared to before using the app, subjective).
-- Retention: user returns to check the dashboard weekly.
+- Retention: user returns to check the Overview weekly.

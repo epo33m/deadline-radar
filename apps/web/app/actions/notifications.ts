@@ -49,12 +49,28 @@ function mapNotification(row: ApiNotification): InAppNotification {
   };
 }
 
-export async function listInAppNotifications(): Promise<InAppNotification[]> {
-  const result = await apiJson<{ notifications?: ApiNotification[] }>(
-    "/api/v1/notifications",
-  );
-  if (result.error || !result.notifications) return [];
-  return result.notifications.map(mapNotification);
+export type InAppNotificationList = {
+  items: InAppNotification[];
+  /**
+   * When true the fetched list has no further pages, so the unread count
+   * can be derived from it exactly. Set to false on error to avoid syncing
+   * an incorrect count (e.g. 0) into shared state.
+   */
+  complete: boolean;
+};
+
+export async function listInAppNotifications(): Promise<InAppNotificationList> {
+  const result = await apiJson<{
+    notifications?: ApiNotification[];
+    page?: { nextCursor?: string | null };
+  }>("/api/v1/notifications");
+  if (result.error || !result.notifications) {
+    return { items: [], complete: false };
+  }
+  return {
+    items: result.notifications.map(mapNotification),
+    complete: result.page?.nextCursor == null,
+  };
 }
 
 export async function countUnreadInAppNotifications(): Promise<number> {
@@ -79,7 +95,6 @@ export async function markNotificationRead(
     return { error: result.error, fieldErrors: result.fieldErrors };
   }
   revalidatePath("/preferences/notifications");
-  revalidatePath("/dashboard");
   return {};
 }
 
@@ -95,6 +110,5 @@ export async function markAllNotificationsRead(
     return { error: result.error, fieldErrors: result.fieldErrors };
   }
   revalidatePath("/preferences/notifications");
-  revalidatePath("/dashboard");
   return {};
 }

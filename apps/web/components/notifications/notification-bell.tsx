@@ -2,39 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
 import { Bell } from "lucide-react";
 
-import { countUnreadInAppNotifications } from "@/app/actions/notifications";
-
-const POLL_INTERVAL_MS = 60_000;
+import { useNotifications } from "@/components/notifications/notifications-provider";
 
 export function NotificationBell() {
   const router = useRouter();
-  const [unread, setUnread] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function refresh() {
-      try {
-        const count = await countUnreadInAppNotifications();
-        if (!cancelled) setUnread(count);
-      } catch {
-        // Ignore transient poll errors.
-      }
-    }
-
-    void refresh();
-    const id = window.setInterval(() => {
-      void refresh();
-    }, POLL_INTERVAL_MS);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, []);
+  const { unread } = useNotifications();
 
   return (
     <Link
@@ -43,11 +17,11 @@ export function NotificationBell() {
         unread > 0 ? `Notifications, ${unread} unread` : "Notifications"
       }
       onClick={() => router.refresh()}
-      className="relative inline-flex size-11 items-center justify-center rounded-lg text-ink-muted-48 transition-colors hover:bg-muted hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus"
+      className="relative inline-flex size-11 items-center justify-center rounded-lg text-ink-muted-48 transition-[color,background-color,transform] hover:bg-muted hover:text-ink active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus"
     >
       <Bell className="size-4" />
       {unread > 0 ? (
-        <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-md bg-primary px-1 text-[10px] font-medium text-primary-foreground">
+        <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-md bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
           {unread > 99 ? "99+" : unread}
         </span>
       ) : null}

@@ -6,6 +6,7 @@ import {
   useActionState,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -32,7 +33,7 @@ import {
   type CourseTask,
 } from "@/lib/courses/course-tasks";
 import { formatDeadline } from "@/lib/datetime";
-import { formatRelativeDeadline } from "@/lib/dashboard/deadline-relative";
+import { formatRelativeDeadline } from "@/lib/deadline-relative";
 import type { TaskStatus } from "@/lib/validation/task";
 import { cn } from "@/lib/utils";
 import type { CourseListItem } from "@/types/course";
@@ -411,9 +412,10 @@ export function CourseDetail({ course, tasks, timeZone }: CourseDetailProps) {
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  const groups = groupCourseTasks(tasks);
-  const summaryLine = formatCourseDetailSummaryLine(
-    summarizeCourseDetail(tasks),
+  const groups = useMemo(() => groupCourseTasks(tasks), [tasks]);
+  const summaryLine = useMemo(
+    () => formatCourseDetailSummaryLine(summarizeCourseDetail(tasks)),
+    [tasks],
   );
   const fillColor = getCourseColorFill(course.color);
   const coursePath = `/courses/${course.id}`;
