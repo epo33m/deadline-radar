@@ -209,7 +209,7 @@ describe("auth routes integration / security", () => {
     const body = (await response.json()) as Record<string, unknown>;
     expect(body.accessToken).toBeUndefined();
     expect(body.refreshToken).toBeUndefined();
-    expect(body.redirectTo).toBe("/dashboard");
+    expect(body.redirectTo).toBe("/overview");
   });
 
   test("login returns tokens only for auth bridge", async () => {

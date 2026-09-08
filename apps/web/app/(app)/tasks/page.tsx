@@ -33,7 +33,7 @@ export default async function TasksPage() {
   if (coursesResult.error || tasksResult.error) {
     return (
       <section className="space-y-2">
-        <h1 className="font-display text-3xl font-semibold">Tasks</h1>
+        <h1 className="font-display text-[32px] font-semibold leading-[1.07] tracking-[-0.28px] text-ink sm:text-[36px] lg:text-[44px]">Tasks</h1>
         <p className="text-sm text-destructive" role="alert">
           Could not load tasks. Ensure the API is running and migrations are
           applied.

@@ -2,24 +2,24 @@ import { describe, expect, test } from "bun:test";
 
 import {
   APPROACHING_WINDOW_DAYS,
-  categorizeDashboardTasks,
-  type DashboardTask,
+  categorizeOverviewTasks,
+  type OverviewTask,
 } from "./summaries";
 
 const NOW = new Date("2026-09-15T12:00:00.000Z");
 
 function task(
-  overrides: Partial<DashboardTask> & Pick<DashboardTask, "id" | "title" | "deadline" | "status">,
-): DashboardTask {
+  overrides: Partial<OverviewTask> & Pick<OverviewTask, "id" | "title" | "deadline" | "status">,
+): OverviewTask {
   return {
     updated_at: "2026-09-14T12:00:00.000Z",
     ...overrides,
   };
 }
 
-describe("categorizeDashboardTasks", () => {
+describe("categorizeOverviewTasks", () => {
   test("puts active tasks past deadline in overdue and all", () => {
-    const summaries = categorizeDashboardTasks(
+    const summaries = categorizeOverviewTasks(
       [
         task({
           id: "1",
@@ -41,7 +41,7 @@ describe("categorizeDashboardTasks", () => {
     const withinWindow = new Date(NOW);
     withinWindow.setUTCDate(withinWindow.getUTCDate() + APPROACHING_WINDOW_DAYS);
 
-    const summaries = categorizeDashboardTasks(
+    const summaries = categorizeOverviewTasks(
       [
         task({
           id: "2",
@@ -64,7 +64,7 @@ describe("categorizeDashboardTasks", () => {
       beyondWindow.getUTCDate() + APPROACHING_WINDOW_DAYS + 1,
     );
 
-    const summaries = categorizeDashboardTasks(
+    const summaries = categorizeOverviewTasks(
       [
         task({
           id: "3",
@@ -82,7 +82,7 @@ describe("categorizeDashboardTasks", () => {
   });
 
   test("puts recently completed tasks in recentlyCompleted but not all", () => {
-    const summaries = categorizeDashboardTasks(
+    const summaries = categorizeOverviewTasks(
       [
         task({
           id: "4",
@@ -102,7 +102,7 @@ describe("categorizeDashboardTasks", () => {
   });
 
   test("excludes done tasks completed outside the recent window", () => {
-    const summaries = categorizeDashboardTasks(
+    const summaries = categorizeOverviewTasks(
       [
         task({
           id: "5",
@@ -120,7 +120,7 @@ describe("categorizeDashboardTasks", () => {
   });
 
   test("does not put done tasks in overdue even when deadline passed", () => {
-    const summaries = categorizeDashboardTasks(
+    const summaries = categorizeOverviewTasks(
       [
         task({
           id: "6",
@@ -139,7 +139,7 @@ describe("categorizeDashboardTasks", () => {
   });
 
   test("sorts approaching and all by soonest deadline first", () => {
-    const summaries = categorizeDashboardTasks(
+    const summaries = categorizeOverviewTasks(
       [
         task({
           id: "b",

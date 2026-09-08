@@ -8,7 +8,7 @@ describe("stripAuthTokens", () => {
       redirectTo: string;
       user: { id: string };
     } = {
-      redirectTo: "/dashboard",
+      redirectTo: "/overview",
       accessToken: "secret-access",
       refreshToken: "secret-refresh",
       expiresIn: 3600,
@@ -17,7 +17,7 @@ describe("stripAuthTokens", () => {
     const safe = stripAuthTokens(input);
 
     expect(safe).toEqual({
-      redirectTo: "/dashboard",
+      redirectTo: "/overview",
       user: { id: "u1" },
     });
     expect("accessToken" in safe).toBe(false);

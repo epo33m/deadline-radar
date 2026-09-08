@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useEffect, useActionState } from "react";
 
 import {
   markAllNotificationsRead,
@@ -9,14 +9,20 @@ import {
   type NotificationActionState,
 } from "@/app/actions/notifications";
 import { Button } from "@/components/ui/button";
+import { useNotifications } from "@/components/notifications/notifications-provider";
 import { urgencyLabel } from "@/lib/reminders/urgency";
 import type { InAppNotification } from "@/types/notification";
 
 const initialState: NotificationActionState = {};
 
 function MarkReadButton({ id }: { id: string }) {
+  const { noteOneRead } = useNotifications();
   const [, action, pending] = useActionState(
-    markNotificationRead,
+    async (prev: NotificationActionState, formData: FormData) => {
+      const result = await markNotificationRead(prev, formData);
+      if (!result.error) noteOneRead();
+      return result;
+    },
     initialState,
   );
 
@@ -31,8 +37,13 @@ function MarkReadButton({ id }: { id: string }) {
 }
 
 function MarkAllReadButton() {
+  const { noteAllRead } = useNotifications();
   const [, action, pending] = useActionState(
-    markAllNotificationsRead,
+    async (prev: NotificationActionState, formData: FormData) => {
+      const result = await markAllNotificationsRead(prev, formData);
+      if (!result.error) noteAllRead();
+      return result;
+    },
     initialState,
   );
 
@@ -47,10 +58,19 @@ function MarkAllReadButton() {
 
 export function NotificationList({
   notifications,
+  listComplete = false,
 }: {
   notifications: InAppNotification[];
+  listComplete?: boolean;
 }) {
+  const { syncFromList } = useNotifications();
   const unreadCount = notifications.filter((n) => !n.read_at).length;
+
+  // The server already fetched this list; when it is complete the badge can
+  // be aligned to ground truth at zero extra queries.
+  useEffect(() => {
+    if (listComplete) syncFromList(unreadCount);
+  }, [listComplete, unreadCount, syncFromList]);
 
   if (notifications.length === 0) {
     return (

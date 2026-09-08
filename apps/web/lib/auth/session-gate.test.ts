@@ -4,7 +4,7 @@ import { resolveSessionGate } from "./session-gate";
 describe("resolveSessionGate", () => {
   test("redirects unauthenticated users away from non-public routes to /login", () => {
     expect(
-      resolveSessionGate({ hasSession: false, pathname: "/dashboard" }),
+      resolveSessionGate({ hasSession: false, pathname: "/overview" }),
     ).toEqual({ action: "redirect", to: "/login" });
     expect(
       resolveSessionGate({ hasSession: false, pathname: "/preferences" }),
@@ -38,18 +38,18 @@ describe("resolveSessionGate", () => {
     ).toEqual({ action: "allow" });
   });
 
-  test("redirects authenticated users away from auth pages to /dashboard", () => {
+  test("redirects authenticated users away from auth pages to /overview", () => {
     expect(
       resolveSessionGate({ hasSession: true, pathname: "/login" }),
-    ).toEqual({ action: "redirect", to: "/dashboard" });
+    ).toEqual({ action: "redirect", to: "/overview" });
     expect(
       resolveSessionGate({ hasSession: true, pathname: "/register" }),
-    ).toEqual({ action: "redirect", to: "/dashboard" });
+    ).toEqual({ action: "redirect", to: "/overview" });
   });
 
   test("allows authenticated users on protected and home routes", () => {
     expect(
-      resolveSessionGate({ hasSession: true, pathname: "/dashboard" }),
+      resolveSessionGate({ hasSession: true, pathname: "/overview" }),
     ).toEqual({ action: "allow" });
     expect(
       resolveSessionGate({ hasSession: true, pathname: "/courses" }),

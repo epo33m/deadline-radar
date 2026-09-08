@@ -3,12 +3,12 @@ import type { TaskStatus } from "@/lib/validation/task";
 /** Match the default H-7 reminder horizon for “approaching” tasks. */
 export const APPROACHING_WINDOW_DAYS = 7;
 
-/** How far back to show completed tasks on the dashboard. */
+/** How far back to show completed tasks on the overview. */
 export const RECENTLY_COMPLETED_WINDOW_DAYS = 7;
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-export type DashboardTask = {
+export type OverviewTask = {
   id: string;
   title: string;
   deadline: string;
@@ -18,25 +18,25 @@ export type DashboardTask = {
   course_color?: string | null;
 };
 
-export type DashboardSummaries = {
-  all: DashboardTask[];
-  approaching: DashboardTask[];
-  overdue: DashboardTask[];
-  recentlyCompleted: DashboardTask[];
+export type OverviewSummaries = {
+  all: OverviewTask[];
+  approaching: OverviewTask[];
+  overdue: OverviewTask[];
+  recentlyCompleted: OverviewTask[];
 };
 
-export function categorizeDashboardTasks(
-  tasks: DashboardTask[],
+export function categorizeOverviewTasks(
+  tasks: OverviewTask[],
   now: Date = new Date(),
-): DashboardSummaries {
+): OverviewSummaries {
   const nowMs = now.getTime();
   const approachingCutoffMs = nowMs + APPROACHING_WINDOW_DAYS * MS_PER_DAY;
   const recentCutoffMs = nowMs - RECENTLY_COMPLETED_WINDOW_DAYS * MS_PER_DAY;
 
-  const all: DashboardTask[] = [];
-  const approaching: DashboardTask[] = [];
-  const overdue: DashboardTask[] = [];
-  const recentlyCompleted: DashboardTask[] = [];
+  const all: OverviewTask[] = [];
+  const approaching: OverviewTask[] = [];
+  const overdue: OverviewTask[] = [];
+  const recentlyCompleted: OverviewTask[] = [];
 
   for (const task of tasks) {
     if (task.status === "done") {

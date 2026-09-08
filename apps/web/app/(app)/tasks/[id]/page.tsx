@@ -146,14 +146,14 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
   };
 
   return (
-    <section className="space-y-8">
+    <section className="space-y-6 sm:space-y-8">
       <div className="space-y-2">
         <p className="text-sm">
           <Link href="/tasks" className="text-primary hover:underline">
             ← Tasks
           </Link>
         </p>
-        <h1 className="font-display text-3xl font-semibold">{task.title}</h1>
+        <h1 className="font-display text-[32px] font-semibold leading-[1.07] tracking-[-0.28px] text-ink sm:text-[36px] lg:text-[44px]">{task.title}</h1>
       </div>
 
       <TaskDetailPanel

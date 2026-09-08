@@ -2,15 +2,15 @@ import Link from "next/link";
 import { Check } from "lucide-react";
 
 import { formatDeadline, formatDeadlineDate } from "@/lib/datetime";
-import { formatRelativeDeadline } from "@/lib/dashboard/deadline-relative";
-import type { DashboardTask } from "@/lib/dashboard/summaries";
+import { formatRelativeDeadline } from "@/lib/deadline-relative";
+import type { OverviewTask } from "@/lib/overview/summaries";
 
 import { StatusPill } from "./status-pill";
 import { SectionEmptyState, type SectionTone } from "./section-empty-state";
 import { TaskCompleteCheckbox } from "./task-complete-checkbox";
 
 type TaskSummaryListProps = {
-  tasks: DashboardTask[];
+  tasks: OverviewTask[];
   emptyTone: SectionTone;
   timeZone: string;
   showCompletedAt?: boolean;
@@ -21,7 +21,7 @@ function TaskSummaryRow({
   timeZone,
   showCompletedAt,
 }: {
-  task: DashboardTask;
+  task: OverviewTask;
   timeZone: string;
   showCompletedAt?: boolean;
 }) {

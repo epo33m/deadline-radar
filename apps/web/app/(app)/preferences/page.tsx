@@ -16,7 +16,7 @@ export default async function PreferencesPage() {
         <h1 className="font-display text-[32px] font-semibold leading-[1.07] tracking-[-0.28px] text-ink sm:text-[36px] lg:text-[44px]">
           Preferences
         </h1>
-        <p className="max-w-xl text-[15px] font-normal leading-[1.47] tracking-[-0.374px] text-ink-muted-48 sm:text-[17px]">
+        <p className="max-w-xl text-[15px] font-normal leading-[1.47] tracking-[-0.374px] text-ink-muted-64 sm:text-[17px]">
           Account and time zone.
         </p>
       </header>

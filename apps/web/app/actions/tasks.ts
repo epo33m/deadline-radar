@@ -23,7 +23,7 @@ function taskBody(formData: FormData) {
 
 function revalidateTask(taskId?: string) {
   revalidatePath("/tasks");
-  revalidatePath("/dashboard");
+  revalidatePath("/overview");
   revalidatePath("/calendar");
   if (taskId) revalidatePath(`/tasks/${taskId}`);
 }
