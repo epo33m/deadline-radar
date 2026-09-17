@@ -1,9 +1,12 @@
+import type { TimeFormat } from "@deadline-radar/validation";
+
 import { apiJson, clearLocalAuthCookies } from "@/lib/api/server";
 
 export type SessionUser = {
   id: string;
   email?: string;
   timezone: string;
+  timeFormat: TimeFormat;
   name: string | null;
   sessionId?: string | null;
   pendingEmail?: string | null;

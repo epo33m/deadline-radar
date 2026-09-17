@@ -8,6 +8,7 @@ import type { Task } from "@/types/task";
 
 type CourseDetailPageProps = {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ view?: string }>;
 };
 
 type ApiCourse = {
@@ -16,6 +17,8 @@ type ApiCourse = {
   name: string;
   code: string | null;
   color: string | null;
+  icon?: string | null;
+  description: string | null;
   createdAt: string | Date;
   deletedAt: string | Date | null;
 };
@@ -43,8 +46,10 @@ export async function generateMetadata({ params }: CourseDetailPageProps) {
 
 export default async function CourseDetailPage({
   params,
+  searchParams,
 }: CourseDetailPageProps) {
   const { id } = await params;
+  const { view } = await searchParams;
   const user = await requireSession();
 
   const [courseResult, tasksResult] = await Promise.all([
@@ -74,6 +79,8 @@ export default async function CourseDetailPage({
     name: c.name,
     code: c.code,
     color: c.color,
+    icon: c.icon ?? null,
+    description: c.description,
     created_at: iso(c.createdAt)!,
     deleted_at: iso(c.deletedAt),
   };
@@ -86,7 +93,12 @@ export default async function CourseDetailPage({
     updated_at: iso(t.updatedAt ?? t.deadline)!,
   }));
 
+  const validViews = ["upcoming", "overdue", "done"] as const;
+  const taskView = validViews.includes(view as typeof validViews[number]) 
+    ? (view as typeof validViews[number]) 
+    : "all";
+
   return (
-    <CourseDetail course={course} tasks={tasks} timeZone={user.timezone} />
+    <CourseDetail course={course} tasks={tasks} timeZone={user.timezone} timeFormat={user.timeFormat} taskView={taskView} />
   );
 }

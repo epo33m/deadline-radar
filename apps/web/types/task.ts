@@ -8,7 +8,6 @@ export type Task = {
   description: string | null;
   deadline: string;
   status: TaskStatus;
-  estimated_duration: number | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -26,7 +25,7 @@ export type Attachment = {
   id: string;
   task_id: string;
   type: "file" | "link";
-  name: string;
+  notes: string | null;
   storage_path: string | null;
   url: string | null;
   created_at: string;
@@ -40,7 +39,7 @@ export type TaskListItem = Pick<
   | "title"
   | "deadline"
   | "status"
-  | "estimated_duration"
+  | "created_at"
 > & {
   course_name?: string | null;
   course_color?: string | null;

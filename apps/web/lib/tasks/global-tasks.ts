@@ -1,5 +1,5 @@
 import { getZonedDayKey } from "@/lib/calendar/month";
-import { APPROACHING_WINDOW_DAYS } from "@/lib/overview/summaries";
+import { APPROACHING_WINDOW_DAYS } from "@/lib/summary/summaries";
 import type { TaskStatus } from "@/lib/validation/task";
 
 export type TasksStatusView = "all" | "upcoming" | "late" | "done";

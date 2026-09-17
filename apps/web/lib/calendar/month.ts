@@ -229,14 +229,58 @@ export function groupTasksByDay(
   return grouped;
 }
 
+export function formatMonthHeadingParts(
+  { year, month }: CalendarMonth,
+  timeZone: string,
+): { month: string; year: string } {
+  const date = fromZonedTime(year, month, 15, 12, 0, 0, timeZone);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    month: "long",
+    year: "numeric",
+  }).formatToParts(date);
+  const value = (type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  return { month: value("month"), year: value("year") };
+}
+
 export function formatMonthHeading(
   { year, month }: CalendarMonth,
   timeZone: string,
 ): string {
-  const date = fromZonedTime(year, month, 15, 12, 0, 0, timeZone);
+  const parts = formatMonthHeadingParts({ year, month }, timeZone);
+  return `${parts.month} ${parts.year}`;
+}
+
+/**
+ * Preview rule for task names in month-grid cells: show the full name up to
+ * `maxLength` characters, otherwise the first `maxLength` characters plus
+ * an ellipsis (e.g. 10 → "Hello Worl...").
+ */
+export function truncateTitle(title: string, maxLength = 10): string {
+  if (title.length <= maxLength) return title;
+  return `${title.slice(0, maxLength)}...`;
+}
+
+/**
+ * Short month name for a YYYY-MM-DD day key (e.g. "Sep"), or null when the
+ * key is malformed. Single source for month-start cell labels.
+ */
+export function formatMonthShortName(dayKey: string): string | null {
+  const month = Number(dayKey.split("-")[1]);
+  if (!Number.isInteger(month) || month < 1 || month > 12) return null;
   return new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    month: "long",
-    year: "numeric",
-  }).format(date);
+    month: "short",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(2026, month - 1, 1)));
+}
+
+/**
+ * Day number label for month-grid cells. The 1st of a month includes the
+ * short month name as a separator (e.g. "Sep 1"); other days are bare.
+ */
+export function formatDayLabel(dayKey: string, day: number): string {
+  if (day !== 1) return String(day);
+  const name = formatMonthShortName(dayKey);
+  return name ? `${name} ${day}` : String(day);
 }

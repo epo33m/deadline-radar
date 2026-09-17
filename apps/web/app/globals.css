@@ -12,7 +12,7 @@
   --card-foreground: #1d1d1f;
   --popover: #ffffff;
   --popover-foreground: #1d1d1f;
-  --primary: #0071e3;
+  --primary: #0088ff;
   --primary-foreground: #ffffff;
   --secondary: #f5f5f7;
   --secondary-foreground: #1d1d1f;
@@ -20,15 +20,15 @@
   --muted-foreground: #7a7a7a;
   --accent: #fafafc;
   --accent-foreground: #1d1d1f;
-  --destructive: #ff3b30;
-  --warning: #ff9500;
+  --destructive: #ff383c;
+  --warning: #ff8d28;
   --success: #34c759;
   --border: #e0e0e0;
   --input: #e0e0e0;
-  --ring: #0071e3;
-  --chart-1: #0071e3;
-  --chart-2: #0088ff;
-  --chart-3: #2997ff;
+  --ring: #0088ff;
+  --chart-1: #0088ff;
+  --chart-2: #33a0ff;
+  --chart-3: #66b8ff;
   --chart-4: #7a7a7a;
   --chart-5: #333333;
   --radius: 0.6875rem;
@@ -63,7 +63,7 @@
 
   /* Named DESIGN.md tokens for app chrome */
   --color-primary-focus: #0088ff;
-  --color-primary-on-dark: #2997ff;
+  --color-primary-on-dark: #0a84ff;
   --color-ink: #1d1d1f;
   --color-body: #1d1d1f;
   --color-body-on-dark: #ffffff;
@@ -109,61 +109,3 @@
   }
 }
 
-@layer components {
-  /*
-   * Overview cards — Apple-style ambient tints:
-   * soft top-to-bottom shift, specular sheen, ink on light, hairline borders.
-   */
-  .overview-section-all,
-  .overview-section-due-soon,
-  .overview-section-overdue,
-  .overview-section-completed {
-    --section-accent: var(--color-hairline);
-    --section-tint-start: 20%;
-    --section-tint-end: 36%;
-    background:
-      linear-gradient(
-        180deg,
-        rgb(255 255 255 / 0.72) 0%,
-        rgb(255 255 255 / 0) 40%
-      ),
-      linear-gradient(
-        180deg,
-        color-mix(
-            in srgb,
-            var(--section-accent) var(--section-tint-start),
-            var(--color-canvas)
-          )
-          0%,
-        color-mix(
-            in srgb,
-            var(--section-accent) var(--section-tint-end),
-            var(--color-canvas)
-          )
-          100%
-      );
-    border-color: color-mix(
-      in srgb,
-      var(--section-accent) 22%,
-      var(--color-hairline)
-    );
-  }
-
-  .overview-section-all {
-    --section-accent: var(--color-ink-muted-80);
-    --section-tint-start: 12%;
-    --section-tint-end: 22%;
-  }
-
-  .overview-section-due-soon {
-    --section-accent: var(--warning);
-  }
-
-  .overview-section-overdue {
-    --section-accent: var(--destructive);
-  }
-
-  .overview-section-completed {
-    --section-accent: var(--success);
-  }
-}

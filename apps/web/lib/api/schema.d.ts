@@ -140,6 +140,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/change-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Change password (signed in) */
+        post: operations["postApiV1AuthChange-password"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/change-email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Change email (signed in) */
+        post: operations["postApiV1AuthChange-email"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/confirm": {
         parameters: {
             query?: never;
@@ -641,6 +675,41 @@ export interface operations {
         };
         responses: never;
     };
+    "postApiV1AuthChange-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    currentPassword: string;
+                    password: string;
+                    confirmPassword: string;
+                };
+            };
+        };
+        responses: never;
+    };
+    "postApiV1AuthChange-email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    email: string;
+                    currentPassword: string;
+                };
+            };
+        };
+        responses: never;
+    };
     getApiV1AuthConfirm: {
         parameters: {
             query?: {
@@ -708,6 +777,7 @@ export interface operations {
                     name: string;
                     code?: string | null;
                     color?: string | null;
+                    description?: string | null;
                 };
             };
         };
@@ -752,6 +822,7 @@ export interface operations {
                     name: string;
                     code?: string | null;
                     color?: string | null;
+                    description?: string | null;
                     updatedAt?: string;
                     updated_at?: string;
                 };
@@ -791,7 +862,6 @@ export interface operations {
                     /** @enum {string} */
                     status: "todo" | "in_progress" | "done";
                     description?: string | null;
-                    estimated_duration?: number | string | null;
                 };
             };
         };
@@ -840,7 +910,6 @@ export interface operations {
                     /** @enum {string} */
                     status: "todo" | "in_progress" | "done";
                     description?: string | null;
-                    estimated_duration?: number | string | null;
                     updatedAt?: string;
                     updated_at?: string;
                 };
@@ -922,8 +991,8 @@ export interface operations {
                 "application/json": {
                     /** Format: uuid */
                     task_id: string;
-                    name: string;
                     url: string;
+                    notes?: string;
                 };
             };
         };
@@ -941,7 +1010,7 @@ export interface operations {
                 "application/json": {
                     /** Format: uuid */
                     task_id: string;
-                    name?: string;
+                    notes?: string;
                     /**
                      * Format: binary
                      * @default File
@@ -951,7 +1020,7 @@ export interface operations {
                 "application/x-www-form-urlencoded": {
                     /** Format: uuid */
                     task_id: string;
-                    name?: string;
+                    notes?: string;
                     /**
                      * Format: binary
                      * @default File
@@ -961,7 +1030,7 @@ export interface operations {
                 "multipart/form-data": {
                     /** Format: uuid */
                     task_id: string;
-                    name?: string;
+                    notes?: string;
                     /**
                      * Format: binary
                      * @default File

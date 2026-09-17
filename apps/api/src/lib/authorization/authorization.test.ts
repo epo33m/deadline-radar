@@ -126,6 +126,7 @@ describe("field-policy mass assignment", () => {
         name: "Calc",
         code: "MATH",
         color: "#fff",
+        icon: "book-open",
       }),
     ).toEqual([]);
   });

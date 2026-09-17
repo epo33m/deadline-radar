@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useActionState } from "react";
+import type { TimeFormat } from "@deadline-radar/validation";
 
 import {
   markAllNotificationsRead,
@@ -10,6 +11,7 @@ import {
 } from "@/app/actions/notifications";
 import { Button } from "@/components/ui/button";
 import { useNotifications } from "@/components/notifications/notifications-provider";
+import { formatDeadline } from "@/lib/datetime";
 import { urgencyLabel } from "@/lib/reminders/urgency";
 import type { InAppNotification } from "@/types/notification";
 
@@ -59,9 +61,13 @@ function MarkAllReadButton() {
 export function NotificationList({
   notifications,
   listComplete = false,
+  timeZone = "UTC",
+  timeFormat = "24h",
 }: {
   notifications: InAppNotification[];
   listComplete?: boolean;
+  timeZone?: string;
+  timeFormat?: TimeFormat;
 }) {
   const { syncFromList } = useNotifications();
   const unreadCount = notifications.filter((n) => !n.read_at).length;
@@ -108,7 +114,7 @@ export function NotificationList({
                 </p>
                 <p className="text-xs text-ink-muted-48">
                   {notification.sent_at
-                    ? new Date(notification.sent_at).toLocaleString()
+                    ? formatDeadline(notification.sent_at, timeZone, timeFormat)
                     : "—"}
                   {unread ? " · Unread" : " · Read"}
                 </p>

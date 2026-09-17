@@ -94,7 +94,7 @@ export async function markNotificationRead(
   if (result.error) {
     return { error: result.error, fieldErrors: result.fieldErrors };
   }
-  revalidatePath("/preferences/notifications");
+  revalidatePath("/settings/notifications");
   return {};
 }
 
@@ -109,6 +109,6 @@ export async function markAllNotificationsRead(
   if (result.error) {
     return { error: result.error, fieldErrors: result.fieldErrors };
   }
-  revalidatePath("/preferences/notifications");
+  revalidatePath("/settings/notifications");
   return {};
 }

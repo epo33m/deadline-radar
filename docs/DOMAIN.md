@@ -34,6 +34,7 @@
 - Purely organizational, scoped to its owner.
 - **Rule:** `name` is required, cannot be empty.
 - **Rule:** Course identity is the course `id` (uuid). Names are **not** unique per user — duplicate names are allowed.
+- **Rule:** `code`, `color`, and `description` are optional display-only fields; empty values normalize to `null`.
 - **Rule — soft delete:** removing a course sets `deleted_at`; it is excluded from active lists and from new task assignment. Rows are not hard-deleted in the MVP.
 - **Open question:** how long should soft-deleted courses be retained before purge (if ever)? No retention period or automatic purge is defined yet — needs a future decision.
 
@@ -87,6 +88,7 @@
 - **Threshold trigger time:** threshold `H-N` fires at `deadline - N days`, **at the same time of day as the deadline**, converted to the Profile's `timezone`. Example: deadline Friday 23:59 (Asia/Makassar) → H-3 fires Tuesday 23:59 (Asia/Makassar).
 - **H-0** effectively equals the deadline time itself.
 - **Rule — thresholds already past at creation time:** if a task's deadline is less than 7 days away (e.g. only 2 days left), then the H-7 and H-3 thresholds are automatically already "past due" when the task is created. The system **must not** fire reminders retroactively for thresholds that have already passed — such thresholds are marked as no longer relevant (skipped), rather than immediately flooding the user with notifications when the task is created.
+- **Rule — custom thresholds must trigger in the future:** a **custom** (non-default) threshold whose trigger time is already in the past is **rejected** when added or edited (API validation error; the UI enforces the same check). This prevents creating reminders that can never fire. The four default offsets (H-7/H-3/H-1/H-0) are exempt: they may exist even when already past and are kept but skipped (per the rule above).
 - **Rule — scheduler:** runs at least every hour (per `product.md`). A threshold is "due" when `now >= threshold_trigger_time` AND there is no existing delivery with status `sent`/`pending` for that (task, threshold, channel) combination.
 - **Rule — editing the deadline:** if the user changes a task's `deadline`, the trigger time of all thresholds shifts accordingly (since thresholds are stored as `days_before`, not an absolute date). Thresholds whose new trigger time has already passed at the moment of editing are **not** fired retroactively (same rule as above).
 
@@ -99,11 +101,10 @@
 | `Task.title` | required, cannot be empty |
 | `Task.course_id` | required, must belong to the same user; new tasks require an active (not soft-deleted) course |
 | `Task.deadline` | required (datetime) |
-| `Task.estimated_duration` | optional integer minutes (free-text alternate still open in `product.md` §10) |
 | `Task` delete | soft delete via `deleted_at` (no hard delete in MVP) |
 | `Attachment.type=file` | `storage_path` required, `url` empty |
 | `Attachment.type=link` | `url` required (valid URL), `storage_path` empty |
-| `ReminderThreshold.days_before` | integer ≥ 0, unique per task |
+| `ReminderThreshold.days_before` | integer ≥ 0, unique per task; custom values must not have a trigger time already in the past |
 
 ## 6. Explicitly Not Modeled in the MVP
 - Priority level per task

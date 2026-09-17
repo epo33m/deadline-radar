@@ -5,8 +5,10 @@ import { useState } from "react";
 
 import { AddCourseForm } from "@/components/courses/course-form";
 import { CourseList } from "@/components/courses/course-list";
+import { LearnSecondaryNav } from "@/components/learn/learn-secondary-nav";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
+import { PageHeader } from "@/components/ui/page-header";
 import type { CourseListItem } from "@/types/course";
 
 type CoursesManagementProps = {
@@ -20,33 +22,25 @@ export function CoursesManagement({ courses }: CoursesManagementProps) {
 
   return (
     <section className="space-y-6 sm:space-y-8">
-      <header className="flex items-start justify-between gap-3 sm:gap-4">
-        <div className="min-w-0 flex-1 space-y-2 sm:space-y-3">
-          <h1 className="font-display text-[32px] font-semibold leading-[1.07] tracking-[-0.28px] text-ink sm:text-[36px] lg:text-[44px]">
-            Courses
-          </h1>
-          <p className="max-w-xl text-[15px] font-normal leading-[1.47] tracking-[-0.374px] text-ink-muted-48 sm:text-[17px]">
-            Organize your tasks by course.
-          </p>
-        </div>
-
-        {hasCourses ? (
-          <Button
-            type="button"
-            onClick={openAdd}
-            aria-label="New Course"
-            className="mt-0.5 hidden size-11 shrink-0 rounded-full p-0 md:inline-flex"
-          >
-            <Plus className="size-5" strokeWidth={2} aria-hidden="true" />
-          </Button>
-        ) : null}
-      </header>
+      <LearnSecondaryNav />
+      <PageHeader title="My Courses" subtitle="Everything you're learning, organized in one place." />
 
       <div className={hasCourses ? "space-y-3 pb-20 sm:space-y-4 md:pb-0" : undefined}>
         {hasCourses ? (
-          <h2 className="font-display text-[19px] font-semibold tracking-[-0.2px] text-ink sm:text-[21px]">
-            My Courses
-          </h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="font-display text-[19px] font-semibold tracking-[-0.2px] text-ink sm:text-[21px]">
+                All Courses
+            </h2>
+            <Button
+              type="button"
+              onClick={openAdd}
+              aria-label="New Course"
+              size="icon"
+              className="hidden rounded-full md:inline-flex"
+            >
+              <Plus className="size-5" strokeWidth={2} aria-hidden="true" />
+            </Button>
+          </div>
         ) : null}
         <CourseList courses={courses} onAddCourse={openAdd} />
       </div>

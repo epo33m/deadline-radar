@@ -79,3 +79,18 @@ export const timezoneUpdateSchema = z
     timezone: z.string().trim().min(1, "Timezone is required").max(64),
   })
   .strict();
+
+/**
+ * Canonical time display format preference.
+ * Single source of truth for the "24h" | "12h" type across DB, API, and web.
+ * Presentation-only: never changes stored timestamps or timezones.
+ */
+export const timeFormatSchema = z.enum(["24h", "12h"]);
+
+export type TimeFormat = z.infer<typeof timeFormatSchema>;
+
+export const timeFormatUpdateSchema = z
+  .object({
+    timeFormat: timeFormatSchema,
+  })
+  .strict();

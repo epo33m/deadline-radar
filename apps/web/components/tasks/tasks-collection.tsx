@@ -1,20 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { Check, CheckSquare, Circle, Plus, Search } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { Check, CheckSquare, Circle, ListFilter, Plus, Search } from "lucide-react";
+import { useId, useMemo, useRef, useState, type ReactNode } from "react";
+import type { TimeFormat } from "@deadline-radar/validation";
 
 import { AddTaskForm } from "@/components/tasks/task-form";
+import { LearnSecondaryNav } from "@/components/learn/learn-secondary-nav";
+import { CourseIconView } from "@/components/courses/course-icon";
+import {
+  findCourseColorOption,
+  getCourseCardPresentation,
+  getCourseColorFill,
+} from "@/lib/courses/colors";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { formatDeadline } from "@/lib/datetime";
-import { formatRelativeDeadline } from "@/lib/deadline-relative";
+import { PageHeader } from "@/components/ui/page-header";
+import { PortalMenu } from "@/components/ui/portal-menu";
+import type { TaskStatus } from "@/lib/validation/task";
+import { formatDeadlineDate, formatDeadlineTime } from "@/lib/datetime";
 import {
   filterTasksByStatusView,
-  groupTasksByHorizon,
   resolveTasksEmptyState,
-  type TaskHorizonGroups,
   type TasksStatusView,
 } from "@/lib/tasks/global-tasks";
 import { cn } from "@/lib/utils";
@@ -24,30 +32,36 @@ import type { TaskListItem } from "@/types/task";
 /** Show search once the collection is large enough to justify it (UX-008). */
 const SEARCH_MIN_TASKS = 8;
 
+/** v1: filter dropdown hidden, pills are the only status control. */
+const SHOW_FILTER_BUTTON = false;
+
 const STATUS_VIEWS: { id: TasksStatusView; label: string }[] = [
   { id: "all", label: "All" },
   { id: "upcoming", label: "Upcoming" },
-  { id: "late", label: "Late" },
+  { id: "late", label: "Overdue" },
   { id: "done", label: "Done" },
 ];
 
+/** Sort weight for the default All view — active tasks first, starting from todo. */
+const STATUS_ORDER: Record<TaskStatus, number> = {
+  todo: 0,
+  in_progress: 1,
+  done: 2,
+};
+
+/** Card badge — same labels/colors as StatusPicker in task detail. */
+const CARD_STATUS_META: Record<TaskStatus, { label: string; pillClass: string }> = {
+  todo: { label: "To do", pillClass: "border-transparent bg-ink/60 text-white" },
+  in_progress: { label: "In progress", pillClass: "border-transparent bg-warning text-ink" },
+  done: { label: "Completed", pillClass: "border-transparent bg-success text-white" },
+};
+
 type RowTone = "late" | "upcoming" | "done";
 
-const TONE_ICON_CLASS: Record<Exclude<RowTone, "done">, string> = {
-  late: "text-destructive",
-  upcoming: "text-warning",
-};
-
-const TONE_RELATIVE_CLASS: Record<RowTone, string> = {
-  late: "text-destructive",
-  upcoming: "text-ink-muted-80",
-  done: "text-ink-muted-48",
-};
-
-const TONE_TITLE_CLASS: Record<RowTone, string> = {
-  late: "text-destructive",
-  upcoming: "text-warning",
-  done: "text-ink-muted-48",
+const TONE_CIRCLE_CLASS: Record<RowTone, string> = {
+  late: "bg-destructive/10 text-destructive",
+  upcoming: "bg-warning/10 text-warning",
+  done: "bg-success/10 text-success",
 };
 
 const TONE_INDICATOR_LABEL: Record<RowTone, string> = {
@@ -60,6 +74,7 @@ type TasksCollectionProps = {
   courses: CourseListItem[];
   tasks: TaskListItem[];
   timeZone: string;
+  timeFormat: TimeFormat;
 };
 
 function matchesSearch(task: TaskListItem, query: string): boolean {
@@ -71,135 +86,97 @@ function matchesSearch(task: TaskListItem, query: string): boolean {
 function TaskRow({
   task,
   timeZone,
+  timeFormat,
   tone,
+  courseIcon,
 }: {
   task: TaskListItem;
   timeZone: string;
+  timeFormat: TimeFormat;
   tone: RowTone;
+  courseIcon: string | null | undefined;
 }) {
   const completed = tone === "done";
-  const relativeLabel = completed
+  const statusMeta = CARD_STATUS_META[task.status] ?? CARD_STATUS_META.todo;
+  const courseFill = getCourseColorFill(task.course_color);
+  const cardPresentation = getCourseCardPresentation(
+    findCourseColorOption(task.course_color)?.token,
+  );
+  const metaSuffix = completed
     ? "Completed"
-    : formatRelativeDeadline(task.deadline, timeZone);
-  const metaLine = completed
-    ? `${task.course_name ?? "Course"} · Completed ${formatDeadline(task.deadline, timeZone)}`
-    : `${task.course_name ?? "Course"} · Due ${formatDeadline(task.deadline, timeZone)}`;
+    : `${formatDeadlineDate(task.deadline, timeZone)}, ${formatDeadlineTime(task.deadline, timeZone, timeFormat)}`;
 
   return (
-    <li className="border-b border-hairline last:border-b-0">
+    <li className="overflow-hidden rounded-lg border border-hairline/80 bg-canvas shadow-none transition-colors hover:bg-muted/30 focus-within:ring-2 focus-within:ring-ring">
       <Link
         href={`/tasks/${task.id}`}
-        className="flex min-h-12 w-full items-start gap-3 py-3.5 outline-none transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:gap-3.5 sm:py-4"
+        className="flex h-full w-full flex-col gap-2.5 rounded-lg p-4 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:p-5"
       >
-        <span className="mt-0.5 shrink-0" aria-hidden="true">
-          {completed ? (
-            <Check className="size-5 text-success" strokeWidth={2.25} />
-          ) : (
-            <Circle
-              className={cn(
-                "size-5",
-                tone === "late"
-                  ? TONE_ICON_CLASS.late
-                  : TONE_ICON_CLASS.upcoming,
-              )}
-              strokeWidth={2}
-            />
-          )}
-        </span>
-        <span className="sr-only">{TONE_INDICATOR_LABEL[tone]}. </span>
-        <div className="min-w-0 flex-1 space-y-0.5">
-          <p
+        <div className="mb-5 flex shrink-0 items-center justify-start">
+          <span
             className={cn(
-              "truncate text-[17px] font-medium leading-snug tracking-[-0.2px]",
-              completed ? "text-ink-muted-80" : "text-ink",
+              "flex size-10 shrink-0 items-center justify-center rounded-full",
+              !cardPresentation &&
+                (courseFill ? "text-ink" : TONE_CIRCLE_CLASS[tone]),
             )}
+            style={
+              cardPresentation
+                ? { background: cardPresentation.gradient }
+                : courseFill
+                  ? {
+                      backgroundColor: `color-mix(in srgb, ${courseFill} 75%, transparent)`,
+                    }
+                  : undefined
+            }
+            aria-hidden="true"
           >
-            {task.title}
-          </p>
-          <p className="truncate text-[13px] leading-snug text-ink-muted-48 sm:text-sm">
-            {metaLine}
-          </p>
+            {courseIcon ? (
+              <CourseIconView
+                slug={courseIcon}
+                className={cn("size-5", cardPresentation?.iconClass)}
+                strokeWidth={2}
+              />
+            ) : completed ? (
+              <Check className="size-5" strokeWidth={2.25} />
+            ) : (
+              <Circle className="size-5" strokeWidth={2} />
+            )}
+          </span>
         </div>
+        <span className="sr-only">{TONE_INDICATOR_LABEL[tone]}. </span>
+        <p className="truncate text-sm leading-snug font-medium text-ink">
+          {task.course_name ?? "Course"}
+        </p>
         <p
           className={cn(
-            "shrink-0 pt-0.5 text-right text-[13px] leading-snug sm:text-sm",
-            TONE_RELATIVE_CLASS[tone],
+            "mb-5 line-clamp-2 text-[22px] font-bold leading-snug tracking-[-0.2px]",
+            completed ? "text-ink-muted-80" : "text-ink",
           )}
         >
-          {relativeLabel}
+          {task.title}
         </p>
+        <span className={cn("mt-auto flex w-full items-center gap-2 border-t border-hairline pt-2", completed ? "justify-end" : "justify-between")}>
+          {!completed ? (
+            <span className="min-w-0 truncate text-xs leading-snug text-ink-muted-48">
+              {metaSuffix}
+            </span>
+          ) : null}
+          <span className={cn("flex shrink-0 items-center rounded-full border px-2.5 py-1", statusMeta.pillClass)}>
+            <span className="truncate text-sm leading-snug font-medium">
+              {statusMeta.label}
+            </span>
+          </span>
+        </span>
         <span className="sr-only">Open {task.title}</span>
       </Link>
     </li>
   );
 }
 
-function TaskGroup({
-  title,
-  tone,
-  tasks,
-  timeZone,
-}: {
-  title: string;
-  tone: RowTone;
-  tasks: TaskListItem[];
-  timeZone: string;
-}) {
-  if (tasks.length === 0) return null;
-
-  return (
-    <section className="space-y-2" aria-label={title}>
-      <h3
-        className={cn(
-          "font-display text-[13px] font-semibold tracking-[0.06em] uppercase sm:text-sm",
-          TONE_TITLE_CLASS[tone],
-        )}
-      >
-        {title}
-      </h3>
-      <ul className="list-none border-t border-hairline">
-        {tasks.map((task) => (
-          <TaskRow
-            key={task.id}
-            task={task}
-            timeZone={timeZone}
-            tone={tone}
-          />
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-function HorizonGroups({
-  horizons,
-  timeZone,
-}: {
-  horizons: TaskHorizonGroups<TaskListItem>;
-  timeZone: string;
-}) {
-  return (
-    <>
-      <TaskGroup
-        title="Today"
-        tone="upcoming"
-        tasks={horizons.today}
-        timeZone={timeZone}
-      />
-      <TaskGroup
-        title="Upcoming"
-        tone="upcoming"
-        tasks={horizons.upcoming}
-        timeZone={timeZone}
-      />
-      <TaskGroup
-        title="Later"
-        tone="upcoming"
-        tasks={horizons.later}
-        timeZone={timeZone}
-      />
-    </>
-  );
+function resolveTone(task: TaskListItem): RowTone {
+  if (task.status === "done") return "done";
+  const ms = new Date(task.deadline).getTime();
+  return Number.isNaN(ms) || ms >= Date.now() ? "upcoming" : "late";
 }
 
 function EmptyPanel({
@@ -233,14 +210,26 @@ export function TasksCollection({
   courses,
   tasks,
   timeZone,
+  timeFormat,
 }: TasksCollectionProps) {
   const [view, setView] = useState<TasksStatusView>("all");
   const [query, setQuery] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const filterMenuId = useId();
+  const filterTriggerRef = useRef<HTMLButtonElement>(null);
+  const activeViewLabel =
+    STATUS_VIEWS.find((item) => item.id === view)?.label ?? "All";
 
   const normalizedQuery = query.trim().toLowerCase();
   const searchEnabled =
     tasks.length >= SEARCH_MIN_TASKS || normalizedQuery.length > 0;
+
+  const courseIconById = useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const course of courses) map.set(course.id, course.icon ?? null);
+    return map;
+  }, [courses]);
 
   const searchedTasks = useMemo(
     () =>
@@ -263,9 +252,25 @@ export function TasksCollection({
     [searchedTasks],
   );
 
+  /** Default "All" view: active first (todo → in progress → done), nearest deadline first. */
+  const allTasks = useMemo(
+    () =>
+      [...searchedTasks].sort((a, b) => {
+        const orderA = STATUS_ORDER[a.status] ?? 99;
+        const orderB = STATUS_ORDER[b.status] ?? 99;
+        if (orderA !== orderB) return orderA - orderB;
+        const aMs = new Date(a.deadline).getTime();
+        const bMs = new Date(b.deadline).getTime();
+        const aSafe = Number.isNaN(aMs) ? Number.POSITIVE_INFINITY : aMs;
+        const bSafe = Number.isNaN(bMs) ? Number.POSITIVE_INFINITY : bMs;
+        return aSafe - bSafe;
+      }),
+    [searchedTasks],
+  );
+
   const filteredTasks =
     view === "all"
-      ? searchedTasks
+      ? allTasks
       : view === "late"
         ? lateTasks
         : view === "upcoming"
@@ -278,38 +283,14 @@ export function TasksCollection({
     filteredCount: filteredTasks.length,
   });
 
-  const horizons = useMemo(
-    () => groupTasksByHorizon(upcomingOpenTasks, timeZone),
-    [upcomingOpenTasks, timeZone],
-  );
-
   const openAdd = () => setAddOpen(true);
   const showChrome = emptyState !== "no-courses" && emptyState !== "no-tasks";
   const hasCourses = courses.length > 0;
 
   return (
     <section className="space-y-6 sm:space-y-8">
-      <header className="flex items-start justify-between gap-3 sm:gap-4">
-        <div className="min-w-0 flex-1 space-y-2 sm:space-y-3">
-          <h1 className="font-display text-[32px] font-semibold leading-[1.07] tracking-[-0.28px] text-ink sm:text-[36px] lg:text-[44px]">
-            Tasks
-          </h1>
-          <p className="max-w-xl text-[15px] font-normal leading-[1.47] tracking-[-0.374px] text-ink-muted-48 sm:text-[17px]">
-            Track deadlines across every course.
-          </p>
-        </div>
-
-        {hasCourses ? (
-          <Button
-            type="button"
-            onClick={openAdd}
-            aria-label="Add task"
-            className="mt-0.5 hidden size-11 shrink-0 rounded-full p-0 md:inline-flex"
-          >
-            <Plus className="size-5" strokeWidth={2} aria-hidden="true" />
-          </Button>
-        ) : null}
-      </header>
+      <LearnSecondaryNav />
+      <PageHeader title="My Tasks" subtitle="Stay on top of what needs to get done." />
 
       {showChrome ? (
         <div
@@ -319,34 +300,118 @@ export function TasksCollection({
               : "space-y-4"
           }
         >
-          <h2 className="font-display text-[19px] font-semibold tracking-[-0.2px] text-ink sm:text-[21px]">
-            My Tasks
-          </h2>
+          <div className="flex flex-col gap-3 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-center sm:gap-2">
+            <h2 className="self-start font-display text-[19px] font-semibold tracking-[-0.2px] text-ink sm:justify-self-start sm:text-[21px]">
+                All Tasks
+            </h2>
 
-          <div
-            role="group"
-            aria-label="Task status"
-            className="flex flex-wrap gap-1.5"
-          >
-            {STATUS_VIEWS.map((item) => {
-              const selected = view === item.id;
-              return (
-                <button
-                  key={item.id}
+            <div
+              role="group"
+              aria-label="Task status"
+              className="flex flex-wrap justify-center gap-1.5 sm:justify-self-center"
+            >
+              {STATUS_VIEWS.map((item) => {
+                const selected = view === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setView(item.id)}
+                    className={cn(
+                      "min-h-9 rounded-full px-3.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      selected
+                        ? "bg-ink text-canvas"
+                        : "bg-muted/60 text-ink-muted-80 hover:bg-muted hover:text-ink",
+                    )}
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex shrink-0 items-center justify-end gap-2 sm:justify-self-end">
+              {SHOW_FILTER_BUTTON ? (
+              <div className="relative">
+                <Button
+                  ref={filterTriggerRef}
                   type="button"
-                  aria-pressed={selected}
-                  onClick={() => setView(item.id)}
-                  className={cn(
-                    "min-h-9 rounded-full px-3.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    selected
-                      ? "bg-ink text-canvas"
-                      : "bg-muted/60 text-ink-muted-80 hover:bg-muted hover:text-ink",
-                  )}
+                  variant="outline"
+                  size="icon"
+                  aria-expanded={filterOpen}
+                  aria-controls={filterMenuId}
+                  aria-label={`Filter tasks, current: ${activeViewLabel}`}
+                  onClick={() => setFilterOpen((current) => !current)}
+                  className="relative rounded-full"
                 >
-                  {item.label}
-                </button>
-              );
-            })}
+                  <ListFilter className="size-5" strokeWidth={2} aria-hidden="true" />
+                  {view !== "all" ? (
+                    <span
+                      aria-hidden="true"
+                      className="absolute top-1.5 right-1.5 size-2 rounded-full bg-primary"
+                    />
+                  ) : null}
+                </Button>
+
+                <PortalMenu
+                  open={filterOpen}
+                  onClose={() => setFilterOpen(false)}
+                  triggerRef={filterTriggerRef}
+                  menuId={filterMenuId}
+                  label="Filter tasks by status"
+                  role="menu"
+                  arrowNav
+                  focusFirstOnOpen
+                  measureOptions={{ minWidth: 200, align: "end" }}
+                  className="p-1.5"
+                >
+                  {STATUS_VIEWS.map((item) => {
+                    const selected = view === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={selected}
+                        onClick={() => {
+                          setView(item.id);
+                          setFilterOpen(false);
+                        }}
+                        className={cn(
+                          "flex min-h-11 w-full items-center justify-between gap-4 rounded-lg px-3 py-2 text-left text-sm outline-none transition-colors hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+                          selected
+                            ? "font-semibold text-ink"
+                            : "font-medium text-ink-muted-80",
+                        )}
+                      >
+                        {item.label}
+                        {selected ? (
+                          <Check
+                            className="size-4 shrink-0 text-primary"
+                            strokeWidth={2.25}
+                            aria-hidden="true"
+                          />
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </PortalMenu>
+              </div>
+              ) : null}
+
+              {hasCourses ? (
+                <Button
+                  type="button"
+                  onClick={openAdd}
+                  aria-label="Add task"
+                  size="icon"
+                  className="hidden rounded-full md:inline-flex"
+                >
+                  <Plus className="size-5" strokeWidth={2} aria-hidden="true" />
+                </Button>
+              ) : null}
+            </div>
           </div>
 
           {searchEnabled ? (
@@ -376,49 +441,18 @@ export function TasksCollection({
 
           {emptyState === "ready" ? (
             <div className="space-y-8">
-              {view === "all" ? (
-                <>
-                  <TaskGroup
-                    title="Late"
-                    tone="late"
-                    tasks={lateTasks}
+              <ul className="grid list-none grid-cols-2 gap-x-5 gap-y-9 sm:grid-cols-3 sm:gap-x-6 lg:grid-cols-4">
+                {filteredTasks.map((task) => (
+                  <TaskRow
+                    key={task.id}
+                    task={task}
                     timeZone={timeZone}
+                    timeFormat={timeFormat}
+                    tone={resolveTone(task)}
+                    courseIcon={courseIconById.get(task.course_id)}
                   />
-                  <HorizonGroups horizons={horizons} timeZone={timeZone} />
-                  <TaskGroup
-                    title="Done"
-                    tone="done"
-                    tasks={doneTasks}
-                    timeZone={timeZone}
-                  />
-                </>
-              ) : null}
-
-              {view === "upcoming" ? (
-                <HorizonGroups horizons={horizons} timeZone={timeZone} />
-              ) : null}
-
-              {view === "late" ? (
-                <TaskGroup
-                  title="Late"
-                  tone="late"
-                  tasks={filteredTasks}
-                  timeZone={timeZone}
-                />
-              ) : null}
-
-              {view === "done" ? (
-                <TaskGroup
-                  title="Done"
-                  tone="done"
-                  tasks={filteredTasks}
-                  timeZone={timeZone}
-                />
-              ) : null}
-
-              <p className="pb-2 text-center text-sm text-ink-muted-48">
-                That&apos;s all for now.
-              </p>
+                ))}
+              </ul>
             </div>
           ) : null}
         </div>

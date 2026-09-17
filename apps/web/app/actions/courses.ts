@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { apiJson } from "@/lib/api/server";
 import { normalizeCourseColorForStorage } from "@/lib/courses/colors";
+import { normalizeCourseIconForStorage } from "@/lib/courses/icons";
 
 export type CourseActionState = {
   error?: string;
@@ -17,10 +18,15 @@ function courseBody(formData: FormData) {
     typeof colorRaw === "string"
       ? normalizeCourseColorForStorage(colorRaw)
       : "";
+  const iconRaw = formData.get("icon");
+  const icon =
+    typeof iconRaw === "string" ? normalizeCourseIconForStorage(iconRaw) : "";
   return {
     name: formData.get("name"),
     code: formData.get("code") || null,
     color: color.length > 0 ? color : null,
+    icon: icon.length > 0 ? icon : null,
+    description: formData.get("description") || null,
   };
 }
 

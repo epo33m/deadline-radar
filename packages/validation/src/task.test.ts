@@ -26,7 +26,7 @@ describe("taskStatusSchema", () => {
 });
 
 describe("taskSchema", () => {
-  test("accepts required fields with optional description and duration omitted", () => {
+  test("accepts required fields with optional description omitted", () => {
     const result = taskSchema.safeParse(validBase);
     expect(result.success).toBe(true);
     if (result.success) {
@@ -36,7 +36,6 @@ describe("taskSchema", () => {
         deadline: validBase.deadline,
         status: "todo",
         description: null,
-        estimated_duration: null,
       });
     }
   });
@@ -96,40 +95,9 @@ describe("taskSchema", () => {
     }
   });
 
-  test("accepts estimated_duration as a positive integer minutes value", () => {
-    const result = taskSchema.safeParse({
-      ...validBase,
-      estimated_duration: "90",
-    });
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.estimated_duration).toBe(90);
-    }
-  });
-
-  test("normalizes empty estimated_duration to null", () => {
-    const result = taskSchema.safeParse({
-      ...validBase,
-      estimated_duration: "",
-    });
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.estimated_duration).toBeNull();
-    }
-  });
-
-  test("rejects non-integer or non-positive estimated_duration", () => {
+  test("rejects the removed estimated_duration field (strict schema)", () => {
     expect(
-      taskSchema.safeParse({ ...validBase, estimated_duration: "0" }).success,
-    ).toBe(false);
-    expect(
-      taskSchema.safeParse({ ...validBase, estimated_duration: "-5" }).success,
-    ).toBe(false);
-    expect(
-      taskSchema.safeParse({ ...validBase, estimated_duration: "1.5" }).success,
-    ).toBe(false);
-    expect(
-      taskSchema.safeParse({ ...validBase, estimated_duration: "two" }).success,
+      taskSchema.safeParse({ ...validBase, estimated_duration: 90 }).success,
     ).toBe(false);
   });
 

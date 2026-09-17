@@ -1,5 +1,5 @@
 -- Account security capabilities for authenticated users.
--- Issue #38: signed-in password change and email change (Settings/Preferences).
+-- Issue #38: signed-in password change and email change (Settings).
 -- Mirrors the RBAC seed pattern in 20260905010000_rbac.sql.
 
 insert into public.role_capabilities (role_id, capability)

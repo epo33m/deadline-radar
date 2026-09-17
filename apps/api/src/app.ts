@@ -11,6 +11,7 @@ import { bodyLimitPlugin } from "./plugins/body-limit";
 import { authRoutes } from "./routes/auth";
 import { courseRoutes } from "./routes/courses";
 import { taskRoutes } from "./routes/tasks";
+import { summaryRoutes } from "./routes/summary";
 import { attachmentRoutes } from "./routes/attachments";
 import { notificationRoutes } from "./routes/notifications";
 import { adminRoutes } from "./routes/admin";
@@ -42,6 +43,7 @@ export const app = new Elysia()
           { name: "Auth" },
           { name: "Courses" },
           { name: "Tasks" },
+          { name: "Summary" },
           { name: "Attachments" },
           { name: "Notifications" },
           { name: "Admin" },
@@ -57,6 +59,7 @@ export const app = new Elysia()
   .use(authRoutes)
   .use(courseRoutes)
   .use(taskRoutes)
+  .use(summaryRoutes)
   .use(attachmentRoutes)
   .use(notificationRoutes)
   .use(adminRoutes)

@@ -71,7 +71,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
         .values({
           taskId: task.id,
           type: "link",
-          name: parsed.data.name,
+          notes: parsed.data.notes,
           url: parsed.data.url,
           storagePath: null,
         })
@@ -100,7 +100,11 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
     async ({ body, requireAuthz, request, set }) => {
       const ctx = await requireAuthz("attachment.create");
       const taskId = body.task_id;
-      const name = body.name;
+      const notesRaw = body.notes;
+      const notes =
+        typeof notesRaw === "string" && notesRaw.trim()
+          ? notesRaw.trim()
+          : null;
       const file = body.file;
 
       if (!taskId || !file) {
@@ -117,7 +121,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
           key: idemKey,
           method: "POST",
           path: "/api/v1/attachments/file",
-          body: { task_id: taskId, name, size: file.size, type: file.type },
+          body: { task_id: taskId, size: file.size, type: file.type },
         });
         if (replay) {
           set.status = replay.statusCode;
@@ -128,9 +132,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
       const task = await ownedTask(ctx.subject.id, taskId);
       if (!task) throw ApiError.notFound("Task not found");
 
-      const filename = sanitizeAttachmentFilename(
-        name?.trim() || file.name || "upload",
-      );
+      const filename = sanitizeAttachmentFilename(file.name || "upload");
       const dbPath = buildAttachmentStoragePath(
         ctx.subject.id,
         task.id,
@@ -163,7 +165,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
         .values({
           taskId: task.id,
           type: "file",
-          name: filename,
+          notes,
           storagePath: dbPath,
           url: null,
         })
@@ -183,7 +185,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
     {
       body: t.Object({
         task_id: t.String({ format: "uuid" }),
-        name: t.Optional(t.String()),
+        notes: t.Optional(t.String()),
         file: t.File({
           type: [
             "application/pdf",

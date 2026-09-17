@@ -130,7 +130,10 @@ export const adminRoutes = new Elysia({ prefix: "/api/v1/admin" })
     "/audit",
     async ({ query, requireAuthz }) => {
       await requireAuthz("audit.view");
-      const { limit, cursor } = parsePaginationQuery(query);
+      const { limit, cursor } = parsePaginationQuery({
+        limit: query.limit,
+        cursor: query.cursor,
+      });
       const { events, nextCursor } = await listAuditEvents({ limit, cursor });
       return {
         events: events.map(serializeAuditEvent),

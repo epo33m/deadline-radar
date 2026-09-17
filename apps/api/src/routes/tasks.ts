@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gt, isNull, lt, or } from "drizzle-orm";
 import { Elysia, t } from "elysia";
+import { thresholdTriggerAt } from "@deadline-radar/domain";
 import {
   reminderThresholdSchema,
   taskPatchSchema,
@@ -8,6 +9,7 @@ import {
 import {
   attachments,
   courses,
+  profiles,
   reminderThresholds,
   tasks,
 } from "@deadline-radar/db";
@@ -54,13 +56,45 @@ function assertFreshUpdatedAt(
   }
 }
 
+/** Standard default offsets — those may exist even when already past (kept but skipped, DOMAIN.md §4). */
+const DEFAULT_REMINDER_OFFSETS = [7, 3, 1, 0];
+
+/** Reject non-default thresholds whose trigger instant is already in the past (DOMAIN.md §4). */
+async function assertThresholdNotInPast(
+  task: { userId: string; deadline: Date },
+  daysBefore: number,
+): Promise<void> {
+  if (DEFAULT_REMINDER_OFFSETS.includes(daysBefore)) return;
+  const [profile] = await getDb()
+    .select({ timezone: profiles.timezone })
+    .from(profiles)
+    .where(eq(profiles.id, task.userId))
+    .limit(1);
+  const trigger = thresholdTriggerAt(
+    task.deadline.toISOString(),
+    daysBefore,
+    profile?.timezone ?? "UTC",
+  );
+  if (Number.isNaN(trigger.getTime()) || Date.now() >= trigger.getTime()) {
+    throw ApiError.validation("Reminder time has already passed", [
+      {
+        field: "days_before",
+        message: "Pick a smaller number of days so the reminder is still ahead",
+      },
+    ]);
+  }
+}
+
 export const taskRoutes = new Elysia({ prefix: "/api/v1/tasks" })
   .use(requireAuthPlugin)
   .get(
     "/",
     async ({ requireAuthz, query }) => {
       const ctx = await requireAuthz("task.view");
-      const { limit, cursor } = parsePaginationQuery(query);
+      const { limit, cursor } = parsePaginationQuery({
+        limit: query.limit,
+        cursor: query.cursor,
+      });
       const sort =
         typeof query.sort === "string" && ALLOWED_TASK_SORT.has(query.sort)
           ? query.sort
@@ -87,7 +121,6 @@ export const taskRoutes = new Elysia({ prefix: "/api/v1/tasks" })
           description: tasks.description,
           deadline: tasks.deadline,
           status: tasks.status,
-          estimatedDuration: tasks.estimatedDuration,
           createdAt: tasks.createdAt,
           updatedAt: tasks.updatedAt,
           courseName: courses.name,
@@ -213,7 +246,7 @@ export const taskRoutes = new Elysia({ prefix: "/api/v1/tasks" })
           description: parsed.data.description,
           deadline: new Date(parsed.data.deadline),
           status: parsed.data.status,
-          estimatedDuration: parsed.data.estimated_duration,
+          completedAt: parsed.data.status === "done" ? new Date() : null,
         })
         .returning();
 
@@ -263,6 +296,11 @@ export const taskRoutes = new Elysia({ prefix: "/api/v1/tasks" })
       const course = await ownedCourse(ctx.subject.id, parsed.data.course_id);
       if (!course) throw ApiError.validation("Course not found");
 
+      const nextCompletedAt =
+        parsed.data.status === "done"
+          ? (existing.status === "done" ? existing.completedAt : new Date())
+          : null;
+
       const [row] = await getDb()
         .update(tasks)
         .set({
@@ -271,7 +309,7 @@ export const taskRoutes = new Elysia({ prefix: "/api/v1/tasks" })
           description: parsed.data.description,
           deadline: new Date(parsed.data.deadline),
           status: parsed.data.status,
-          estimatedDuration: parsed.data.estimated_duration,
+          completedAt: nextCompletedAt,
           updatedAt: new Date(),
         })
         .where(and(eq(tasks.id, params.id), eq(tasks.userId, ctx.subject.id)))
@@ -298,7 +336,7 @@ export const taskRoutes = new Elysia({ prefix: "/api/v1/tasks" })
       }
       const [row] = await getDb()
         .update(tasks)
-        .set({ status: "done", updatedAt: new Date() })
+        .set({ status: "done", completedAt: new Date(), updatedAt: new Date() })
         .where(and(eq(tasks.id, params.id), eq(tasks.userId, ctx.subject.id)))
         .returning();
       return { task: serializeTask(row) };
@@ -346,6 +384,7 @@ export const taskRoutes = new Elysia({ prefix: "/api/v1/tasks" })
           parsed.error.flatten().fieldErrors,
         );
       }
+      await assertThresholdNotInPast(task, parsed.data.days_before);
       try {
         const [row] = await getDb()
           .insert(reminderThresholds)
@@ -386,6 +425,7 @@ export const taskRoutes = new Elysia({ prefix: "/api/v1/tasks" })
           parsed.error.flatten().fieldErrors,
         );
       }
+      await assertThresholdNotInPast(task, parsed.data.days_before);
       const [row] = await getDb()
         .update(reminderThresholds)
         .set({

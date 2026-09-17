@@ -8,7 +8,7 @@
     "./*": "./src/*.ts"
   },
   "scripts": {
-    "test": "echo 'no tests'",
+    "test": "bun test src",
     "lint": "echo 'no lint'",
     "db:generate": "drizzle-kit generate",
     "db:pull": "drizzle-kit pull"

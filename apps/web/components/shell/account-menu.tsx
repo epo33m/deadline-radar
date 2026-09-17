@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { Bell, ChevronRight, LogOut, User } from "lucide-react";
 import { useId, useRef, useState } from "react";
 
 import { logout } from "@/app/actions/auth";
+import { useNotifications } from "@/components/notifications/notifications-provider";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { PortalMenu } from "@/components/ui/portal-menu";
 import { cn } from "@/lib/utils";
@@ -18,6 +19,7 @@ export function AccountMenu({ accountLabel, userEmail }: AccountMenuProps) {
   const menuId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
+  const { unread } = useNotifications();
   const initial = accountLabel.charAt(0).toUpperCase() || "A";
 
   return (
@@ -53,8 +55,15 @@ export function AccountMenu({ accountLabel, userEmail }: AccountMenuProps) {
         )}
       >
         <div className="flex min-h-12 w-full items-center justify-between gap-4 py-3 sm:py-3.5">
-          <span className="shrink-0 text-sm font-medium leading-snug tracking-[-0.2px] text-ink">
-            Account
+          <span className="flex min-w-0 items-center gap-2.5">
+            <User
+              className="size-4 shrink-0 text-ink-muted-48"
+              aria-hidden="true"
+              strokeWidth={1.75}
+            />
+            <span className="shrink-0 text-sm font-medium leading-snug tracking-[-0.2px] text-ink">
+              Account
+            </span>
           </span>
           {userEmail ? (
             <span className="min-w-0 truncate text-right text-[13px] text-ink-muted-80">
@@ -63,12 +72,24 @@ export function AccountMenu({ accountLabel, userEmail }: AccountMenuProps) {
           ) : null}
         </div>
         <Link
-          href="/preferences"
+          href="/settings/notifications"
           onClick={() => setOpen(false)}
           className="flex min-h-12 w-full items-center justify-between gap-4 py-3 text-left outline-none transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset sm:py-3.5"
         >
-          <span className="shrink-0 text-sm font-medium leading-snug tracking-[-0.2px] text-ink">
-            Preferences
+          <span className="flex min-w-0 items-center gap-2.5">
+            <Bell
+              className="size-4 shrink-0 text-ink-muted-48"
+              aria-hidden="true"
+              strokeWidth={1.75}
+            />
+            <span className="shrink-0 text-sm font-medium leading-snug tracking-[-0.2px] text-ink">
+              Notifications
+            </span>
+            {unread > 0 ? (
+              <span className="flex h-4 min-w-4 items-center justify-center rounded-md bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
+                {unread > 99 ? "99+" : unread}
+              </span>
+            ) : null}
           </span>
           <ChevronRight
             className="size-4 shrink-0 text-ink-muted-48"
@@ -81,8 +102,15 @@ export function AccountMenu({ accountLabel, userEmail }: AccountMenuProps) {
             type="submit"
             className="flex min-h-12 w-full items-center justify-between gap-4 py-3 text-left outline-none transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset sm:py-3.5"
           >
-            <span className="shrink-0 text-sm font-medium leading-snug tracking-[-0.2px] text-destructive">
-              Sign out
+            <span className="flex min-w-0 items-center gap-2.5">
+              <LogOut
+                className="size-4 shrink-0 text-destructive/70"
+                aria-hidden="true"
+                strokeWidth={1.75}
+              />
+              <span className="shrink-0 text-sm font-medium leading-snug tracking-[-0.2px] text-destructive">
+                Sign out
+              </span>
             </span>
           </button>
         </form>

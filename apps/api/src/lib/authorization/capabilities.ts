@@ -20,6 +20,7 @@ export const CAPABILITIES = [
   "notification.mark-read",
   "profile.view",
   "profile.timezone.update",
+  "profile.time-format.update",
   "profile.password.update",
   "profile.email.update",
   "role.assign",
@@ -53,6 +54,7 @@ export const DOMAIN_CAPABILITIES: readonly Capability[] = [
   "notification.mark-read",
   "profile.view",
   "profile.timezone.update",
+  "profile.time-format.update",
   "profile.password.update",
   "profile.email.update",
 ] as const;

@@ -68,7 +68,7 @@ export async function login(
     };
   }
 
-  redirect(result.redirectTo ?? "/overview");
+  redirect(result.redirectTo ?? "/summary");
 }
 
 export async function requestPasswordReset(
@@ -204,4 +204,20 @@ export async function updateTimezone(
   }
 
   return { success: "Timezone updated." };
+}
+
+export async function updateTimeFormat(
+  _prev: AuthActionState,
+  formData: FormData,
+): Promise<AuthActionState> {
+  const result = await apiJson("/api/v1/auth/time-format", {
+    method: "PATCH",
+    body: JSON.stringify({ timeFormat: formData.get("timeFormat") }),
+  });
+
+  if (result.error) {
+    return { error: result.error, fieldErrors: result.fieldErrors };
+  }
+
+  return { success: "Time format updated." };
 }

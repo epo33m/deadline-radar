@@ -34,6 +34,13 @@ function normalizeCourseColor(raw: string | null | undefined): string | null {
     : `#${trimmed.toLowerCase()}`;
 }
 
+function normalizeCourseIcon(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim().toLowerCase();
+  if (!trimmed) return null;
+  return trimmed;
+}
+
 function assertFreshUpdatedAt(
   rowUpdatedAt: Date | string,
   clientUpdatedAt: string | undefined,
@@ -54,7 +61,10 @@ export const courseRoutes = new Elysia({ prefix: "/api/v1/courses" })
     "/",
     async ({ requireAuthz, query }) => {
       const ctx = await requireAuthz("course.view");
-      const { limit, cursor } = parsePaginationQuery(query);
+      const { limit, cursor } = parsePaginationQuery({
+        limit: query.limit,
+        cursor: query.cursor,
+      });
       const decoded = decodeCursor(cursor);
 
       const rows = await getDb()
@@ -123,6 +133,8 @@ export const courseRoutes = new Elysia({ prefix: "/api/v1/courses" })
         name?: string;
         code?: string | null;
         color?: string | null;
+        icon?: string | null;
+        description?: string | null;
       };
       assertNoForbiddenMutationKeys(body);
       const idemKey = readIdempotencyKey(request);
@@ -143,6 +155,7 @@ export const courseRoutes = new Elysia({ prefix: "/api/v1/courses" })
       const parsed = courseSchema.safeParse({
         ...body,
         color: normalizeCourseColor(body.color ?? null),
+        icon: normalizeCourseIcon(body.icon ?? null),
       });
       if (!parsed.success) {
         throw validationFromZod(
@@ -157,6 +170,8 @@ export const courseRoutes = new Elysia({ prefix: "/api/v1/courses" })
           name: parsed.data.name,
           code: parsed.data.code,
           color: parsed.data.color,
+          icon: parsed.data.icon,
+          description: parsed.data.description,
         })
         .returning();
       const response = { course: serializeCourse(row) };
@@ -186,6 +201,8 @@ export const courseRoutes = new Elysia({ prefix: "/api/v1/courses" })
         name?: string;
         code?: string | null;
         color?: string | null;
+        icon?: string | null;
+        description?: string | null;
         updatedAt?: string;
         updated_at?: string;
       };
@@ -193,6 +210,7 @@ export const courseRoutes = new Elysia({ prefix: "/api/v1/courses" })
       const parsed = coursePatchSchema.safeParse({
         ...body,
         color: normalizeCourseColor(body.color ?? null),
+        icon: normalizeCourseIcon(body.icon ?? null),
       });
       if (!parsed.success) {
         throw validationFromZod(
@@ -214,6 +232,8 @@ export const courseRoutes = new Elysia({ prefix: "/api/v1/courses" })
           name: parsed.data.name,
           code: parsed.data.code,
           color: parsed.data.color,
+          icon: parsed.data.icon,
+          description: parsed.data.description,
           updatedAt: new Date(),
         })
         .where(

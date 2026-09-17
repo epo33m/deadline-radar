@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 
 import {
   buildMonthGrid,
+  formatDayLabel,
   formatMonthParam,
+  formatMonthShortName,
+  truncateTitle,
   getZonedDayKey,
   groupTasksByDay,
   parseMonthParam,
@@ -98,5 +101,50 @@ describe("buildMonthGrid", () => {
       true,
     );
     expect(cells.length % 7).toBe(0);
+  });
+});
+
+describe("formatDayLabel", () => {
+  test("prefixes the 1st with the short month name", () => {
+    expect(formatDayLabel("2026-09-01", 1)).toBe("Sep 1");
+    expect(formatDayLabel("2026-01-01", 1)).toBe("Jan 1");
+    expect(formatDayLabel("2026-12-01", 1)).toBe("Dec 1");
+  });
+
+  test("returns the bare day otherwise", () => {
+    expect(formatDayLabel("2026-09-15", 15)).toBe("15");
+    expect(formatDayLabel("2026-09-02", 2)).toBe("2");
+  });
+
+  test("falls back to the bare day for a malformed key", () => {
+    expect(formatDayLabel("not-a-key", 1)).toBe("1");
+  });
+});
+
+describe("formatMonthShortName", () => {
+  test("returns the short month name for a valid key", () => {
+    expect(formatMonthShortName("2026-09-01")).toBe("Sep");
+    expect(formatMonthShortName("2026-01-15")).toBe("Jan");
+  });
+
+  test("returns null for a malformed key", () => {
+    expect(formatMonthShortName("not-a-key")).toBeNull();
+    expect(formatMonthShortName("2026-13-01")).toBeNull();
+  });
+});
+
+describe("truncateTitle", () => {
+  test("shows the full name at or under 10 characters", () => {
+    expect(truncateTitle("Quiz")).toBe("Quiz");
+    expect(truncateTitle("1234567890")).toBe("1234567890");
+    expect(truncateTitle("")).toBe("");
+  });
+
+  test("truncates longer names with an ellipsis", () => {
+    expect(truncateTitle("Hello World")).toBe("Hello Worl...");
+  });
+
+  test("respects a custom limit", () => {
+    expect(truncateTitle("Hello", 3)).toBe("Hel...");
   });
 });

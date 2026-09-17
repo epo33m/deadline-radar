@@ -1,180 +1,72 @@
+export * from "@deadline-radar/validation/course-colors";
+
 /**
- * Apple HIG system colors — light and dark sRGB from Specifications.
- * @see https://developer.apple.com/design/human-interface-guidelines/color#System-colors
- *
- * Persist and display the light value. Dark is reserved for appearance mode later.
+ * Card presentation per system token — the ONLY sanctioned card surfaces.
+ * Custom colors fall back to a solid fill with the default ink icon.
  */
-
-export type CourseColorToken = {
-  token: string;
-  label: string;
-  light: string;
-  dark: string;
-  appleName: string;
+export type CourseCardPresentation = {
+  gradient: string;
+  iconClass: string;
 };
 
-export const SYSTEM_COLOR_TOKENS: readonly CourseColorToken[] = [
-  {
-    token: "system-red",
-    label: "Red",
-    light: "#ff3b30",
-    dark: "#ff453a",
-    appleName: "systemRed",
-  },
-  {
-    token: "system-orange",
-    label: "Orange",
-    light: "#ff9500",
-    dark: "#ff9f0a",
-    appleName: "systemOrange",
-  },
-  {
-    token: "system-yellow",
-    label: "Yellow",
-    light: "#ffcc00",
-    dark: "#ffd60a",
-    appleName: "systemYellow",
-  },
-  {
-    token: "system-green",
-    label: "Green",
-    light: "#34c759",
-    dark: "#30d158",
-    appleName: "systemGreen",
-  },
-  {
-    token: "system-mint",
-    label: "Mint",
-    light: "#00c7be",
-    dark: "#63e6e2",
-    appleName: "systemMint",
-  },
-  {
-    token: "system-teal",
-    label: "Teal",
-    light: "#30b0c7",
-    dark: "#40c8e0",
-    appleName: "systemTeal",
-  },
-  {
-    token: "system-cyan",
-    label: "Cyan",
-    light: "#32ade6",
-    dark: "#64d2ff",
-    appleName: "systemCyan",
-  },
-  {
-    token: "system-blue",
-    label: "Blue",
-    light: "#007aff",
-    dark: "#0a84ff",
-    appleName: "systemBlue",
-  },
-  {
-    token: "system-indigo",
-    label: "Indigo",
-    light: "#5856d6",
-    dark: "#5e5ce6",
-    appleName: "systemIndigo",
-  },
-  {
-    token: "system-purple",
-    label: "Purple",
-    light: "#af52de",
-    dark: "#bf5af2",
-    appleName: "systemPurple",
-  },
-  {
-    token: "system-pink",
-    label: "Pink",
-    light: "#ff2d55",
-    dark: "#ff375f",
-    appleName: "systemPink",
-  },
-  {
-    token: "system-brown",
-    label: "Brown",
-    light: "#a2845e",
-    dark: "#ac8e68",
-    appleName: "systemBrown",
-  },
-] as const;
+const CARD_HIGHLIGHT =
+  "radial-gradient(circle at 25% 15%, rgba(255, 255, 255, 0.12), transparent 55%)";
 
-export const NO_COURSE_COLOR = {
-  token: "none",
-  label: "None",
-  light: "",
-  dark: "",
-  appleName: "",
-} as const satisfies CourseColorToken;
-
-export type CourseColorGroup = {
-  label: string;
-  options: readonly CourseColorToken[];
-};
-
-export const COURSE_COLOR_GROUPS: readonly CourseColorGroup[] = [
+export const COURSE_CARD_PRESENTATION: Record<string, CourseCardPresentation> =
   {
-    label: "Default",
-    options: SYSTEM_COLOR_TOKENS,
-  },
-];
+    "system-yellow": {
+      gradient: `${CARD_HIGHLIGHT}, linear-gradient(120deg, #FFE066 0%, #FFD633 50%, #FFCC00 100%)`,
+      iconClass: "text-[#997A00]",
+    },
+    "system-red": {
+      gradient: `${CARD_HIGHLIGHT}, linear-gradient(120deg, #FF9EA0 0%, #FF6B6E 50%, #FF383C 100%)`,
+      iconClass: "text-[#D10004]",
+    },
+    "system-orange": {
+      gradient: `${CARD_HIGHLIGHT}, linear-gradient(120deg, #FFC38E 0%, #FFA85B 50%, #FF8D28 100%)`,
+      iconClass: "text-[#C15B00]",
+    },
+    "system-green": {
+      gradient: `${CARD_HIGHLIGHT}, linear-gradient(120deg, #83DE9A 0%, #5AD479 50%, #34C759 100%)`,
+      iconClass: "text-[#1F7635]",
+    },
+    "system-mint": {
+      gradient: `${CARD_HIGHLIGHT}, linear-gradient(120deg, #2FFFE9 0%, #00FBE1 50%, #00C8B3 100%)`,
+      iconClass: "text-[#006258]",
+    },
+    "system-teal": {
+      gradient: `${CARD_HIGHLIGHT}, linear-gradient(120deg, #04EFFF 0%, #04EFFF 50%, #00C3D0 100%)`,
+      iconClass: "text-[#00636A]",
+    },
+    "system-cyan": {
+      gradient: `${CARD_HIGHLIGHT}, linear-gradient(120deg, #4FE1FF 0%, #1CD8FF 50%, #00C0E8 100%)`,
+      iconClass: "text-[#006C82]",
+    },
+    "system-blue": {
+      gradient: `${CARD_HIGHLIGHT}, linear-gradient(120deg, #66B8FF 0%, #33A0FF 50%, #0088FF 100%)`,
+      iconClass: "text-[#005299]",
+    },
+    "system-indigo": {
+      gradient: `${CARD_HIGHLIGHT}, linear-gradient(120deg, #BBB5FB 0%, #8E85F8 50%, #6155F5 100%)`,
+      iconClass: "text-[#1C0DD7]",
+    },
+    "system-purple": {
+      gradient: `${CARD_HIGHLIGHT}, linear-gradient(120deg, #E189ED 0%, #D65CE7 50%, #CB30E0 100%)`,
+      iconClass: "text-[#851694]",
+    },
+    "system-pink": {
+      gradient: `${CARD_HIGHLIGHT}, linear-gradient(120deg, #FF93A8 0%, #FF607E 50%, #FF2D55 100%)`,
+      iconClass: "text-[#C60026]",
+    },
+    "system-brown": {
+      gradient: `${CARD_HIGHLIGHT}, linear-gradient(120deg, #CFB5A1 0%, #BD9A80 50%, #AC7F5E 100%)`,
+      iconClass: "text-[#6C4E38]",
+    },
+  };
 
-/** Older stored blues → current HIG systemBlue light. */
-const LEGACY_COLOR_ALIASES: ReadonlyMap<string, string> = new Map([
-  ["#0071e3", "#007aff"],
-]);
-
-const paletteByHex = new Map<string, CourseColorToken>();
-for (const option of SYSTEM_COLOR_TOKENS) {
-  paletteByHex.set(option.light.toLowerCase(), option);
-  paletteByHex.set(option.dark.toLowerCase(), option);
-}
-
-function normalizeCourseColorValue(value: string): string {
-  const normalized = value.trim().toLowerCase();
-  return LEGACY_COLOR_ALIASES.get(normalized) ?? normalized;
-}
-
-export function findCourseColorOption(
-  value: string | null | undefined,
-): CourseColorToken | undefined {
-  if (!value) return NO_COURSE_COLOR;
-  return paletteByHex.get(normalizeCourseColorValue(value));
-}
-
-export function getCourseColorLabel(value: string | null | undefined): string {
-  if (!value) return NO_COURSE_COLOR.label;
-  return findCourseColorOption(value)?.label ?? NO_COURSE_COLOR.label;
-}
-
-/** Solid fill for list rows — palette light value, or null for None. */
-export function getCourseColorFill(
-  value: string | null | undefined,
-): string | null {
-  if (!value) return null;
-  const option = findCourseColorOption(value);
-  if (option && option.token !== "none") return option.light;
-  return null;
-}
-
-/** Persist palette colors as the canonical light hex; unknown → none. */
-export function normalizeCourseColorForStorage(
-  value: string | null | undefined,
-): string {
-  if (!value) return "";
-  const option = findCourseColorOption(value);
-  if (option && option.token !== "none") return option.light;
-  return "";
-}
-
-/** Picker swatch border — based on light appearance only. */
-export function isLightCourseColor(value: string | null | undefined): boolean {
-  if (!value) return true;
-  const hex = value.replace("#", "");
-  if (hex.length !== 6) return false;
-  const r = Number.parseInt(hex.slice(0, 2), 16);
-  const g = Number.parseInt(hex.slice(2, 4), 16);
-  const b = Number.parseInt(hex.slice(4, 6), 16);
-  return (r * 299 + g * 587 + b * 114) / 1000 > 210;
+export function getCourseCardPresentation(
+  token: string | null | undefined,
+): CourseCardPresentation | undefined {
+  if (!token) return undefined;
+  return COURSE_CARD_PRESENTATION[token];
 }

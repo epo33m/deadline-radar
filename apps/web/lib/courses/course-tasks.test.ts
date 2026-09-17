@@ -84,6 +84,6 @@ describe("formatCourseDetailSummaryLine", () => {
         upcoming: 3,
         done: 2,
       }),
-    ).toBe("7 Tasks · 2 Late · 3 Upcoming · 2 Done");
+    ).toBe("7 Tasks · 2 Overdue · 3 Upcoming · 2 Done");
   });
 });

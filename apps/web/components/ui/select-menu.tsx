@@ -26,12 +26,17 @@ type SelectMenuProps = {
   menuClassName?: string;
   searchable?: boolean;
   minSearchableOptions?: number;
+  /** Render a small trailing-edge chip instead of the full-width borderless field. */
+  compact?: boolean;
   "aria-describedby"?: string;
   "aria-invalid"?: boolean;
   disabled?: boolean;
 };
 
 const MIN_SEARCH_THRESHOLD = 8;
+
+const compactTriggerClassName =
+  "flex h-7 w-fit max-w-full shrink-0 cursor-pointer items-center justify-center gap-1 rounded-md border border-hairline bg-canvas px-1.5 text-ink-muted-80 transition-colors hover:bg-muted outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
 
 export function SelectMenu({
   id,
@@ -45,6 +50,7 @@ export function SelectMenu({
   menuClassName,
   searchable = false,
   minSearchableOptions = MIN_SEARCH_THRESHOLD,
+  compact = false,
   "aria-describedby": ariaDescribedBy,
   "aria-invalid": ariaInvalid,
   disabled = false,
@@ -109,15 +115,16 @@ export function SelectMenu({
         className={cn(
           dialogSelectClassName,
           "flex items-center justify-end gap-1.5",
+          compact && compactTriggerClassName,
           !selected && "text-ink-muted-48",
           triggerClassName,
         )}
       >
-        <span className="min-w-0 truncate">
+        <span className={cn("min-w-0 truncate", compact && "text-[13px] text-ink")}>
           {selected?.label ?? placeholder}
         </span>
         <ChevronsUpDown
-          className="size-4 shrink-0 text-ink-muted-48"
+          className={cn("shrink-0 text-ink-muted-48", compact ? "size-3" : "size-4")}
           aria-hidden="true"
           strokeWidth={1.75}
         />

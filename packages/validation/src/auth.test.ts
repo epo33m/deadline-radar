@@ -4,6 +4,7 @@ import {
   loginSchema,
   registerSchema,
   resetPasswordSchema,
+  timeFormatUpdateSchema,
 } from "./auth";
 
 describe("registerSchema", () => {
@@ -126,5 +127,42 @@ describe("resetPasswordSchema", () => {
       confirmPassword: "short1",
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe("timeFormatUpdateSchema", () => {
+  test("accepts 24h", () => {
+    expect(timeFormatUpdateSchema.safeParse({ timeFormat: "24h" }).success).toBe(
+      true,
+    );
+  });
+
+  test("accepts 12h", () => {
+    expect(timeFormatUpdateSchema.safeParse({ timeFormat: "12h" }).success).toBe(
+      true,
+    );
+  });
+
+  test("rejects an unknown format", () => {
+    expect(
+      timeFormatUpdateSchema.safeParse({ timeFormat: "AM" }).success,
+    ).toBe(false);
+  });
+
+  test("rejects an empty format", () => {
+    expect(timeFormatUpdateSchema.safeParse({ timeFormat: "" }).success).toBe(
+      false,
+    );
+  });
+
+  test("rejects a missing format", () => {
+    expect(timeFormatUpdateSchema.safeParse({}).success).toBe(false);
+  });
+
+  test("rejects unknown keys", () => {
+    expect(
+      timeFormatUpdateSchema.safeParse({ timeFormat: "24h", userId: "user-1" })
+        .success,
+    ).toBe(false);
   });
 });

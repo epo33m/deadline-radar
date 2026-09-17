@@ -17,7 +17,12 @@ import {
   dialogPrimaryActionClassName,
   dialogSecondaryActionClassName,
 } from "@/components/ui/dialog";
-import { getCourseColorFill } from "@/lib/courses/colors";
+import {
+  findCourseColorOption,
+  getCourseCardPresentation,
+  getCourseColorFill,
+} from "@/lib/courses/colors";
+import { CourseIconView } from "@/components/courses/course-icon";
 import { cn } from "@/lib/utils";
 import type { CourseListItem } from "@/types/course";
 
@@ -52,7 +57,7 @@ function measureActionsMenuPosition(
   };
 }
 
-function CourseRow({
+function CourseCard({
   course,
   onEdit,
   onDelete,
@@ -63,33 +68,98 @@ function CourseRow({
 }) {
   const fillColor = getCourseColorFill(course.color);
   const hasColor = Boolean(fillColor);
+  const colorToken = findCourseColorOption(course.color)?.token;
+  const presentation = getCourseCardPresentation(colorToken);
+  const cardStyle = hasColor
+    ? presentation
+      ? { background: presentation.gradient }
+      : { backgroundColor: fillColor ?? undefined }
+    : undefined;
 
   return (
-    <li
-      className={cn(
-        "flex items-center justify-between gap-2 rounded-xl px-3 py-3 sm:gap-3 sm:px-4 sm:py-3.5",
-        !hasColor && "border border-hairline bg-canvas",
-      )}
-      style={hasColor ? { backgroundColor: fillColor ?? undefined } : undefined}
-    >
+    <li className="flex min-w-0 flex-col gap-5 sm:gap-3">
+      {/* Mobile card — pill trigger bottom-right, title below card */}
+      <div
+        className={cn(
+          "relative flex aspect-square flex-col overflow-hidden rounded-xl sm:hidden",
+          !hasColor && "border border-hairline bg-canvas",
+        )}
+        style={cardStyle}
+      >
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-4">
+          {course.icon ? (
+            <CourseIconView
+              slug={course.icon}
+              className={cn(
+                "size-20 shrink-0",
+                presentation?.iconClass ?? "text-ink",
+              )}
+              strokeWidth={2}
+            />
+          ) : null}
+        </div>
+        <Link
+          href={`/courses/${course.id}`}
+          aria-label={`View ${course.name}`}
+          className="absolute inset-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+        <div className="absolute right-2 top-2 z-10">
+          <CourseActionsMenu
+            course={course}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            triggerClassName="inline-flex h-7 shrink-0 items-center justify-center rounded-full bg-white px-2 text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            iconClassName="size-5"
+          />
+        </div>
+      </div>
+      <div className="flex min-w-0 items-center gap-2 px-1 sm:hidden">
+        <Link
+          href={`/courses/${course.id}`}
+          className="block min-w-0 flex-1 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <span className="block truncate text-base font-semibold leading-snug text-ink dark:text-body-on-dark">
+            {course.name}
+          </span>
+        </Link>
+      </div>
+
+      {/* Desktop card — original version */}
       <Link
         href={`/courses/${course.id}`}
-        className="min-w-0 flex-1 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label={`View ${course.name}`}
+        className={cn(
+          "relative hidden aspect-[2/1] items-center justify-center rounded-xl p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex",
+          !hasColor && "border border-hairline bg-canvas",
+        )}
+        style={cardStyle}
       >
-        <p className="truncate text-[17px] font-medium leading-snug text-ink dark:text-body-on-dark">
-          {course.name}
-        </p>
-        {course.code ? (
-          <p className="mt-0.5 truncate text-sm text-ink-muted-48 dark:text-body-on-dark/70">
-            {course.code}
-          </p>
+        {course.icon ? (
+          <CourseIconView
+            slug={course.icon}
+            className={cn(
+              "size-24 shrink-0",
+              presentation?.iconClass ?? "text-ink",
+            )}
+            strokeWidth={2}
+          />
         ) : null}
       </Link>
-      <CourseActionsMenu
-        course={course}
-        onEdit={onEdit}
-        onDelete={onDelete}
-      />
+      <div className="hidden min-w-0 items-center justify-between gap-2 px-1 sm:flex">
+        <Link
+          href={`/courses/${course.id}`}
+          className="block min-w-0 flex-1 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <span className="block truncate text-[17px] font-semibold leading-snug text-ink sm:text-[19px] dark:text-body-on-dark">
+            {course.name}
+          </span>
+        </Link>
+        <CourseActionsMenu
+          course={course}
+          onEdit={onEdit}
+          onDelete={onDelete}
+        />
+      </div>
     </li>
   );
 }
@@ -98,10 +168,14 @@ function CourseActionsMenu({
   course,
   onEdit,
   onDelete,
+  triggerClassName,
+  iconClassName,
 }: {
   course: CourseListItem;
   onEdit: () => void;
   onDelete: () => void;
+  triggerClassName?: string;
+  iconClassName?: string;
 }) {
   const menuId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -240,9 +314,16 @@ function CourseActionsMenu({
         aria-controls={menuId}
         aria-label={`Actions for ${course.name}`}
         onClick={() => setOpen((current) => !current)}
-        className="inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-white text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className={
+          triggerClassName ??
+          "inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        }
       >
-        <MoreHorizontal className="size-4" aria-hidden="true" strokeWidth={2.25} />
+        <MoreHorizontal
+          className={iconClassName ?? "size-4"}
+          aria-hidden="true"
+          strokeWidth={2.25}
+        />
       </button>
       {menu}
     </div>
@@ -358,9 +439,9 @@ export function CourseList({ courses, onAddCourse }: CourseListProps) {
 
   return (
     <>
-      <ul className="flex flex-col gap-2">
+      <ul className="grid grid-cols-2 gap-x-5 gap-y-9 sm:grid-cols-3 sm:gap-x-6 lg:grid-cols-4">
         {courses.map((course) => (
-          <CourseRow
+          <CourseCard
             key={course.id}
             course={course}
             onEdit={() => setEditingCourse(course)}
@@ -370,14 +451,14 @@ export function CourseList({ courses, onAddCourse }: CourseListProps) {
       </ul>
 
       {editingCourse ? (
-        <Dialog
-          open
-          onOpenChange={(open) => {
-            if (!open) setEditingCourse(null);
-          }}
-          title="Edit course"
-        >
-          <CourseForm
+          <Dialog
+            open
+            onOpenChange={(open) => {
+              if (!open) setEditingCourse(null);
+            }}
+            title="Edit course"
+          >
+            <CourseForm
             course={editingCourse}
             submitLabel="Save changes"
             onCancel={() => setEditingCourse(null)}

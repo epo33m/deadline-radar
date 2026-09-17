@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
 
   const nextParam = searchParams.get("next");
   const next =
-    nextParam && nextParam.startsWith("/") ? nextParam : "/overview";
+    nextParam && nextParam.startsWith("/") ? nextParam : "/summary";
 
   try {
     const upstream = await fetch(target.toString(), {
