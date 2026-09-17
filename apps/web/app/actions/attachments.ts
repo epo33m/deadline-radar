@@ -27,8 +27,8 @@ export async function addLinkAttachment(
     method: "POST",
     body: JSON.stringify({
       task_id: taskId,
-      name: formData.get("name"),
       url: formData.get("url"),
+      notes: formData.get("notes"),
     }),
   });
   if (result.error) {
@@ -46,26 +46,53 @@ export async function addFileAttachment(
   if (typeof taskId !== "string" || !taskId) {
     return { error: "Task id is required." };
   }
-  const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) {
+  const pickedFiles = formData
+    .getAll("file")
+    .filter((entry): entry is File => entry instanceof File && entry.size > 0);
+  if (pickedFiles.length === 0) {
     return { error: "File is required." };
   }
 
-  const body = new FormData();
-  body.set("task_id", taskId);
-  const name = formData.get("name");
-  if (typeof name === "string" && name.trim()) body.set("name", name);
-  body.set("file", file);
+  const notes = formData.get("notes");
+  for (const file of pickedFiles) {
+    const body = new FormData();
+    body.set("task_id", taskId);
+    if (typeof notes === "string" && notes.trim()) body.set("notes", notes);
+    body.set("file", file);
 
-  const result = await apiJson("/api/v1/attachments/file", {
-    method: "POST",
-    body,
-  });
-  if (result.error) {
-    return { error: result.error, fieldErrors: result.fieldErrors };
+    const result = await apiJson("/api/v1/attachments/file", {
+      method: "POST",
+      body,
+    });
+    if (result.error) {
+      return { error: result.error, fieldErrors: result.fieldErrors };
+    }
   }
   revalidateTask(taskId);
   return {};
+}
+
+export async function addAttachment(
+  prev: AttachmentActionState,
+  formData: FormData,
+): Promise<AttachmentActionState> {
+  const fileEntries = formData.getAll("file");
+  const hasFile = fileEntries.some(
+    (entry) => entry instanceof File && entry.size > 0,
+  );
+  const urlRaw = formData.get("url");
+  const hasUrl = typeof urlRaw === "string" && urlRaw.trim() !== "";
+
+  if (hasFile && hasUrl) {
+    return { error: "Isi URL atau file saja, jangan keduanya." };
+  }
+  if (hasFile) {
+    return addFileAttachment(prev, formData);
+  }
+  if (hasUrl) {
+    return addLinkAttachment(prev, formData);
+  }
+  return { error: "URL atau file wajib diisi." };
 }
 
 export async function removeAttachment(

@@ -29,11 +29,14 @@ export const notificationStatusEnum = pgEnum("notification_status", [
 
 export const attachmentTypeEnum = pgEnum("attachment_type", ["file", "link"]);
 
+export const timeFormatEnum = pgEnum("time_format", ["24h", "12h"]);
+
 export const profiles = pgTable("profiles", {
   id: uuid("id").primaryKey(),
   email: text("email").notNull(),
   name: text("name"),
   timezone: text("timezone").notNull().default("UTC"),
+  timeFormat: timeFormatEnum("time_format").notNull().default("24h"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
     .notNull()
     .defaultNow(),
@@ -109,6 +112,8 @@ export const courses = pgTable("courses", {
   name: text("name").notNull(),
   code: text("code"),
   color: text("color"),
+  icon: text("icon"),
+  description: text("description"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
     .notNull()
     .defaultNow(),
@@ -153,13 +158,13 @@ export const tasks = pgTable("tasks", {
   description: text("description"),
   deadline: timestamp("deadline", { withTimezone: true, mode: "date" }).notNull(),
   status: taskStatusEnum("status").notNull().default("todo"),
-  estimatedDuration: integer("estimated_duration"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
     .notNull()
     .defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
     .notNull()
     .defaultNow(),
+  completedAt: timestamp("completed_at", { withTimezone: true, mode: "date" }),
   deletedAt: timestamp("deleted_at", { withTimezone: true, mode: "date" }),
 });
 
@@ -207,7 +212,7 @@ export const attachments = pgTable("attachments", {
     .notNull()
     .references(() => tasks.id, { onDelete: "cascade" }),
   type: attachmentTypeEnum("type").notNull(),
-  name: text("name").notNull(),
+  notes: text("notes"),
   storagePath: text("storage_path"),
   url: text("url"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })

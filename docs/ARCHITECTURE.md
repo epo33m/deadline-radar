@@ -41,8 +41,8 @@ UI only: pages, forms, and thin server actions that call the API over same-origi
 
 Main pages (indicative):
 - `/login`, `/register`
-- `/overview`, `/courses`, `/tasks`, `/tasks/[id]`, `/calendar`
-- `/preferences`, `/preferences/notifications`
+- `/summary`, `/courses`, `/tasks`, `/tasks/[id]`, `/calendar`
+- `/settings`, `/settings/notifications`
 - Header bell — unread count via API
 
 ### 2.2 Backend — Elysia (`apps/api`, port 4025)
@@ -154,7 +154,7 @@ Codes include: `VALIDATION_ERROR`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CO
   - Production: `https://<web-origin>/auth/confirm`
 - The recovery flow is: `/forgot-password` → `POST /api/v1/auth/forgot-password` (calls Supabase `resetPasswordForEmail` with `redirectTo = <web-origin>/auth/confirm?next=/reset-password`) → email link → `/auth/confirm` (exchanges code, sets httpOnly cookies via bridge) → `/reset-password` → `POST /api/v1/auth/reset-password`.
 - Invalid/expired confirmation codes are not granted a session; the web confirm route redirects to `/login?error=confirm` so the user can request a new link.
-- Email-change confirmation (new-address-only, per project "Confirm email change" setting) follows the same `/auth/confirm` exchange and returns to Preferences.
+- Email-change confirmation (new-address-only, per project "Confirm email change" setting) follows the same `/auth/confirm` exchange and returns to Settings.
 
 ### Page / API enforcement
 - Next session gate: **public allowlist** (`/`, auth pages, `/reset-password`, `/auth/confirm`); all other pages require a session (fail closed).

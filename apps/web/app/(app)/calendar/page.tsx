@@ -1,4 +1,6 @@
 import { CalendarMonthView } from "@/components/calendar/calendar-month-view";
+import { LearnSecondaryNav } from "@/components/learn/learn-secondary-nav";
+import { PageHeader } from "@/components/ui/page-header";
 import { apiJson } from "@/lib/api/server";
 import { requireSession } from "@/lib/api/session";
 import {
@@ -58,16 +60,16 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
 
   return (
     <section className="space-y-6 sm:space-y-8">
-      <div className="space-y-2">
-        <h1 className="font-display text-[32px] font-semibold leading-[1.07] tracking-[-0.28px] text-ink sm:text-[36px] lg:text-[44px]">Calendar</h1>
-        <p className="max-w-xl text-[15px] font-normal leading-[1.47] tracking-[-0.374px] text-ink-muted-64 sm:text-[17px]">
-          Monthly view of your task deadlines in {timeZone}.
-        </p>
-      </div>
+      <LearnSecondaryNav />
+      <PageHeader
+        title="Calendar"
+        subtitle="See your tasks and deadlines at a glance."
+      />
 
       <CalendarMonthView
         month={month}
         timeZone={timeZone}
+        timeFormat={user.timeFormat}
         todayKey={todayKey}
         cells={cells}
         tasksByDay={tasksByDay}

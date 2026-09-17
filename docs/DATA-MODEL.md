@@ -6,7 +6,7 @@
 
 ---
 
-## 1. Entity Relationship Overview
+## 1. Entity Relationship Summary
 
 ```
 auth.users (Supabase managed)
@@ -117,6 +117,8 @@ create table courses (
   name text not null check (char_length(trim(name)) > 0),
   code text,
   color text,
+  icon text,
+  description text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   deleted_at timestamptz
@@ -161,7 +163,6 @@ create table tasks (
   description text,
   deadline timestamptz not null,
   status task_status not null default 'todo',
-  estimated_duration integer, -- unit: minutes (product.md §10 still lists free text as an alternate)
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   deleted_at timestamptz
@@ -219,7 +220,7 @@ create table attachments (
   id uuid primary key default gen_random_uuid(),
   task_id uuid not null references tasks(id) on delete cascade,
   type attachment_type not null,
-  name text not null,
+  notes text,
   storage_path text,
   url text,
   created_at timestamptz not null default now(),
@@ -351,6 +352,5 @@ create policy "deliveries_update_read_own" on notification_deliveries for update
 ```
 
 ## 6. Open Data Model Questions
-- [ ] Final data type for `estimated_duration` (integer minutes vs free text) — see `product.md` §10. Schema currently uses integer minutes.
 - [ ] Is `retry_count` on `notification_deliveries` enough, or is a `last_error` (text) column needed for debugging Resend failures?
 - [ ] Soft-delete retention / automatic purge for `courses.deleted_at` and `tasks.deleted_at` — no policy yet; see `DOMAIN.md` §7.

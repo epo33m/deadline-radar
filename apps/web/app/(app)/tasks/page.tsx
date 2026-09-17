@@ -9,6 +9,8 @@ type ApiCourse = {
   name: string;
   code: string | null;
   color: string | null;
+  icon?: string | null;
+  description: string | null;
 };
 
 type ApiTask = {
@@ -17,7 +19,7 @@ type ApiTask = {
   title: string;
   deadline: string | Date;
   status: TaskListItem["status"];
-  estimatedDuration: number | null;
+  createdAt: string | Date;
   courseName: string | null;
   courseColor: string | null;
 };
@@ -42,14 +44,15 @@ export default async function TasksPage() {
     );
   }
 
-  const courses: Pick<Course, "id" | "name" | "code" | "color">[] = (
-    coursesResult.courses ?? []
-  ).map((c) => ({
-    id: c.id,
-    name: c.name,
-    code: c.code,
-    color: c.color,
-  }));
+  const courses: Pick<Course, "id" | "name" | "code" | "color" | "icon" | "description">[] =
+    (coursesResult.courses ?? []).map((c) => ({
+      id: c.id,
+      name: c.name,
+      code: c.code,
+      color: c.color,
+      icon: c.icon ?? null,
+      description: c.description,
+    }));
 
   const listItems: TaskListItem[] = (tasksResult.tasks ?? []).map((task) => ({
     id: task.id,
@@ -60,7 +63,10 @@ export default async function TasksPage() {
         ? task.deadline.toISOString()
         : String(task.deadline),
     status: task.status,
-    estimated_duration: task.estimatedDuration,
+    created_at:
+      task.createdAt instanceof Date
+        ? task.createdAt.toISOString()
+        : String(task.createdAt),
     course_name: task.courseName,
     course_color: task.courseColor,
   }));
@@ -70,6 +76,7 @@ export default async function TasksPage() {
       courses={courses}
       tasks={listItems}
       timeZone={user.timezone}
+      timeFormat={user.timeFormat}
     />
   );
 }

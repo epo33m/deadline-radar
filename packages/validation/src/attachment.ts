@@ -2,10 +2,10 @@ import { z } from "zod";
 
 export const attachmentTypeSchema = z.enum(["file", "link"]);
 
-const attachmentNameSchema = z
+const attachmentNotesSchema = z
   .string()
   .trim()
-  .min(1, "Attachment name is required");
+  .max(1000, "Notes must be at most 1000 characters");
 
 const absoluteUrlSchema = z.url({
   protocol: /^https?$/,
@@ -22,43 +22,43 @@ function emptyToUndefined(value: unknown): unknown {
 export const linkAttachmentRequestSchema = z
   .object({
     task_id: z.uuid("Task is required"),
-    name: attachmentNameSchema,
     url: absoluteUrlSchema,
+    notes: z.preprocess(emptyToUndefined, attachmentNotesSchema.optional()),
   })
   .strict()
   .transform((value) => ({
     type: "link" as const,
     task_id: value.task_id,
-    name: value.name,
     url: value.url,
+    notes: value.notes ?? null,
     storage_path: null as null,
   }));
 
 export const linkAttachmentSchema = z
   .object({
-    name: attachmentNameSchema,
     url: absoluteUrlSchema,
+    notes: z.preprocess(emptyToUndefined, attachmentNotesSchema.optional()),
     storage_path: z.preprocess(emptyToUndefined, z.undefined()).optional(),
   })
   .strict()
   .transform((value) => ({
     type: "link" as const,
-    name: value.name,
     url: value.url,
+    notes: value.notes ?? null,
     storage_path: null,
   }));
 
 export const fileAttachmentSchema = z
   .object({
-    name: attachmentNameSchema,
     storage_path: z.string().trim().min(1, "Storage path is required"),
+    notes: z.preprocess(emptyToUndefined, attachmentNotesSchema.optional()),
     url: z.preprocess(emptyToUndefined, z.undefined()).optional(),
   })
   .strict()
   .transform((value) => ({
     type: "file" as const,
-    name: value.name,
     storage_path: value.storage_path,
+    notes: value.notes ?? null,
     url: null,
   }));
 

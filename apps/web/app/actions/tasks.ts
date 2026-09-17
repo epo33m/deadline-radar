@@ -17,14 +17,14 @@ function taskBody(formData: FormData) {
     deadline: formData.get("deadline"),
     status: formData.get("status") || "todo",
     description: formData.get("description") || null,
-    estimated_duration: formData.get("estimated_duration") || null,
   };
 }
 
 function revalidateTask(taskId?: string) {
   revalidatePath("/tasks");
-  revalidatePath("/overview");
+  revalidatePath("/summary");
   revalidatePath("/calendar");
+  revalidatePath("/courses/[id]", "page");
   if (taskId) revalidatePath(`/tasks/${taskId}`);
 }
 
@@ -151,6 +151,62 @@ export async function removeReminderThreshold(
   if (result.error) {
     return { error: result.error, fieldErrors: result.fieldErrors };
   }
+  revalidateTask(taskId);
+  return {};
+}
+
+const DEFAULT_REMINDER_OFFSETS = [7, 3, 1, 0] as const;
+
+export async function setDefaultThresholds(
+  _prev: TaskActionState,
+  formData: FormData,
+): Promise<TaskActionState> {
+  const taskId = formData.get("task_id");
+  if (typeof taskId !== "string" || !taskId) {
+    return { error: "Task id is required." };
+  }
+  const enabled = formData.get("enabled") === "true";
+
+  const detail = await apiJson<{
+    thresholds?: { id: string; daysBefore: number }[];
+  }>(`/api/v1/tasks/${taskId}`);
+  if (detail.error) {
+    return { error: detail.error };
+  }
+
+  const byOffset = new Map(
+    (detail.thresholds ?? [])
+      .filter((t) =>
+        (DEFAULT_REMINDER_OFFSETS as readonly number[]).includes(t.daysBefore),
+      )
+      .map((t) => [t.daysBefore, t.id]),
+  );
+
+  const calls = enabled
+    ? DEFAULT_REMINDER_OFFSETS.filter((offset) => !byOffset.has(offset)).map(
+        (offset) =>
+          apiJson(`/api/v1/tasks/${taskId}/thresholds`, {
+            method: "POST",
+            body: JSON.stringify({ days_before: offset }),
+          }),
+      )
+    : DEFAULT_REMINDER_OFFSETS.filter((offset) => byOffset.has(offset)).map(
+        (offset) =>
+          apiJson(`/api/v1/tasks/${taskId}/thresholds/${byOffset.get(offset)}`, {
+            method: "DELETE",
+          }),
+      );
+
+  const results = await Promise.allSettled(calls);
+  for (const result of results) {
+    if (result.status === "rejected") {
+      return { error: "Failed to update default reminders." };
+    }
+    if (result.value?.error) {
+      return { error: result.value.error };
+    }
+  }
+
   revalidateTask(taskId);
   return {};
 }

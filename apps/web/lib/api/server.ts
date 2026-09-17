@@ -59,24 +59,43 @@ async function cookieHeader(): Promise<string> {
     .join("; ");
 }
 
+function isCookieMutationForbidden(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    /^Cookies can only be modified/.test(error.message)
+  );
+}
+
 async function applySetCookies(response: Response): Promise<void> {
-  const store = await cookies();
   const raw =
     typeof response.headers.getSetCookie === "function"
       ? response.headers.getSetCookie()
       : [];
-  for (const header of raw) {
-    const parsed = parseSetCookie(header);
-    if (!parsed) continue;
-    store.set(parsed.name, parsed.value, parsed.options);
+  if (raw.length === 0) return;
+  try {
+    const store = await cookies();
+    for (const header of raw) {
+      const parsed = parseSetCookie(header);
+      if (!parsed) continue;
+      store.set(parsed.name, parsed.value, parsed.options);
+    }
+  } catch (error) {
+    // Reading session cookies during an RSC render is fine, committing them is
+    // not — Next only allows cookie mutations in Server Actions / Route
+    // Handlers. Skip silently; the next action call can persist them.
+    if (!isCookieMutationForbidden(error)) throw error;
   }
 }
 
 /** Drop stale auth cookies so middleware cannot loop on invalid JWTs. */
 export async function clearLocalAuthCookies(): Promise<void> {
-  const store = await cookies();
-  store.delete(ACCESS_COOKIE);
-  store.delete(REFRESH_COOKIE);
+  try {
+    const store = await cookies();
+    store.delete(ACCESS_COOKIE);
+    store.delete(REFRESH_COOKIE);
+  } catch (error) {
+    if (!isCookieMutationForbidden(error)) throw error;
+  }
 }
 
 export async function apiFetch<T = unknown>(

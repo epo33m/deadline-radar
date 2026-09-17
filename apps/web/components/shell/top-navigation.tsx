@@ -6,8 +6,6 @@ import { Menu, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { AccountMenu } from "@/components/shell/account-menu";
-import { NotificationBell } from "@/components/notifications/notification-bell";
-import { PortalMenu } from "@/components/ui/portal-menu";
 import { shellContainerClassName } from "@/components/ui/shell-layout";
 import {
   PRIMARY_NAV_ITEMS,
@@ -50,18 +48,10 @@ function MenuItemLink({
       onClick={onNavigate}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex min-h-11 items-center gap-3 px-4 text-[17px] tracking-[-0.374px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus",
+        "flex min-h-18 items-center px-6 text-[30px] leading-[1.1] tracking-[-0.6px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus",
         active ? "font-semibold text-ink" : "font-normal text-ink-muted-80",
       )}
     >
-      <item.icon
-        className={cn(
-          "size-4 shrink-0",
-          active ? "text-ink" : "text-ink-muted-48",
-        )}
-        strokeWidth={active ? 2.5 : 2}
-        aria-hidden="true"
-      />
       <span>{item.label}</span>
     </Link>
   );
@@ -75,14 +65,12 @@ export function TopNavigation({
   const menuId = useId();
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [isCompactNav, setIsCompactNav] = useState(false);
   const [openedPathname, setOpenedPathname] = useState<string | null>(null);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia(COMPACT_NAV_QUERY);
 
     function handleChange(event: MediaQueryListEvent | MediaQueryList) {
-      setIsCompactNav(!event.matches);
       if (event.matches) {
         setMenuOpen(false);
       }
@@ -114,40 +102,42 @@ export function TopNavigation({
   }
 
   return (
+    <>
     <header className="sticky top-0 z-30 bg-surface-pearl supports-[backdrop-filter]:bg-surface-pearl/80 supports-[backdrop-filter]:backdrop-blur-xl supports-[backdrop-filter]:backdrop-saturate-150">
-      <div className={cn(shellContainerClassName, "flex h-13 items-center justify-between gap-6")}>
-        <div className="flex min-w-0 items-center gap-2 md:gap-6">
+      <div className={cn(shellContainerClassName, "relative flex h-13 items-center justify-between gap-6")}>
+        <div className="flex min-w-0 shrink-0 items-center">
           <Link
-            href="/overview"
+            href="/summary"
             className="min-w-0 truncate rounded-sm font-sans text-[17px] font-semibold leading-tight tracking-[-0.374px] text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus"
           >
             Deadline Radar
           </Link>
-
-          <nav aria-label="Primary" className="hidden md:block">
-            <ul className="flex items-center gap-6">
-              {PRIMARY_NAV_ITEMS.map((item) => (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    aria-current={
-                      isNavItemActive(pathname, item.href) ? "page" : undefined
-                    }
-                    className={navLinkClassName(
-                      isNavItemActive(pathname, item.href),
-                    )}
-                  >
-                    {item.label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </nav>
         </div>
 
-        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-          <NotificationBell />
+        <nav
+          aria-label="Primary"
+          className="absolute left-1/2 hidden -translate-x-1/2 md:block"
+        >
+          <ul className="flex items-center gap-6">
+            {PRIMARY_NAV_ITEMS.map((item) => (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  aria-current={
+                    isNavItemActive(pathname, item.href) ? "page" : undefined
+                  }
+                  className={navLinkClassName(
+                    isNavItemActive(pathname, item.href),
+                  )}
+                >
+                  {item.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
 
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
           <AccountMenu accountLabel={accountLabel} userEmail={userEmail} />
 
           <button
@@ -167,23 +157,41 @@ export function TopNavigation({
           </button>
         </div>
       </div>
+    </header>
 
-      <PortalMenu
-        open={menuOpen && isCompactNav}
-        onClose={closeMenu}
-        triggerRef={menuButtonRef}
-        menuId={menuId}
-        label="Navigation"
-        role="none"
-        focusFirstOnOpen
-        measureOptions={{ fullWidth: true, disableSheet: true }}
-        className="border-0 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-2 motion-safe:duration-200 motion-safe:ease-out"
+      {menuOpen ? (
+        <div
+          aria-hidden="true"
+          onClick={closeMenu}
+          className="fixed inset-0 z-40 bg-ink/30 md:hidden"
+        />
+      ) : null}
+
+      <div
+        id={menuId}
+        role="dialog"
+        aria-label="Navigation"
+        aria-modal={menuOpen}
+        className={cn(
+          "fixed inset-x-0 top-0 bottom-0 z-50 flex w-full flex-col overflow-y-auto overscroll-contain border-b border-hairline bg-canvas transition-transform duration-200 ease-out md:hidden",
+          menuOpen ? "translate-y-0" : "-translate-y-full",
+        )}
       >
+        <div className="flex shrink-0 items-center justify-end px-4 pt-[max(0.75rem,env(safe-area-inset-top))]">
+          <button
+            type="button"
+            onClick={closeMenu}
+            aria-label="Close navigation"
+            className="inline-flex size-9 items-center justify-center rounded-md text-ink-muted-48 transition-colors hover:bg-muted hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus"
+          >
+            <X className="size-5" strokeWidth={2} aria-hidden="true" />
+          </button>
+        </div>
         <nav
           aria-label="Primary"
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
         >
-          <ul className="flex flex-col py-2">
+          <ul className="flex flex-col px-2 pt-1 pb-4">
             {PRIMARY_NAV_ITEMS.map((item) => (
               <li key={item.href}>
                 <MenuItemLink
@@ -195,7 +203,7 @@ export function TopNavigation({
             ))}
           </ul>
         </nav>
-      </PortalMenu>
-    </header>
+      </div>
+    </>
   );
 }

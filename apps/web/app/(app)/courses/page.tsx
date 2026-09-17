@@ -9,6 +9,8 @@ type ApiCourse = {
   name: string;
   code: string | null;
   color: string | null;
+  icon?: string | null;
+  description: string | null;
   createdAt: string | Date;
   deletedAt: string | Date | null;
 };
@@ -20,6 +22,8 @@ function mapCourse(row: ApiCourse): Course {
     name: row.name,
     code: row.code,
     color: row.color,
+    icon: row.icon ?? null,
+    description: row.description,
     created_at:
       row.createdAt instanceof Date
         ? row.createdAt.toISOString()

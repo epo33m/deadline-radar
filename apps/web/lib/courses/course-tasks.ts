@@ -13,6 +13,12 @@ export type CourseTaskGroups<T extends CourseTask = CourseTask> = {
   done: T[];
 };
 
+export type CourseTaskStatusGroups<T extends CourseTask = CourseTask> = {
+  todo: T[];
+  in_progress: T[];
+  done: T[];
+};
+
 export type CourseDetailSummary = {
   total: number;
   late: number;
@@ -69,6 +75,33 @@ export function groupCourseTasks<T extends CourseTask>(
   return { late, upcoming: [...upcoming, ...undated], done };
 }
 
+/**
+ * Split course tasks into To do / In progress / Done by task status.
+ */
+export function groupCourseTasksByStatus<T extends CourseTask>(
+  tasks: T[],
+): CourseTaskStatusGroups<T> {
+  const todo: T[] = [];
+  const in_progress: T[] = [];
+  const done: T[] = [];
+
+  for (const task of tasks) {
+    if (task.status === "done") {
+      done.push(task);
+    } else if (task.status === "in_progress") {
+      in_progress.push(task);
+    } else {
+      todo.push(task);
+    }
+  }
+
+  todo.sort(compareByDeadline);
+  in_progress.sort(compareByDeadline);
+  done.sort(compareByDeadline);
+
+  return { todo, in_progress, done };
+}
+
 export function summarizeCourseDetail(
   tasks: CourseTask[],
   now: Date = new Date(),
@@ -95,7 +128,7 @@ export function formatCourseDetailSummaryLine(
   ];
 
   if (summary.late > 0) {
-    parts.splice(1, 0, `${summary.late} Late`);
+    parts.splice(1, 0, `${summary.late} Overdue`);
   }
 
   return parts.join(" · ");

@@ -6,19 +6,19 @@
 
 ## 1. Definition of "MVP Done"
 
-The MVP is considered done when: a user can register, log in, create a course, create a task with a deadline, receive automatic reminders (email + in-app) that escalate according to the thresholds, update the task status, attach a file/link, and monitor everything via the Overview/calendar — all running end-to-end in the production environment, with data isolated per user.
+The MVP is considered done when: a user can register, log in, create a course, create a task with a deadline, receive automatic reminders (email + in-app) that escalate according to the thresholds, update the task status, attach a file/link, and monitor everything via the Summary/calendar — all running end-to-end in the production environment, with data isolated per user.
 
 ## 2. In Scope (MVP)
 
 | Area | Feature |
 |---|---|
 | Auth | Register & login (email/password) |
-| Course | Course CRUD (name, optional code, optional color) |
-| Task | Task CRUD (title, description, course, deadline, status, estimated duration) |
+| Course | Course CRUD (name, optional code, color, description) |
+| Task | Task CRUD (title, description, course, deadline, status) |
 | Attachment | Add/remove attachments as a file (upload) or an external link |
 | Reminder | Default threshold H-7/H-3/H-1/H-0 auto-created when a task is created; user can customize per task |
 | Notification | Reminders delivered via email (Resend) & in-app (bell icon + notification center) |
-| Overview | Task summary: approaching deadline, overdue, recently completed |
+| Summary | Task summary: approaching deadline, overdue, recently completed |
 | Calendar | Monthly view of deadline distribution |
 
 ## 3. Out of Scope (Deferred)
@@ -46,7 +46,7 @@ Per `product.md` §9 — **intentionally not built** in the MVP:
 
 ### 4.3 Create a Task
 1. User opens `/tasks`, clicks "Add Task".
-2. Fills in title, selects course, deadline, description & estimated duration (optional).
+2. Fills in title, selects course, deadline & description.
 3. The system automatically generates 4 reminder thresholds (H-7/H-3/H-1/H-0).
 4. (Optional) user customizes thresholds, adds attachments (file/link).
 
@@ -59,8 +59,8 @@ Per `product.md` §9 — **intentionally not built** in the MVP:
 2. Sends email (Resend) + inserts an in-app notification for each match.
 3. User sees new notifications on the bell icon and can click to mark as read.
 
-### 4.6 Monitor via Overview/Calendar
-1. User opens `/overview` → sees tasks approaching deadline, overdue, and recently completed.
+### 4.6 Monitor via Summary/Calendar
+1. User opens `/summary` → sees tasks approaching deadline, overdue, and recently completed.
 2. User opens `/calendar` → sees the monthly spread of deadlines.
 
 ## 5. Acceptance Criteria (key examples)
@@ -102,6 +102,5 @@ Per `product.md` §9 — **intentionally not built** in the MVP:
 
 - [ ] Scheduler runner for Elysia cron endpoint (`ARCHITECTURE.md` §2.6)
 - [ ] Final hosting
-- [ ] `estimated_duration` unit
 - [ ] Attachment file size & type limits
 - [ ] Max retry attempts for failed email deliveries

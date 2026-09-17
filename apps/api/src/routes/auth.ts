@@ -8,6 +8,7 @@ import {
   changePasswordSchema,
   changeEmailSchema,
   timezoneUpdateSchema,
+  timeFormatUpdateSchema,
 } from "@deadline-radar/validation";
 import { profiles } from "@deadline-radar/db";
 
@@ -153,7 +154,7 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
         return withBridgeTokens(
           {
             user: { id: data.user.id, email: data.user.email },
-            redirectTo: "/preferences",
+            redirectTo: "/settings",
           },
           {
             accessToken: data.session.access_token,
@@ -254,7 +255,7 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
       return withBridgeTokens(
         {
           user: { id: data.user.id, email: data.user.email },
-          redirectTo: "/overview",
+          redirectTo: "/summary",
         },
         {
           accessToken: data.session.access_token,
@@ -674,7 +675,7 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
       const next =
         typeof query.next === "string" && query.next.startsWith("/")
           ? query.next
-          : "/overview";
+          : "/summary";
 
       let session: {
         access_token: string;
@@ -809,6 +810,7 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
           id: user.id,
           email: user.email ?? profile?.email,
           timezone: profile?.timezone ?? "UTC",
+          timeFormat: profile?.timeFormat ?? "24h",
           name: profile?.name ?? null,
           sessionId: user.sessionId ?? null,
           pendingEmail,
@@ -841,6 +843,29 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
         tags: ["Auth"],
         summary: "Update timezone",
         requestBody: jsonBodyDetail(openApiBodies.timezone),
+      },
+    },
+  )
+  .patch(
+    "/time-format",
+    async ({ requireAuthz, request }) => {
+      const ctx = await requireAuthz("profile.time-format.update");
+      const body = await readJsonBody(request);
+      const parsed = timeFormatUpdateSchema.safeParse(body);
+      if (!parsed.success) {
+        throw validationFromZod("Enter a valid time format", parsed.error.flatten().fieldErrors);
+      }
+      await getDb()
+        .update(profiles)
+        .set({ timeFormat: parsed.data.timeFormat })
+        .where(eq(profiles.id, ctx.subject.id));
+      return { ok: true, timeFormat: parsed.data.timeFormat };
+    },
+    {
+      detail: {
+        tags: ["Auth"],
+        summary: "Update time format",
+        requestBody: jsonBodyDetail(openApiBodies.timeFormat),
       },
     },
   );

@@ -12,6 +12,8 @@ export type CourseRow = {
   name: string;
   code: string | null;
   color: string | null;
+  icon: string | null;
+  description: string | null;
   createdAt: Date | string;
   updatedAt?: Date | string | null;
   deletedAt?: Date | string | null;
@@ -24,6 +26,8 @@ export function serializeCourse(row: CourseRow) {
     name: row.name,
     code: row.code,
     color: row.color,
+    icon: row.icon,
+    description: row.description,
     createdAt: iso(row.createdAt)!,
     updatedAt: iso(row.updatedAt ?? row.createdAt),
     deletedAt: iso(row.deletedAt ?? null),
@@ -38,9 +42,9 @@ export type TaskRow = {
   description: string | null;
   deadline: Date | string;
   status: string;
-  estimatedDuration: number | null;
   createdAt: Date | string;
   updatedAt: Date | string;
+  completedAt?: Date | string | null;
   deletedAt?: Date | string | null;
   courseName?: string | null;
   courseColor?: string | null;
@@ -55,9 +59,9 @@ export function serializeTask(row: TaskRow) {
     description: row.description,
     deadline: iso(row.deadline)!,
     status: row.status,
-    estimatedDuration: row.estimatedDuration,
     createdAt: iso(row.createdAt)!,
     updatedAt: iso(row.updatedAt)!,
+    completedAt: iso(row.completedAt ?? null),
     deletedAt: iso(row.deletedAt ?? null),
   };
   if (row.courseName !== undefined || row.courseColor !== undefined) {
@@ -92,7 +96,7 @@ export type AttachmentRow = {
   id: string;
   taskId: string;
   type: string;
-  name: string;
+  notes: string | null;
   storagePath: string | null;
   url: string | null;
   createdAt: Date | string;
@@ -103,7 +107,7 @@ export function serializeAttachment(row: AttachmentRow) {
     id: row.id,
     taskId: row.taskId,
     type: row.type,
-    name: row.name,
+    notes: row.notes,
     storagePath: row.storagePath,
     url: row.url,
     createdAt: iso(row.createdAt)!,

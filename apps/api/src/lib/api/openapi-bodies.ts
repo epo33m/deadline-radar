@@ -30,6 +30,8 @@ export const openApiBodies = {
       name: string,
       code: nullableString,
       color: nullableString,
+      icon: nullableString,
+      description: nullableString,
     },
     ["name"],
   ),
@@ -38,6 +40,8 @@ export const openApiBodies = {
       name: string,
       code: nullableString,
       color: nullableString,
+      icon: nullableString,
+      description: nullableString,
       updatedAt: string,
       updated_at: string,
     },
@@ -50,10 +54,6 @@ export const openApiBodies = {
       deadline: string,
       status: { type: "string", enum: ["todo", "in_progress", "done"] },
       description: nullableString,
-      estimated_duration: {
-        oneOf: [{ type: "number" }, { type: "string" }],
-        nullable: true,
-      },
     },
     ["title", "course_id", "deadline", "status"],
   ),
@@ -64,10 +64,6 @@ export const openApiBodies = {
       deadline: string,
       status: { type: "string", enum: ["todo", "in_progress", "done"] },
       description: nullableString,
-      estimated_duration: {
-        oneOf: [{ type: "number" }, { type: "string" }],
-        nullable: true,
-      },
       updatedAt: string,
       updated_at: string,
     },
@@ -76,10 +72,10 @@ export const openApiBodies = {
   linkAttachment: objectSchema(
     {
       task_id: uuid,
-      name: string,
       url: string,
+      notes: string,
     },
-    ["task_id", "name", "url"],
+    ["task_id", "url"],
   ),
   roleAssign: objectSchema(
     {
@@ -127,6 +123,10 @@ export const openApiBodies = {
     ["email", "currentPassword"],
   ),
   timezone: objectSchema({ timezone: string }, ["timezone"]),
+  timeFormat: objectSchema(
+    { timeFormat: { type: "string", enum: ["24h", "12h"] } },
+    ["timeFormat"],
+  ),
   threshold: objectSchema(
     { days_before: { type: "number" } },
     ["days_before"],

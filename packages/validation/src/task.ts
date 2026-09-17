@@ -4,47 +4,13 @@ export const taskStatusSchema = z.enum(["todo", "in_progress", "done"]);
 
 const optionalTrimmedNullable = z
   .string()
-  .optional()
+  .nullish()
   .transform((value) => {
-    if (value === undefined) return null;
+    if (value == null) return null;
     const trimmed = value.trim();
     return trimmed.length === 0 ? null : trimmed;
   });
 
-const optionalDurationMinutes = z
-  .union([z.string(), z.number()])
-  .optional()
-  .transform((value, ctx) => {
-    if (value === undefined) return null;
-    if (typeof value === "number") {
-      if (!Number.isInteger(value) || value < 1) {
-        ctx.addIssue({
-          code: "custom",
-          message: "Estimated duration must be a positive whole number of minutes",
-        });
-        return z.NEVER;
-      }
-      return value;
-    }
-    const trimmed = value.trim();
-    if (trimmed.length === 0) return null;
-    if (!/^\d+$/.test(trimmed)) {
-      ctx.addIssue({
-        code: "custom",
-        message: "Estimated duration must be a positive whole number of minutes",
-      });
-      return z.NEVER;
-    }
-    const minutes = Number(trimmed);
-    if (!Number.isInteger(minutes) || minutes < 1) {
-      ctx.addIssue({
-        code: "custom",
-        message: "Estimated duration must be a positive whole number of minutes",
-      });
-      return z.NEVER;
-    }
-    return minutes;
-  });
 
 const deadlineSchema = z
   .string()
@@ -62,7 +28,6 @@ export const taskSchema = z
     deadline: deadlineSchema,
     status: taskStatusSchema,
     description: optionalTrimmedNullable,
-    estimated_duration: optionalDurationMinutes,
   })
   .strict();
 
@@ -73,7 +38,6 @@ export const taskPatchSchema = z
     deadline: deadlineSchema,
     status: taskStatusSchema,
     description: optionalTrimmedNullable,
-    estimated_duration: optionalDurationMinutes,
     updatedAt: z.string().datetime({ offset: true }).optional(),
     updated_at: z.string().datetime({ offset: true }).optional(),
   })

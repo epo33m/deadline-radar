@@ -27,7 +27,10 @@ export const notificationRoutes = new Elysia({
     "/",
     async ({ requireAuthz, query }) => {
       const ctx = await requireAuthz("notification.view");
-      const { limit, cursor } = parsePaginationQuery(query);
+      const { limit, cursor } = parsePaginationQuery({
+        limit: query.limit,
+        cursor: query.cursor,
+      });
       const decoded = decodeCursor(cursor);
 
       const rows = await getDb()

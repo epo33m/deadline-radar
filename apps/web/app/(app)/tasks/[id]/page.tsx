@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { TaskDetailPanel } from "@/components/tasks/task-detail";
@@ -19,7 +18,6 @@ type ApiTask = {
   description: string | null;
   deadline: string | Date;
   status: Task["status"];
-  estimatedDuration: number | null;
   createdAt: string | Date;
   updatedAt: string | Date;
   deletedAt: string | Date | null;
@@ -30,6 +28,8 @@ type ApiCourse = {
   name: string;
   code: string | null;
   color: string | null;
+  icon?: string | null;
+  description: string | null;
 };
 
 type ApiThreshold = {
@@ -44,7 +44,7 @@ type ApiAttachment = {
   id: string;
   taskId: string;
   type: Attachment["type"];
-  name: string;
+  notes: string | null;
   storagePath: string | null;
   url: string | null;
   createdAt: string | Date;
@@ -89,13 +89,17 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
   const course = detailResult.course;
   const courses = coursesResult.courses ?? [];
 
-  const courseOptions: Pick<Course, "id" | "name" | "code" | "color">[] =
-    courses.map((c) => ({
-      id: c.id,
-      name: c.name,
-      code: c.code,
-      color: c.color,
-    }));
+  const courseOptions: Pick<
+    Course,
+    "id" | "name" | "code" | "color" | "icon" | "description"
+  >[] = courses.map((c) => ({
+    id: c.id,
+    name: c.name,
+    code: c.code,
+    color: c.color,
+    icon: c.icon ?? null,
+    description: c.description,
+  }));
 
   if (course && !courseOptions.some((option) => option.id === task.courseId)) {
     courseOptions.unshift({
@@ -103,6 +107,8 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
       name: `${course.name} (removed)`,
       code: course.code,
       color: course.color,
+      icon: course.icon ?? null,
+      description: course.description,
     });
   }
 
@@ -121,7 +127,7 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
       id: a.id,
       task_id: a.taskId,
       type: a.type,
-      name: a.name,
+      notes: a.notes,
       storage_path: a.storagePath,
       url: a.url,
       created_at: iso(a.createdAt)!,
@@ -136,7 +142,6 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
     description: task.description,
     deadline: iso(task.deadline)!,
     status: task.status,
-    estimated_duration: task.estimatedDuration,
     created_at: iso(task.createdAt)!,
     updated_at: iso(task.updatedAt)!,
     deleted_at: iso(task.deletedAt),
@@ -146,23 +151,13 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
   };
 
   return (
-    <section className="space-y-6 sm:space-y-8">
-      <div className="space-y-2">
-        <p className="text-sm">
-          <Link href="/tasks" className="text-primary hover:underline">
-            ← Tasks
-          </Link>
-        </p>
-        <h1 className="font-display text-[32px] font-semibold leading-[1.07] tracking-[-0.28px] text-ink sm:text-[36px] lg:text-[44px]">{task.title}</h1>
-      </div>
-
-      <TaskDetailPanel
-        task={mappedTask}
-        courses={courseOptions}
-        thresholds={thresholds}
-        attachments={attachments}
-        timeZone={user.timezone}
-      />
-    </section>
+    <TaskDetailPanel
+      task={mappedTask}
+      courses={courseOptions}
+      thresholds={thresholds}
+      attachments={attachments}
+      timeZone={user.timezone}
+      timeFormat={user.timeFormat}
+    />
   );
 }

@@ -390,6 +390,10 @@
                   "color": {
                     "type": "string",
                     "nullable": true
+                  },
+                  "description": {
+                    "type": "string",
+                    "nullable": true
                   }
                 },
                 "required": [
@@ -442,6 +446,10 @@
                     "nullable": true
                   },
                   "color": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "description": {
                     "type": "string",
                     "nullable": true
                   },
@@ -568,17 +576,6 @@
                   "description": {
                     "type": "string",
                     "nullable": true
-                  },
-                  "estimated_duration": {
-                    "oneOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "string"
-                      }
-                    ],
-                    "nullable": true
                   }
                 },
                 "required": [
@@ -646,17 +643,6 @@
                   },
                   "description": {
                     "type": "string",
-                    "nullable": true
-                  },
-                  "estimated_duration": {
-                    "oneOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "string"
-                      }
-                    ],
                     "nullable": true
                   },
                   "updatedAt": {
@@ -860,16 +846,15 @@
                     "type": "string",
                     "format": "uuid"
                   },
-                  "name": {
+                  "url": {
                     "type": "string"
                   },
-                  "url": {
+                  "notes": {
                     "type": "string"
                   }
                 },
                 "required": [
                   "task_id",
-                  "name",
                   "url"
                 ],
                 "additionalProperties": false
@@ -902,7 +887,7 @@
                     "format": "uuid",
                     "type": "string"
                   },
-                  "name": {
+                  "notes": {
                     "type": "string"
                   },
                   "file": {
@@ -936,7 +921,7 @@
                     "format": "uuid",
                     "type": "string"
                   },
-                  "name": {
+                  "notes": {
                     "type": "string"
                   },
                   "file": {
@@ -970,7 +955,7 @@
                     "format": "uuid",
                     "type": "string"
                   },
-                  "name": {
+                  "notes": {
                     "type": "string"
                   },
                   "file": {
