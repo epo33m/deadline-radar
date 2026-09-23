@@ -24,6 +24,28 @@ export function authCookieOptions(maxAgeSeconds: number) {
   };
 }
 
+/**
+ * Deletion scope must match creation scope (Finding #12): browsers only
+ * remove a cookie when name + domain + path match, and a `Secure` cookie
+ * cannot be cleared by a non-`Secure` Set-Cookie. No `Domain` is set on
+ * creation, so none is set here (host-only cookies).
+ *
+ * `SameSite=Lax` (not Strict) is deliberate: the email recovery/confirm
+ * links are cross-site top-level navigations that must still establish the
+ * session; `Strict` would withhold cookies on that first navigation and
+ * break the recovery flow. `Lax` still blocks cookies on cross-site
+ * subresource/POST requests, which is the CSRF-relevant case.
+ */
+export function clearedAuthCookieOptions() {
+  return {
+    httpOnly: true as const,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge: 0,
+  };
+}
+
 export type AuthTokenBody = {
   accessToken?: string;
   refreshToken?: string;

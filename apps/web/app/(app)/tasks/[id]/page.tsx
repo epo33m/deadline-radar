@@ -57,7 +57,9 @@ function iso(value: string | Date | null | undefined): string | null {
 
 export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
   const { id } = await params;
-  const user = await requireSession();
+  // Overlap the session RTT with the data fetch; redirect/notFound priority
+  // is preserved by awaiting the session before the branches below.
+  const sessionPromise = requireSession();
 
   const [detailResult, coursesResult] = await Promise.all([
     apiJson<{
@@ -69,6 +71,8 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
     }>(`/api/v1/tasks/${id}`),
     apiJson<{ courses?: ApiCourse[] }>("/api/v1/courses"),
   ]);
+
+  const user = await sessionPromise;
 
   if (detailResult.error === "Task not found") {
     notFound();
@@ -158,6 +162,7 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
       attachments={attachments}
       timeZone={user.timezone}
       timeFormat={user.timeFormat}
+      nowIso={new Date().toISOString()}
     />
   );
 }

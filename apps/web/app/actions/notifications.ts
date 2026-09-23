@@ -22,6 +22,7 @@ type ApiNotification = {
   createdAt: string | Date;
   taskTitle: string;
   daysBefore: number;
+  isLate: boolean;
 };
 
 function mapNotification(row: ApiNotification): InAppNotification {
@@ -46,6 +47,7 @@ function mapNotification(row: ApiNotification): InAppNotification {
         : String(row.createdAt),
     task_title: row.taskTitle,
     days_before: row.daysBefore,
+    is_late: row.isLate,
   };
 }
 

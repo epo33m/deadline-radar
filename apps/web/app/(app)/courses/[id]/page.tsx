@@ -48,9 +48,11 @@ export default async function CourseDetailPage({
   params,
   searchParams,
 }: CourseDetailPageProps) {
-  const { id } = await params;
-  const { view } = await searchParams;
-  const user = await requireSession();
+  const [{ id }, { view }, user] = await Promise.all([
+    params,
+    searchParams,
+    requireSession(),
+  ]);
 
   const [courseResult, tasksResult] = await Promise.all([
     apiJson<{ course?: ApiCourse; error?: string }>(`/api/v1/courses/${id}`),
@@ -99,6 +101,6 @@ export default async function CourseDetailPage({
     : "all";
 
   return (
-    <CourseDetail course={course} tasks={tasks} timeZone={user.timezone} timeFormat={user.timeFormat} taskView={taskView} />
+    <CourseDetail course={course} tasks={tasks} timeZone={user.timezone} timeFormat={user.timeFormat} taskView={taskView} nowIso={new Date().toISOString()} />
   );
 }

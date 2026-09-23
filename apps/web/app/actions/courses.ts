@@ -4,6 +4,26 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { apiJson } from "@/lib/api/server";
+
+/**
+ * Revalidates every segment that renders a course's display (name, code,
+ * color, icon): course list/detail plus tasks, calendar, and summary, which
+ * all show course context. Without this, Back/forward navigation can restore a
+ * stale segment from the Client Cache (HI-1).
+ */
+function revalidateCourseContent(courseId?: string) {
+  revalidatePath("/courses");
+  if (courseId) {
+    revalidatePath(`/courses/${courseId}`);
+  }
+  revalidatePath("/tasks");
+  revalidatePath("/calendar");
+  revalidatePath("/summary");
+}
+import {
+  generateIdempotencyKey,
+  normalizeIdempotencyKey,
+} from "@/lib/api/idempotency";
 import { normalizeCourseColorForStorage } from "@/lib/courses/colors";
 import { normalizeCourseIconForStorage } from "@/lib/courses/icons";
 
@@ -34,14 +54,21 @@ export async function createCourse(
   _prev: CourseActionState,
   formData: FormData,
 ): Promise<CourseActionState> {
+  const idemKey =
+    normalizeIdempotencyKey(formData.get("idempotency_key")) ??
+    generateIdempotencyKey();
+
   const result = await apiJson("/api/v1/courses", {
     method: "POST",
+    headers: {
+      "Idempotency-Key": idemKey,
+    },
     body: JSON.stringify(courseBody(formData)),
   });
   if (result.error) {
     return { error: result.error, fieldErrors: result.fieldErrors };
   }
-  revalidatePath("/courses");
+  revalidateCourseContent();
   return {};
 }
 
@@ -60,8 +87,7 @@ export async function updateCourse(
   if (result.error) {
     return { error: result.error, fieldErrors: result.fieldErrors };
   }
-  revalidatePath("/courses");
-  revalidatePath(`/courses/${id}`);
+  revalidateCourseContent(id);
   return {};
 }
 
@@ -77,6 +103,6 @@ export async function softDeleteCourse(
   if (result.error) {
     return { error: result.error, fieldErrors: result.fieldErrors };
   }
-  revalidatePath("/courses");
+  revalidateCourseContent(id);
   redirect("/courses");
 }

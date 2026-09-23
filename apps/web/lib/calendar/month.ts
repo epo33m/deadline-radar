@@ -202,6 +202,43 @@ export function buildMonthGrid(
   return cells;
 }
 
+function shiftDayKey(dayKey: string, deltaDays: number): string {
+  const [year, month, day] = dayKey.split("-").map(Number);
+  const shifted = new Date(
+    Date.UTC(year, month - 1, day) + deltaDays * 24 * 60 * 60 * 1000,
+  );
+  return formatDayKey(
+    shifted.getUTCFullYear(),
+    shifted.getUTCMonth() + 1,
+    shifted.getUTCDate(),
+  );
+}
+
+function dayKeyStartInstant(dayKey: string, timeZone: string): Date {
+  const [year, month, day] = dayKey.split("-").map(Number);
+  return fromZonedTime(year, month, day, 0, 0, 0, timeZone);
+}
+
+/**
+ * UTC instant range covering every visible grid cell, as ISO strings for
+ * `GET /api/v1/tasks?dueFrom&dueTo` (half-open `[dueFrom, dueTo)`).
+ * Querying the visible range — not a fixed 50-row page — keeps months with
+ * >50 tasks correct and stops shipping off-screen rows on every nav.
+ */
+export function monthVisibleRange(
+  year: number,
+  month: number,
+  timeZone: string,
+): { dueFrom: string; dueTo: string } {
+  const cells = buildMonthGrid(year, month, timeZone);
+  const first = cells[0].dayKey;
+  const last = cells[cells.length - 1].dayKey;
+  return {
+    dueFrom: dayKeyStartInstant(first, timeZone).toISOString(),
+    dueTo: dayKeyStartInstant(shiftDayKey(last, 1), timeZone).toISOString(),
+  };
+}
+
 export function groupTasksByDay(
   tasks: CalendarTask[],
   timeZone: string,

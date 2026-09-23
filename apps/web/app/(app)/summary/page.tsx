@@ -1,13 +1,18 @@
 import { ProgressSection } from "@/components/summary/progress-section";
+import { SummaryRefresh } from "@/components/summary/summary-refresh";
 import { SummaryCards } from "@/components/summary/summary-cards";
 import { requireSession } from "@/lib/api/session";
 import { getSummaryGreeting, getSummaryTagline } from "@/lib/summary/greeting";
 import { loadSummary } from "@/lib/summary/load";
 
 export default async function SummaryPage() {
-  await requireSession();
+  // Overlap the session RTT with the data fetch; the redirect still wins
+  // for unauthenticated viewers because it is awaited before render.
+  const sessionPromise = requireSession();
 
   const result = await loadSummary();
+
+  await sessionPromise;
   if (result.summary === undefined) {
     return (
       <section className="space-y-9 sm:space-y-12">
@@ -28,6 +33,7 @@ export default async function SummaryPage() {
 
   return (
     <section className="space-y-6 sm:space-y-8">
+      <SummaryRefresh />
       <div className="min-w-0 mt-8 text-center sm:mt-12">
         <h1 className="font-display text-[42px] font-semibold leading-[1.07] tracking-[-0.28px] text-ink sm:text-[46px] lg:text-[58px]">
           {getSummaryGreeting()}

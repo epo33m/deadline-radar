@@ -1,5 +1,9 @@
 import Link from "next/link";
 
+// SEC-002: strict nonce CSP requires dynamic rendering so Next can attach
+// the per-request `x-nonce` to its inline scripts (static prerender has none).
+export const dynamic = "force-dynamic";
+
 export default function HomePage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-canvas-parchment px-6 text-center font-sans text-ink sm:px-8">

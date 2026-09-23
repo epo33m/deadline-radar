@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useActionState, useMemo, useState } from "react";
 import type { TimeFormat } from "@deadline-radar/validation";
+import { useNow } from "@/lib/use-now";
 
 import {
   softDeleteCourse,
@@ -35,9 +36,7 @@ import { getCourseColorFill, getCourseColorLabel } from "@/lib/courses/colors";
 import { CourseIconView } from "@/components/courses/course-icon";
 import { getCourseIconLabel } from "@/lib/courses/icons";
 import {
-  formatCourseDetailSummaryLine,
   groupCourseTasks,
-  summarizeCourseDetail,
   type CourseTask,
   type CourseTaskGroups,
 } from "@/lib/courses/course-tasks";
@@ -71,6 +70,7 @@ type CourseDetailProps = {
   timeZone: string;
   timeFormat: TimeFormat;
   taskView: CourseTaskView;
+  nowIso?: string;
 };
 
 type TaskGroupTone = "late" | "upcoming" | "done" | "neutral";
@@ -162,6 +162,7 @@ function CourseTaskRow({
   task,
   timeZone,
   timeFormat,
+  now,
   tone,
   dateOnRight = false,
   bare = false,
@@ -169,6 +170,7 @@ function CourseTaskRow({
   task: CourseDetailTask;
   timeZone: string;
   timeFormat: TimeFormat;
+  now: Date;
   tone: TaskGroupTone;
   dateOnRight?: boolean;
   bare?: boolean;
@@ -176,7 +178,7 @@ function CourseTaskRow({
   const completed = tone === "done";
   const relativeLabel = completed
     ? "Completed"
-    : formatRelativeDeadline(task.deadline, timeZone);
+    : formatRelativeDeadline(task.deadline, timeZone, now);
   const completedAt = task.updated_at ?? task.deadline;
   const metaLine = completed
     ? `${STATUS_LABEL.done} · ${formatDeadline(completedAt, timeZone, timeFormat)}`
@@ -187,7 +189,7 @@ function CourseTaskRow({
     dateOnRight && !completed
       ? bare
         ? formatDeadlineDate(task.deadline, timeZone)
-        : formatRelativeDeadline(task.deadline, timeZone)
+        : formatRelativeDeadline(task.deadline, timeZone, now)
       : relativeLabel;
 
   const indicatorLabel =
@@ -259,6 +261,7 @@ function CourseTaskGroup({
   tasks,
   timeZone,
   timeFormat,
+  now,
   dateOnRight = false,
   bare = false,
 }: {
@@ -267,6 +270,7 @@ function CourseTaskGroup({
   tasks: CourseDetailTask[];
   timeZone: string;
   timeFormat: TimeFormat;
+  now: Date;
   dateOnRight?: boolean;
   bare?: boolean;
 }) {
@@ -300,6 +304,7 @@ function CourseTaskGroup({
             task={task}
             timeZone={timeZone}
             timeFormat={timeFormat}
+            now={now}
             tone={tone}
             dateOnRight={dateOnRight}
             bare={bare}
@@ -334,7 +339,6 @@ function CourseTaskSummaryCards({
   return (
     <div className="grid grid-cols-3 gap-3 sm:gap-4">
       {TASK_CARD_CONFIG.map((card) => {
-        const Icon = card.icon;
         return (
           <Link
             key={card.id}
@@ -770,10 +774,10 @@ function CourseTasks({
   groups,
   filteredTasks,
   taskView,
-  summaryLine,
   hasTasks,
   timeZone,
   timeFormat,
+  now,
   coursePath,
   onAdd,
 }: {
@@ -781,10 +785,10 @@ function CourseTasks({
   groups: CourseTaskGroups<CourseDetailTask>;
   filteredTasks: CourseDetailTask[];
   taskView: CourseTaskView;
-  summaryLine: string | null;
   hasTasks: boolean;
   timeZone: string;
   timeFormat: TimeFormat;
+  now: Date;
   coursePath: string;
   onAdd: () => void;
 }) {
@@ -916,6 +920,7 @@ function CourseTasks({
                 tasks={filteredTasks}
                 timeZone={timeZone}
                 timeFormat={timeFormat}
+                now={now}
                 dateOnRight
               />
             )}
@@ -927,6 +932,7 @@ function CourseTasks({
             tasks={filteredTasks}
             timeZone={timeZone}
             timeFormat={timeFormat}
+            now={now}
             dateOnRight={taskView !== "done"}
             bare
           />
@@ -953,18 +959,15 @@ function CourseTasks({
   );
 }
 
-export function CourseDetail({ course, tasks, timeZone, timeFormat, taskView }: CourseDetailProps) {
+export function CourseDetail({ course, tasks, timeZone, timeFormat, taskView, nowIso }: CourseDetailProps) {
+  const now = useNow(60_000, nowIso);
   const [view, setView] = useState<CourseView>("task");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  const groups = useMemo(() => groupCourseTasks(tasks), [tasks]);
-  const summaryLine = useMemo(
-    () => formatCourseDetailSummaryLine(summarizeCourseDetail(tasks)),
-    [tasks],
-  );
+  const groups = useMemo(() => groupCourseTasks(tasks, now), [tasks, now]);
   const fillColor = getCourseColorFill(course.color);
   const coursePath = `/courses/${course.id}`;
   const openAdd = () => setAddOpen(true);
@@ -1016,10 +1019,10 @@ export function CourseDetail({ course, tasks, timeZone, timeFormat, taskView }: 
               groups={groups}
               filteredTasks={filteredTasks}
               taskView={taskView}
-              summaryLine={summaryLine}
               hasTasks={tasks.length > 0}
               timeZone={timeZone}
               timeFormat={timeFormat}
+              now={now}
               coursePath={coursePath}
               onAdd={openAdd}
             />

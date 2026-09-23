@@ -10,6 +10,7 @@ import {
   updateReminderThreshold,
   type TaskActionState,
 } from "@/app/actions/tasks";
+import { generateIdempotencyKey } from "@/lib/api/idempotency";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import {
@@ -272,11 +273,17 @@ function AddThresholdForm({
     initialState,
   );
   const [daysBefore, setDaysBefore] = useState("");
+  // RF-06: stable key per add attempt; regenerated after each success so a
+  // different offset is never mistaken for a replay of the previous request.
+  const [idempotencyKey, setIdempotencyKey] = useState(() =>
+    generateIdempotencyKey(),
+  );
   const wasPending = useRef(false);
 
   useEffect(() => {
     if (wasPending.current && !pending && !state.error) {
       setDaysBefore("");
+      setIdempotencyKey(generateIdempotencyKey());
     }
     wasPending.current = pending;
   }, [pending, state.error]);
@@ -291,6 +298,7 @@ function AddThresholdForm({
   return (
     <form action={formAction} className="flex flex-wrap items-end gap-3">
       <input type="hidden" name="task_id" value={taskId} />
+      <input type="hidden" name="idempotency_key" value={idempotencyKey} />
       <div className="space-y-2">
         <Label htmlFor={`add-days-before-${taskId}`}>Days before deadline</Label>
         <Input

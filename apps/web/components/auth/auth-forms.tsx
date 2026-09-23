@@ -32,6 +32,7 @@ import {
   registerSchema,
   resetPasswordSchema,
 } from "@/lib/validation/auth";
+import { resolveSafeReturnTo } from "@deadline-radar/validation";
 
 const initialState: AuthActionState = {};
 
@@ -251,7 +252,8 @@ export function LoginForm() {
       return;
     }
 
-    router.replace(result.redirectTo ?? "/summary");
+    // SEC-005: never trust redirectTo blindly — validate, fall back internal.
+    router.replace(resolveSafeReturnTo(result.redirectTo, "/summary"));
     router.refresh();
   }
 
@@ -366,9 +368,14 @@ export function RegisterForm() {
     }
 
     if (result.redirectTo) {
-      router.replace(result.redirectTo);
-      router.refresh();
-      return;
+      // SEC-005: validate; on invalid values stay on the page (show the
+      // confirmation message below) instead of navigating.
+      const safe = resolveSafeReturnTo(result.redirectTo, "");
+      if (safe !== "") {
+        router.replace(safe);
+        router.refresh();
+        return;
+      }
     }
 
     setError(

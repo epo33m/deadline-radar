@@ -181,7 +181,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Confirm email / recovery */
+        /**
+         * Confirm email / recovery
+         * @description `next` must be an allow-listed internal path (`/reset-password`, `/summary`); anything else falls back to `/summary`. Bridge callers receive JSON; others get a 302.
+         */
         get: operations["getApiV1AuthConfirm"];
         put?: never;
         post?: never;
@@ -223,6 +226,23 @@ export interface paths {
         head?: never;
         /** Update timezone */
         patch: operations["patchApiV1AuthTimezone"];
+        trace?: never;
+    };
+    "/api/v1/auth/time-format": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update time format */
+        patch: operations["patchApiV1AuthTime-format"];
         trace?: never;
     };
     "/api/v1/courses/": {
@@ -269,7 +289,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List tasks */
+        /** List active tasks */
         get: operations["getApiV1Tasks"];
         put?: never;
         /** Create task */
@@ -324,7 +344,8 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put?: never;
+        /** Set task reminder thresholds (atomic replace) */
+        put: operations["putApiV1TasksByIdThresholds"];
         /** Add reminder threshold */
         post: operations["postApiV1TasksByIdThresholds"];
         delete?: never;
@@ -349,6 +370,23 @@ export interface paths {
         head?: never;
         /** Update reminder threshold */
         patch: operations["patchApiV1TasksByIdThresholdsByThresholdId"];
+        trace?: never;
+    };
+    "/api/v1/summary/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get summary bucket counts */
+        get: operations["getApiV1Summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/attachments/link": {
@@ -545,7 +583,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Evaluate reminder thresholds and send notifications */
+        /**
+         * Evaluate reminder thresholds and send notifications
+         * @description Server-only scheduler entrypoint. Requires `Authorization: Bearer <CRON_SECRET>`. Also purges expired idempotency keys and (when AUTH_AUDIT_RETENTION_DAYS is set) expired auth audit events.
+         */
         get: operations["getApiV1CronEvaluate-reminders"];
         put?: never;
         post?: never;
@@ -558,7 +599,159 @@ export interface paths {
 }
 export type webhooks = Record<string, never>;
 export interface components {
-    schemas: never;
+    schemas: {
+        ErrorBody: {
+            error: {
+                /** @enum {string} */
+                code: "VALIDATION_ERROR" | "UNAUTHORIZED" | "FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "RATE_LIMITED" | "PAYLOAD_TOO_LARGE" | "DEPENDENCY_FAILURE" | "TIMEOUT" | "INTERNAL" | "IDEMPOTENCY_CONFLICT";
+                message: string;
+                details: {
+                    field?: string;
+                    message?: string;
+                }[];
+            };
+            /** Format: uuid */
+            requestId: string;
+        };
+        Page: {
+            nextCursor: string | null;
+            limit: number;
+        };
+        Course: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            userId: string;
+            name: string;
+            code: string | null;
+            color: string | null;
+            icon: string | null;
+            description: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: date-time */
+            deletedAt: string | null;
+        };
+        Task: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            userId: string;
+            /** Format: uuid */
+            courseId: string;
+            title: string;
+            description: string | null;
+            /** Format: date-time */
+            deadline: string;
+            /** @enum {string} */
+            status: "todo" | "in_progress" | "done";
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: date-time */
+            completedAt: string | null;
+            /** Format: date-time */
+            deletedAt: string | null;
+            courseName?: string | null;
+            courseColor?: string | null;
+        };
+        Threshold: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            taskId: string;
+            daysBefore: number;
+            isDefault: boolean;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        TaskWithCourse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            userId: string;
+            /** Format: uuid */
+            courseId: string;
+            title: string;
+            /** Format: date-time */
+            deadline: string;
+            /** @enum {string} */
+            status: "todo" | "in_progress" | "done";
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: date-time */
+            completedAt: string | null;
+            /** Format: date-time */
+            deletedAt: string | null;
+            courseName?: string | null;
+            courseColor?: string | null;
+        };
+        Attachment: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            taskId: string;
+            /** @enum {string} */
+            type: "link" | "file";
+            notes: string | null;
+            storagePath: string | null;
+            url: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        NotificationItem: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            taskId: string;
+            /** Format: uuid */
+            thresholdId: string;
+            channel: string;
+            status: string;
+            retryCount: number;
+            /** Format: date-time */
+            sentAt: string | null;
+            /** Format: date-time */
+            readAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            taskTitle: string | null;
+            daysBefore: number | null;
+        };
+        AuditEvent: {
+            /** Format: uuid */
+            id: string;
+            event: string;
+            userId: string | null;
+            sessionId: string | null;
+            result: string;
+            method: string | null;
+            ip: string | null;
+            userAgent: string | null;
+            requestId: string | null;
+            metadata: {
+                [key: string]: unknown;
+            } | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        SessionUser: {
+            /** Format: uuid */
+            id: string;
+            email: string | null;
+            timezone: string;
+            /** @enum {string} */
+            timeFormat: "24h" | "12h";
+            name: string | null;
+            sessionId: string | null;
+            pendingEmail: string | null;
+        };
+    };
     responses: never;
     parameters: never;
     requestBodies: never;
@@ -575,7 +768,20 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: never;
+        responses: {
+            /** @description Service is up. Exempt from rate limiting. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                        service: string;
+                    };
+                };
+            };
+        };
     };
     postApiV1AuthRegister: {
         parameters: {
@@ -593,7 +799,63 @@ export interface operations {
                 };
             };
         };
-        responses: never;
+        responses: {
+            /** @description 200 with a session when email confirmation is off; 202 when a confirmation email was sent. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        user: {
+                            /** Format: uuid */
+                            id: string;
+                            email: string | null;
+                        };
+                        redirectTo: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Confirmation email sent; no session yet. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        message: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation failed. See `error.details` for per-field messages. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     postApiV1AuthLogin: {
         parameters: {
@@ -610,7 +872,59 @@ export interface operations {
                 };
             };
         };
-        responses: never;
+        responses: {
+            /** @description Throttled responses carry a `Retry-After` (seconds) header. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        user: {
+                            /** Format: uuid */
+                            id: string;
+                            email: string | null;
+                        };
+                        redirectTo: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation failed. See `error.details` for per-field messages. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     postApiV1AuthRefresh: {
         parameters: {
@@ -620,7 +934,46 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: never;
+        responses: {
+            /** @description Reads the `dr_refresh_token` cookie; rotates both. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                        authenticated: boolean;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     postApiV1AuthLogout: {
         parameters: {
@@ -630,7 +983,37 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: never;
+        responses: {
+            /** @description Idempotent without a session; never requires auth. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                        redirectTo: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     "postApiV1AuthLogout-all": {
         parameters: {
@@ -640,7 +1023,46 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                        redirectTo: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     "postApiV1AuthForgot-password": {
         parameters: {
@@ -656,7 +1078,45 @@ export interface operations {
                 };
             };
         };
-        responses: never;
+        responses: {
+            /** @description Always generic — reveals nothing about account existence. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        success: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation failed. See `error.details` for per-field messages. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     "postApiV1AuthReset-password": {
         parameters: {
@@ -673,7 +1133,55 @@ export interface operations {
                 };
             };
         };
-        responses: never;
+        responses: {
+            /** @description Requires a recovery-scoped session (amr: recovery); normal login sessions are rejected. Signs out all sessions on success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                        redirectTo: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation failed. See `error.details` for per-field messages. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     "postApiV1AuthChange-password": {
         parameters: {
@@ -691,7 +1199,63 @@ export interface operations {
                 };
             };
         };
-        responses: never;
+        responses: {
+            /** @description Verifies `currentPassword` before updating. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation failed. See `error.details` for per-field messages. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     "postApiV1AuthChange-email": {
         parameters: {
@@ -708,7 +1272,65 @@ export interface operations {
                 };
             };
         };
-        responses: never;
+        responses: {
+            /** @description Verifies `currentPassword` before requesting. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                        message: string;
+                        pendingEmail: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation failed. See `error.details` for per-field messages. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     getApiV1AuthConfirm: {
         parameters: {
@@ -723,7 +1345,55 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                        redirectTo: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Non-bridge success: redirect to `<web-origin><next>`. */
+            302: {
+                headers: {
+                    /** @description Trusted same-origin redirect target. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation failed. See `error.details` for per-field messages. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     getApiV1AuthSession: {
         parameters: {
@@ -733,7 +1403,59 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        authenticated: boolean;
+                        user: components["schemas"]["SessionUser"];
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        authenticated: boolean;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     patchApiV1AuthTimezone: {
         parameters: {
@@ -749,7 +1471,139 @@ export interface operations {
                 };
             };
         };
-        responses: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                        timezone: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation failed. See `error.details` for per-field messages. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    "patchApiV1AuthTime-format": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    timeFormat: "24h" | "12h";
+                };
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                        /** @enum {string} */
+                        timeFormat: "24h" | "12h";
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation failed. See `error.details` for per-field messages. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     getApiV1Courses: {
         parameters: {
@@ -762,12 +1616,72 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        courses: components["schemas"]["Course"][];
+                        page: components["schemas"]["Page"];
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation failed. See `error.details` for per-field messages. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     postApiV1Courses: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional client key (8–128 chars) for safe retries. Same key + same request replays the stored response; same key + different request returns 409. */
+                "Idempotency-Key"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -777,11 +1691,77 @@ export interface operations {
                     name: string;
                     code?: string | null;
                     color?: string | null;
+                    icon?: string | null;
                     description?: string | null;
                 };
             };
         };
-        responses: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        course: components["schemas"]["Course"];
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation failed. See `error.details` for per-field messages. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict: stale `updatedAt`, duplicate threshold, role already assigned, or `Idempotency-Key` reused with a different request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     getApiV1CoursesById: {
         parameters: {
@@ -793,7 +1773,63 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        course: components["schemas"]["Course"];
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Resource not found (generic — no existence oracle). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     deleteApiV1CoursesById: {
         parameters: {
@@ -805,7 +1841,63 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Resource not found (generic — no existence oracle). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     patchApiV1CoursesById: {
         parameters: {
@@ -819,36 +1911,173 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    name: string;
+                    name?: string;
                     code?: string | null;
                     color?: string | null;
+                    icon?: string | null;
                     description?: string | null;
                     updatedAt?: string;
                     updated_at?: string;
                 };
             };
         };
-        responses: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        course: components["schemas"]["Course"];
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation failed. See `error.details` for per-field messages. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Resource not found (generic — no existence oracle). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict: stale `updatedAt`, duplicate threshold, role already assigned, or `Idempotency-Key` reused with a different request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     getApiV1Tasks: {
         parameters: {
             query?: {
-                courseId?: string;
                 limit?: string;
                 cursor?: string;
                 sort?: string;
+                courseId?: string;
+                dueFrom?: string;
+                dueTo?: string;
             };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
-        responses: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        tasks: components["schemas"]["TaskWithCourse"][];
+                        page: components["schemas"]["Page"];
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation failed. See `error.details` for per-field messages. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     postApiV1Tasks: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional client key (8–128 chars) for safe retries. Same key + same request replays the stored response; same key + different request returns 409. */
+                "Idempotency-Key"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -865,7 +2094,82 @@ export interface operations {
                 };
             };
         };
-        responses: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        task: components["schemas"]["Task"];
+                        redirectTo: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation failed. See `error.details` for per-field messages. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Resource not found (generic — no existence oracle). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict: stale `updatedAt`, duplicate threshold, role already assigned, or `Idempotency-Key` reused with a different request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     getApiV1TasksById: {
         parameters: {
@@ -877,7 +2181,66 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        task: components["schemas"]["Task"];
+                        course: components["schemas"]["Course"];
+                        thresholds: components["schemas"]["Threshold"][];
+                        attachments: components["schemas"]["Attachment"][];
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Resource not found (generic — no existence oracle). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     deleteApiV1TasksById: {
         parameters: {
@@ -889,7 +2252,63 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Resource not found (generic — no existence oracle). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     patchApiV1TasksById: {
         parameters: {
@@ -903,19 +2322,93 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    title: string;
+                    title?: string;
                     /** Format: uuid */
-                    course_id: string;
-                    deadline: string;
+                    course_id?: string;
+                    deadline?: string;
                     /** @enum {string} */
-                    status: "todo" | "in_progress" | "done";
+                    status?: "todo" | "in_progress" | "done";
                     description?: string | null;
                     updatedAt?: string;
                     updated_at?: string;
                 };
             };
         };
-        responses: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        task: components["schemas"]["Task"];
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation failed. See `error.details` for per-field messages. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Resource not found (generic — no existence oracle). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict: stale `updatedAt`, duplicate threshold, role already assigned, or `Idempotency-Key` reused with a different request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     postApiV1TasksByIdComplete: {
         parameters: {
@@ -927,7 +2420,149 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        task: components["schemas"]["Task"];
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Resource not found (generic — no existence oracle). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    putApiV1TasksByIdThresholds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    thresholds: {
+                        /** @description Whole days before the deadline (numeric strings coerce). */
+                        days_before: number;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        thresholds: components["schemas"]["Threshold"][];
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation failed. See `error.details` for per-field messages. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Resource not found (generic — no existence oracle). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     postApiV1TasksByIdThresholds: {
         parameters: {
@@ -941,11 +2576,86 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** @description Whole days before the deadline (numeric strings coerce). */
                     days_before: number;
                 };
             };
         };
-        responses: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        threshold: components["schemas"]["Threshold"];
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation failed. See `error.details` for per-field messages. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Resource not found (generic — no existence oracle). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict: stale `updatedAt`, duplicate threshold, role already assigned, or `Idempotency-Key` reused with a different request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     deleteApiV1TasksByIdThresholdsByThresholdId: {
         parameters: {
@@ -958,7 +2668,63 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Resource not found (generic — no existence oracle). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     patchApiV1TasksByIdThresholdsByThresholdId: {
         parameters: {
@@ -973,16 +2739,166 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** @description Whole days before the deadline (numeric strings coerce). */
                     days_before: number;
                 };
             };
         };
-        responses: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        threshold: components["schemas"]["Threshold"];
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation failed. See `error.details` for per-field messages. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Resource not found (generic — no existence oracle). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict: stale `updatedAt`, duplicate threshold, role already assigned, or `Idempotency-Key` reused with a different request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    getApiV1Summary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Exact counts over ALL non-deleted tasks (no pagination) in the profile timezone, plus completion/on-time progress. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        summary: {
+                            today: number;
+                            tomorrow: number;
+                            thisWeek: number;
+                            nextWeek: number;
+                            thisMonth: number;
+                            missed: number;
+                            allTasks: number;
+                        };
+                        progress: {
+                            completed: number;
+                            total: number;
+                            onTime: number;
+                            onTimeTotal: number;
+                            courses: Record<string, never>[];
+                        };
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     postApiV1AttachmentsLink: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional client key (8–128 chars) for safe retries. Same key + same request replays the stored response; same key + different request returns 409. */
+                "Idempotency-Key"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -996,12 +2912,89 @@ export interface operations {
                 };
             };
         };
-        responses: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        attachment: components["schemas"]["Attachment"];
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation failed. See `error.details` for per-field messages. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Resource not found (generic — no existence oracle). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict: stale `updatedAt`, duplicate threshold, role already assigned, or `Idempotency-Key` reused with a different request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     postApiV1AttachmentsFile: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional client key (8–128 chars) for safe retries. Same key + same request replays the stored response; same key + different request returns 409. */
+                "Idempotency-Key"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1039,7 +3032,99 @@ export interface operations {
                 };
             };
         };
-        responses: never;
+        responses: {
+            /** @description Multipart upload (10 MiB max, allowlisted MIME types). Success returns the created attachment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        attachment: components["schemas"]["Attachment"];
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation failed. See `error.details` for per-field messages. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Resource not found (generic — no existence oracle). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict: stale `updatedAt`, duplicate threshold, role already assigned, or `Idempotency-Key` reused with a different request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request body exceeds the size limit. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Upstream storage dependency failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     deleteApiV1AttachmentsById: {
         parameters: {
@@ -1051,7 +3136,72 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Resource not found (generic — no existence oracle). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Upstream storage dependency failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     "getApiV1AttachmentsSigned-url": {
         parameters: {
@@ -1063,7 +3213,63 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: never;
+        responses: {
+            /** @description Short-lived (10 minute) signed download URL. Requires both the `attachments/{userId}/` path prefix and an owned file row. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        url: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Upstream storage dependency failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     getApiV1Notifications: {
         parameters: {
@@ -1076,7 +3282,64 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        notifications: components["schemas"]["NotificationItem"][];
+                        page: components["schemas"]["Page"];
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation failed. See `error.details` for per-field messages. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     "getApiV1NotificationsUnread-count": {
         parameters: {
@@ -1086,7 +3349,54 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        count: number;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     postApiV1NotificationsByIdRead: {
         parameters: {
@@ -1098,7 +3408,72 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation failed. See `error.details` for per-field messages. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Resource not found (generic — no existence oracle). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     "postApiV1NotificationsRead-all": {
         parameters: {
@@ -1108,12 +3483,63 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: never;
+        responses: {
+            /** @description Single set-based statement over the caller's visible (non-deleted) unread notifications. `updated` counts rows actually marked. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                        updated: number;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     postApiV1AdminRolesAssign: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional client key (8–128 chars) for safe retries. Same key + same request replays the stored response; same key + different request returns 409. */
+                "Idempotency-Key"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1126,7 +3552,84 @@ export interface operations {
                 };
             };
         };
-        responses: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                        /** Format: uuid */
+                        userId: string;
+                        roleSlug: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation failed. See `error.details` for per-field messages. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Resource not found (generic — no existence oracle). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict: stale `updatedAt`, duplicate threshold, role already assigned, or `Idempotency-Key` reused with a different request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     postApiV1AdminRolesRevoke: {
         parameters: {
@@ -1144,7 +3647,75 @@ export interface operations {
                 };
             };
         };
-        responses: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                        /** Format: uuid */
+                        userId: string;
+                        roleSlug: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation failed. See `error.details` for per-field messages. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Resource not found (generic — no existence oracle). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     getApiV1AdminAudit: {
         parameters: {
@@ -1157,7 +3728,64 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        events: components["schemas"]["AuditEvent"][];
+                        page: components["schemas"]["Page"];
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation failed. See `error.details` for per-field messages. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated, but the required capability/ownership check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
     "getApiV1CronEvaluate-reminders": {
         parameters: {
@@ -1167,6 +3795,44 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Missing, invalid, or expired credentials/session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded. Back off and retry. */
+            429: {
+                headers: {
+                    /** @description Bucket size for the matched scope. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Remaining requests in the current window. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Unix timestamp when the window resets. */
+                    "X-RateLimit-Reset"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
     };
 }

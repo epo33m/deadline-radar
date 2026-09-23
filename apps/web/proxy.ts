@@ -8,9 +8,11 @@ import {
   REFRESH_COOKIE,
   REFRESH_COOKIE_MAX_AGE_SECONDS,
   authCookieOptions,
+  clearedAuthCookieOptions,
   type AuthTokenBody,
 } from "@/lib/auth/cookies";
 import { resolveSessionGate } from "@/lib/auth/session-gate";
+import { buildSecurityHeaders } from "@/lib/security-headers";
 
 function supabaseUrl(): string {
   return (
@@ -40,16 +42,8 @@ function getJwks() {
 }
 
 function clearAuthCookies(response: NextResponse) {
-  response.cookies.set(ACCESS_COOKIE, "", {
-    httpOnly: true,
-    path: "/",
-    maxAge: 0,
-  });
-  response.cookies.set(REFRESH_COOKIE, "", {
-    httpOnly: true,
-    path: "/",
-    maxAge: 0,
-  });
+  response.cookies.set(ACCESS_COOKIE, "", clearedAuthCookieOptions());
+  response.cookies.set(REFRESH_COOKIE, "", clearedAuthCookieOptions());
 }
 
 function applySessionCookies(
@@ -76,6 +70,7 @@ async function verifyToken(token: string): Promise<boolean> {
   try {
     await jwtVerify(token, getJwks(), {
       issuer: issuer(),
+      audience: "authenticated",
       algorithms: ["ES256", "RS256", "EdDSA"],
     });
     return true;
@@ -89,6 +84,7 @@ async function verifyToken(token: string): Promise<boolean> {
     await jwtVerify(token, new TextEncoder().encode(secret), {
       algorithms: ["HS256"],
       issuer: issuer(),
+      audience: "authenticated",
     });
     return true;
   } catch {
@@ -169,6 +165,20 @@ async function resolveHasSession(request: NextRequest): Promise<{
 }
 
 export async function proxy(request: NextRequest) {
+  // SEC-002: fresh nonce per request (strict CSP). `x-nonce` is consumed by
+  // Next.js for its own inline scripts; the CSP response header below
+  // enforces it. Must run before any early return so redirects are covered.
+  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  const isDev = process.env.NODE_ENV === "development";
+  const isProd = process.env.NODE_ENV === "production";
+  const securityHeaders = buildSecurityHeaders({ nonce, isDev, isProd });
+
+  const applySecurityHeaders = (response: NextResponse) => {
+    for (const [name, value] of Object.entries(securityHeaders)) {
+      response.headers.set(name, value);
+    }
+  };
+
   const { hasSession, shouldClearCookies, refreshTokens } =
     await resolveHasSession(request);
   const gate = resolveSessionGate({
@@ -182,12 +192,18 @@ export async function proxy(request: NextRequest) {
     const response = NextResponse.redirect(url);
     if (shouldClearCookies) clearAuthCookies(response);
     else if (refreshTokens) applySessionCookies(response, refreshTokens);
+    applySecurityHeaders(response);
     return response;
   }
 
-  const response = NextResponse.next();
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+  const response = NextResponse.next({
+    request: { headers: requestHeaders },
+  });
   if (shouldClearCookies) clearAuthCookies(response);
   else if (refreshTokens) applySessionCookies(response, refreshTokens);
+  applySecurityHeaders(response);
   return response;
 }
 

@@ -7,6 +7,7 @@ import {
   REFRESH_COOKIE_MAX_AGE_SECONDS,
   authBridgeSecret,
   authCookieOptions,
+  clearedAuthCookieOptions,
   stripAuthTokens,
   type AuthTokenBody,
 } from "@/lib/auth/cookies";
@@ -48,16 +49,16 @@ export async function POST(request: NextRequest) {
       authCookieOptions(REFRESH_COOKIE_MAX_AGE_SECONDS),
     );
   } else if (!upstream.ok) {
-    response.cookies.set(ACCESS_COOKIE, "", {
-      httpOnly: true,
-      path: "/",
-      maxAge: 0,
-    });
-    response.cookies.set(REFRESH_COOKIE, "", {
-      httpOnly: true,
-      path: "/",
-      maxAge: 0,
-    });
+    response.cookies.set(
+      ACCESS_COOKIE,
+      "",
+      clearedAuthCookieOptions(),
+    );
+    response.cookies.set(
+      REFRESH_COOKIE,
+      "",
+      clearedAuthCookieOptions(),
+    );
   }
 
   return response;

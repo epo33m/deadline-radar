@@ -8,6 +8,7 @@ import {
   truncateTitle,
   getZonedDayKey,
   groupTasksByDay,
+  monthVisibleRange,
   parseMonthParam,
   shiftMonth,
   type CalendarTask,
@@ -146,5 +147,52 @@ describe("truncateTitle", () => {
 
   test("respects a custom limit", () => {
     expect(truncateTitle("Hello", 3)).toBe("Hel...");
+  });
+});
+
+describe("monthVisibleRange", () => {
+  test("covers the full grid in UTC", () => {
+    // Sep 2026 starts on a Tuesday: grid runs Sun 2026-08-30 → Sat 2026-10-03.
+    const { dueFrom, dueTo } = monthVisibleRange(2026, 9, "UTC");
+    expect(dueFrom).toBe("2026-08-30T00:00:00.000Z");
+    expect(dueTo).toBe("2026-10-04T00:00:00.000Z");
+  });
+
+  test("shifts with the viewer timezone", () => {
+    const utc = monthVisibleRange(2026, 9, "UTC");
+    const jakarta = monthVisibleRange(2026, 9, "Asia/Jakarta");
+    // UTC+7 midnight local = previous evening UTC.
+    expect(jakarta.dueFrom).toBe("2026-08-29T17:00:00.000Z");
+    expect(jakarta.dueTo).toBe("2026-10-03T17:00:00.000Z");
+    expect(new Date(jakarta.dueFrom).getTime()).toBeLessThan(
+      new Date(utc.dueFrom).getTime(),
+    );
+  });
+
+  test("every grid cell's local midday falls inside [dueFrom, dueTo)", () => {
+    for (const tz of ["UTC", "Asia/Jakarta", "America/New_York"]) {
+      const cells = buildMonthGrid(2026, 9, tz);
+      const { dueFrom, dueTo } = monthVisibleRange(2026, 9, tz);
+      const from = new Date(dueFrom).getTime();
+      const to = new Date(dueTo).getTime();
+      expect(to).toBeGreaterThan(from);
+      for (const cell of cells) {
+        // Resolve an instant on the cell's zoned day: start at UTC noon of
+        // the key, then shift whole days until the zoned key matches.
+        let ms = Date.parse(`${cell.dayKey}T12:00:00Z`);
+        for (let i = 0; i < 3; i += 1) {
+          const key = getZonedDayKey(new Date(ms).toISOString(), tz);
+          if (key === cell.dayKey) break;
+          const want = Date.parse(`${cell.dayKey}T00:00:00Z`);
+          const have = Date.parse(`${key!.slice(0, 10)}T00:00:00Z`);
+          ms += Math.round((want - have) / 86_400_000) * 86_400_000;
+        }
+        expect(getZonedDayKey(new Date(ms).toISOString(), tz)).toBe(
+          cell.dayKey,
+        );
+        expect(ms).toBeGreaterThanOrEqual(from);
+        expect(ms).toBeLessThan(to);
+      }
+    }
   });
 });

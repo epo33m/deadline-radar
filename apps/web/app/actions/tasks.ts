@@ -4,6 +4,11 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { apiJson } from "@/lib/api/server";
+import {
+  generateIdempotencyKey,
+  normalizeIdempotencyKey,
+} from "@/lib/api/idempotency";
+import { resolveSafeReturnTo } from "@deadline-radar/validation";
 
 export type TaskActionState = {
   error?: string;
@@ -20,11 +25,15 @@ function taskBody(formData: FormData) {
   };
 }
 
-function revalidateTask(taskId?: string) {
+function revalidateTask(taskId?: string, courseId?: string) {
   revalidatePath("/tasks");
   revalidatePath("/summary");
   revalidatePath("/calendar");
-  revalidatePath("/courses/[id]", "page");
+  if (courseId) {
+    revalidatePath(`/courses/${courseId}`, "page");
+  } else {
+    revalidatePath("/courses/[id]", "page");
+  }
   if (taskId) revalidatePath(`/tasks/${taskId}`);
 }
 
@@ -32,10 +41,17 @@ export async function createTask(
   _prev: TaskActionState,
   formData: FormData,
 ): Promise<TaskActionState> {
+  const idemKey =
+    normalizeIdempotencyKey(formData.get("idempotency_key")) ??
+    generateIdempotencyKey();
+
   const result = await apiJson<{ task?: { id: string }; redirectTo?: string }>(
     "/api/v1/tasks",
     {
       method: "POST",
+      headers: {
+        "Idempotency-Key": idemKey,
+      },
       body: JSON.stringify(taskBody(formData)),
     },
   );
@@ -43,11 +59,16 @@ export async function createTask(
     return { error: result.error, fieldErrors: result.fieldErrors };
   }
   const returnTo = formData.get("return_to");
-  revalidateTask(result.task?.id);
-  if (typeof returnTo === "string" && returnTo.startsWith("/")) {
-    redirect(returnTo);
-  }
-  redirect(result.redirectTo ?? `/tasks/${result.task?.id}`);
+  const courseId = formData.get("course_id");
+  revalidateTask(
+    result.task?.id,
+    typeof courseId === "string" && courseId ? courseId : undefined,
+  );
+  // SEC-001: never trust raw `return_to` — a bare `startsWith("/")` check
+  // accepts protocol-relative `//evil.com`. Fall back to the
+  // server-generated destination for anything that escapes our origin.
+  const fallback = result.redirectTo ?? `/tasks/${result.task?.id}`;
+  redirect(resolveSafeReturnTo(returnTo, fallback));
 }
 
 export async function updateTask(
@@ -63,7 +84,11 @@ export async function updateTask(
   if (result.error) {
     return { error: result.error, fieldErrors: result.fieldErrors };
   }
-  revalidateTask(id);
+  const courseId = formData.get("course_id");
+  revalidateTask(
+    id,
+    typeof courseId === "string" && courseId ? courseId : undefined,
+  );
   return {};
 }
 
@@ -104,8 +129,14 @@ export async function addReminderThreshold(
     return { error: "Task id is required." };
   }
   const days = Number(formData.get("days_before"));
+  // RF-06: replay-safe add. The form carries a per-attempt key so a double
+  // submit or browser retry returns the original response, not a 409.
+  const idemKey =
+    normalizeIdempotencyKey(formData.get("idempotency_key")) ??
+    generateIdempotencyKey();
   const result = await apiJson(`/api/v1/tasks/${taskId}/thresholds`, {
     method: "POST",
+    headers: { "Idempotency-Key": idemKey },
     body: JSON.stringify({ days_before: days }),
   });
   if (result.error) {
@@ -174,39 +205,29 @@ export async function setDefaultThresholds(
     return { error: detail.error };
   }
 
-  const byOffset = new Map(
-    (detail.thresholds ?? [])
-      .filter((t) =>
-        (DEFAULT_REMINDER_OFFSETS as readonly number[]).includes(t.daysBefore),
-      )
-      .map((t) => [t.daysBefore, t.id]),
-  );
+  const existingCustom = (detail.thresholds ?? [])
+    .filter(
+      (t) =>
+        !(DEFAULT_REMINDER_OFFSETS as readonly number[]).includes(t.daysBefore),
+    )
+    .map((t) => ({ days_before: t.daysBefore }));
 
-  const calls = enabled
-    ? DEFAULT_REMINDER_OFFSETS.filter((offset) => !byOffset.has(offset)).map(
-        (offset) =>
-          apiJson(`/api/v1/tasks/${taskId}/thresholds`, {
-            method: "POST",
-            body: JSON.stringify({ days_before: offset }),
-          }),
-      )
-    : DEFAULT_REMINDER_OFFSETS.filter((offset) => byOffset.has(offset)).map(
-        (offset) =>
-          apiJson(`/api/v1/tasks/${taskId}/thresholds/${byOffset.get(offset)}`, {
-            method: "DELETE",
-          }),
-      );
+  const desiredDefaults = enabled
+    ? DEFAULT_REMINDER_OFFSETS.map((offset) => ({ days_before: offset }))
+    : [];
 
-  const results = await Promise.allSettled(calls);
-  for (const result of results) {
-    if (result.status === "rejected") {
-      return { error: "Failed to update default reminders." };
-    }
-    if (result.value?.error) {
-      return { error: result.value.error };
-    }
+  const desiredThresholds = [...existingCustom, ...desiredDefaults];
+
+  const result = await apiJson(`/api/v1/tasks/${taskId}/thresholds`, {
+    method: "PUT",
+    body: JSON.stringify({ thresholds: desiredThresholds }),
+  });
+
+  if (result.error) {
+    return { error: result.error, fieldErrors: result.fieldErrors };
   }
 
   revalidateTask(taskId);
   return {};
 }
+

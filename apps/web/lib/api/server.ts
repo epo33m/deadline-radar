@@ -1,5 +1,7 @@
 import { cookies, headers } from "next/headers";
 
+import { clearedAuthCookieOptions } from "@/lib/auth/cookies";
+
 import {
   normalizeApiErrorBody,
   type ApiErrorBody,
@@ -91,8 +93,10 @@ async function applySetCookies(response: Response): Promise<void> {
 export async function clearLocalAuthCookies(): Promise<void> {
   try {
     const store = await cookies();
-    store.delete(ACCESS_COOKIE);
-    store.delete(REFRESH_COOKIE);
+    // Explicit expired-cookie scope (not store.delete): must match the
+    // creation attributes or production Secure cookies survive logout.
+    store.set(ACCESS_COOKIE, "", clearedAuthCookieOptions());
+    store.set(REFRESH_COOKIE, "", clearedAuthCookieOptions());
   } catch (error) {
     if (!isCookieMutationForbidden(error)) throw error;
   }

@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { PanelLeft, Pencil, Trash2, X } from "lucide-react";
+import { Check, PanelLeft, Pencil, Trash2, X } from "lucide-react";
 import { useActionState, useState } from "react";
 import type { TimeFormat } from "@deadline-radar/validation";
 
 import {
+  completeTask,
   softDeleteTask,
   type TaskActionState,
 } from "@/app/actions/tasks";
@@ -21,6 +22,7 @@ import {
   formatDeadlineTime,
 } from "@/lib/datetime";
 import { formatRelativeDeadline } from "@/lib/deadline-relative";
+import { useNow } from "@/lib/use-now";
 import { cn } from "@/lib/utils";
 import type { CourseListItem } from "@/types/course";
 import type { Attachment, ReminderThreshold, TaskDetail } from "@/types/task";
@@ -42,6 +44,7 @@ type TaskDetailPanelProps = {
   attachments: Attachment[];
   timeZone: string;
   timeFormat: TimeFormat;
+  nowIso?: string;
 };
 
 function SidebarRemoveForm({ taskId }: { taskId: string }) {
@@ -63,6 +66,29 @@ function SidebarRemoveForm({ taskId }: { taskId: string }) {
       </button>
       {state.error ? (
         <p className="mt-2 px-2 text-sm text-destructive" role="alert">
+          {state.error}
+        </p>
+      ) : null}
+    </form>
+  );
+}
+
+/** Terminal-Done (DOMAIN.md §2.3): completion is an explicit action, not a status-picker option. */
+function MarkDoneForm({ taskId }: { taskId: string }) {
+  const [state, formAction, pending] = useActionState(
+    completeTask,
+    initialState,
+  );
+
+  return (
+    <form action={formAction}>
+      <input type="hidden" name="id" value={taskId} />
+      <Button type="submit" disabled={pending} className="shrink-0">
+        <Check className="size-4" strokeWidth={2.25} aria-hidden="true" />
+        {pending ? "Completing…" : "Mark as done"}
+      </Button>
+      {state.error ? (
+        <p className="mt-2 text-sm text-destructive" role="alert">
           {state.error}
         </p>
       ) : null}
@@ -219,11 +245,16 @@ export function TaskDetailPanel({
   attachments,
   timeZone,
   timeFormat,
+  nowIso,
 }: TaskDetailPanelProps) {
+  const now = useNow(60_000, nowIso);
   const [view, setView] = useState<TaskView>("details");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const closeSidebar = () => setSidebarOpen(false);
+  // Terminal Done (DOMAIN.md §2.3): completed tasks are read-only and
+  // cannot be reopened — no edit affordance, only the completed state.
+  const isDone = task.status === "done";
 
   return (
     <section className="space-y-6 sm:space-y-8">
@@ -280,16 +311,21 @@ export function TaskDetailPanel({
                 <h2 className="font-display text-[32px] font-semibold leading-[1.07] tracking-[-0.28px] text-ink sm:text-[36px] lg:text-[44px]">
                   Details
                 </h2>
-                <Button
-                  type="button"
-                  onClick={() => setEditOpen(true)}
-                  aria-label="Edit task"
-                  size="icon"
-                  variant="outline"
-                  className="hidden shrink-0 rounded-full bg-white md:inline-flex"
-                >
-                  <Pencil className="size-5" strokeWidth={2} aria-hidden="true" />
-                </Button>
+                {isDone ? null : (
+                  <div className="flex shrink-0 items-center gap-2">
+                    <MarkDoneForm taskId={task.id} />
+                    <Button
+                      type="button"
+                      onClick={() => setEditOpen(true)}
+                      aria-label="Edit task"
+                      size="icon"
+                      variant="outline"
+                      className="hidden rounded-full bg-white md:inline-flex"
+                    >
+                      <Pencil className="size-5" strokeWidth={2} aria-hidden="true" />
+                    </Button>
+                  </div>
+                )}
               </div>
               <p className="mt-2 text-[15px] leading-[1.47] tracking-[-0.374px] text-ink-muted-64 sm:text-[17px]">
                 Task details and information.
@@ -382,7 +418,7 @@ export function TaskDetailPanel({
                       Deadline
                     </p>
                     <p className="-mt-1 truncate font-semibold text-ink">
-                      {formatRelativeDeadline(task.deadline, timeZone)}
+                      {formatRelativeDeadline(task.deadline, timeZone, now)}
                     </p>
                   </div>
                   <div className="min-w-0">
@@ -411,7 +447,7 @@ export function TaskDetailPanel({
                       Deadline
                     </p>
                     <p className="min-w-0 truncate font-semibold text-ink">
-                      {formatRelativeDeadline(task.deadline, timeZone)}
+                      {formatRelativeDeadline(task.deadline, timeZone, now)}
                     </p>
                   </li>
                   <li className="flex min-h-8 items-center justify-between gap-4 py-1 sm:py-1">
@@ -432,15 +468,17 @@ export function TaskDetailPanel({
                   </li>
                 </ul>
               </div>
-              <Button
-                type="button"
-                onClick={() => setEditOpen(true)}
-                aria-label="Edit task"
-                variant="outline"
-                className="fixed right-4 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-40 size-14 rounded-full bg-white p-0 shadow-lg md:hidden"
-              >
-                <Pencil className="size-5" strokeWidth={2} aria-hidden="true" />
-              </Button>
+              {isDone ? null : (
+                <Button
+                  type="button"
+                  onClick={() => setEditOpen(true)}
+                  aria-label="Edit task"
+                  variant="outline"
+                  className="fixed right-4 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-40 size-14 rounded-full bg-white p-0 shadow-lg md:hidden"
+                >
+                  <Pencil className="size-5" strokeWidth={2} aria-hidden="true" />
+                </Button>
+              )}
             </div>
           ) : null}
 
@@ -457,19 +495,21 @@ export function TaskDetailPanel({
             <AttachmentManager taskId={task.id} attachments={attachments} />
           ) : null}
 
-          <Dialog
-            open={editOpen}
-            onOpenChange={setEditOpen}
-            title="Edit task"
-          >
-            <TaskForm
-              task={task}
-              courses={courses}
-              submitLabel="Save changes"
-              onSuccess={() => setEditOpen(false)}
-              onCancel={() => setEditOpen(false)}
-            />
-          </Dialog>
+          {isDone ? null : (
+            <Dialog
+              open={editOpen}
+              onOpenChange={setEditOpen}
+              title="Edit task"
+            >
+              <TaskForm
+                task={task}
+                courses={courses}
+                submitLabel="Save changes"
+                onSuccess={() => setEditOpen(false)}
+                onCancel={() => setEditOpen(false)}
+              />
+            </Dialog>
+          )}
         </div>
       </div>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { memo, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { TimeFormat } from "@deadline-radar/validation";
@@ -12,6 +12,7 @@ import {
   formatMonthShortName,
   truncateTitle,
   formatMonthParam,
+  getZonedDayKey,
   shiftMonth,
   WEEKDAY_LABELS,
   type CalendarCell,
@@ -20,17 +21,24 @@ import {
 } from "@/lib/calendar/month";
 import { getCourseColorFill } from "@/lib/courses/colors";
 import { formatDeadlineTime } from "@/lib/datetime";
+import { useNow } from "@/lib/use-now";
 
 type CalendarMonthViewProps = {
   month: CalendarMonth;
   timeZone: string;
   timeFormat: TimeFormat;
   todayKey: string;
+  nowIso?: string;
   cells: CalendarCell[];
   tasksByDay: Map<string, CalendarTask[]>;
 };
 
-function CalendarTaskChip({
+/**
+ * Memoized: props are memo-stable across the 60s `useNow` tick (task object
+ * identity comes from the server-provided map; the rest are primitives), so
+ * unchanged chips skip re-render.
+ */
+const CalendarTaskChip = memo(function CalendarTaskChip({
   task,
   timeZone,
   timeFormat,
@@ -67,9 +75,14 @@ function CalendarTaskChip({
       </span>
     </Link>
   );
-}
+});
 
-function CalendarDayCell({
+/**
+ * Memoized: `onSelect` is a stable setter and the rest are memo-stable
+ * (server-provided cell/tasks references, primitive flags), so day cells
+ * skip re-render on the 60s tick and on unrelated selection changes.
+ */
+const CalendarDayCell = memo(function CalendarDayCell({
   cell,
   tasks,
   isToday,
@@ -195,16 +208,19 @@ function CalendarDayCell({
       </ul>
     </div>
   );
-}
+});
 
 export function CalendarMonthView({
   month,
   timeZone,
   timeFormat,
   todayKey,
+  nowIso,
   cells,
   tasksByDay,
 }: CalendarMonthViewProps) {
+  const now = useNow(60_000, nowIso);
+  const liveTodayKey = getZonedDayKey(now.toISOString(), timeZone) ?? todayKey;
   const previous = shiftMonth(month.year, month.month, -1);
   const next = shiftMonth(month.year, month.month, 1);
   const currentMonthParam = formatMonthParam(month);
@@ -224,16 +240,18 @@ export function CalendarMonthView({
       cell.inCurrentMonth && (tasksByDay.get(cell.dayKey)?.length ?? 0) > 0,
   );
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
-  useEffect(() => {
+  const [prevMonthParam, setPrevMonthParam] = useState(currentMonthParam);
+  if (prevMonthParam !== currentMonthParam) {
+    setPrevMonthParam(currentMonthParam);
     setSelectedDayKey(null);
-  }, [currentMonthParam]);
+  }
   const selectedKey =
     selectedDayKey ??
-    (cells.some((cell) => cell.dayKey === todayKey)
-      ? todayKey
+    (cells.some((cell) => cell.dayKey === liveTodayKey)
+      ? liveTodayKey
       : (listedDays[0]?.dayKey ??
         cells.find((cell) => cell.inCurrentMonth)?.dayKey ??
-        todayKey));
+        liveTodayKey));
   const selectedTasks = tasksByDay.get(selectedKey) ?? [];
 
   return (
@@ -311,7 +329,7 @@ export function CalendarMonthView({
                       key={`${currentMonthParam}-${cell.dayKey}`}
                       cell={cell}
                       tasks={tasksByDay.get(cell.dayKey) ?? []}
-                      isToday={cell.dayKey === todayKey}
+                      isToday={cell.dayKey === liveTodayKey}
                       isSelected={cell.dayKey === selectedKey}
                       onSelect={setSelectedDayKey}
                       timeZone={timeZone}
@@ -368,7 +386,7 @@ export function CalendarMonthView({
           size="lg"
           nativeButton={false}
           render={<Link href="/calendar" />}
-          onClick={() => setSelectedDayKey(todayKey)}
+          onClick={() => setSelectedDayKey(liveTodayKey)}
           className="pointer-events-auto h-12 rounded-full px-5 shadow-lg"
         >
           Today

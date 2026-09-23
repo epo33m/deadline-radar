@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   filterTasksByStatusView,
   groupTasksByHorizon,
+  resolveTaskTone,
   resolveTasksEmptyState,
   type GlobalTask,
 } from "./global-tasks";
@@ -16,6 +17,78 @@ function task(
 ): GlobalTask {
   return { ...overrides };
 }
+
+describe("resolveTaskTone", () => {
+  test("done tasks are always done", () => {
+    expect(
+      resolveTaskTone(
+        task({
+          id: "done",
+          title: "Done",
+          deadline: "2026-09-10T12:00:00.000Z",
+          status: "done",
+        }),
+        NOW,
+      ),
+    ).toBe("done");
+  });
+
+  test("open tasks past their deadline are late", () => {
+    expect(
+      resolveTaskTone(
+        task({
+          id: "late",
+          title: "Late",
+          deadline: "2026-09-15T11:59:59.000Z",
+          status: "todo",
+        }),
+        NOW,
+      ),
+    ).toBe("late");
+  });
+
+  test("open tasks with future deadlines are upcoming", () => {
+    expect(
+      resolveTaskTone(
+        task({
+          id: "soon",
+          title: "Soon",
+          deadline: "2026-09-15T12:00:01.000Z",
+          status: "in_progress",
+        }),
+        NOW,
+      ),
+    ).toBe("upcoming");
+  });
+
+  test("a deadline exactly now is still upcoming", () => {
+    expect(
+      resolveTaskTone(
+        task({
+          id: "edge",
+          title: "Edge",
+          deadline: NOW.toISOString(),
+          status: "todo",
+        }),
+        NOW,
+      ),
+    ).toBe("upcoming");
+  });
+
+  test("invalid deadlines are upcoming, never late", () => {
+    expect(
+      resolveTaskTone(
+        task({
+          id: "undated",
+          title: "Undated",
+          deadline: "not-a-date",
+          status: "todo",
+        }),
+        NOW,
+      ),
+    ).toBe("upcoming");
+  });
+});
 
 describe("filterTasksByStatusView", () => {
   const sample = [

@@ -2,6 +2,7 @@ export {
   thresholdTriggerAt,
   isThresholdDue,
   evaluateReminders,
+  MAX_EMAIL_DELIVERY_RETRIES,
   type DeliveryChannel,
   type DeliveryStatus,
   type ReminderDeliveryInput,

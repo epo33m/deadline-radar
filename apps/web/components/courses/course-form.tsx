@@ -25,6 +25,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { normalizeCourseColorForStorage } from "@/lib/courses/colors";
 import { normalizeCourseIconForStorage } from "@/lib/courses/icons";
+import { generateIdempotencyKey } from "@/lib/api/idempotency";
 import { cn } from "@/lib/utils";
 import type { CourseListItem } from "@/types/course";
 
@@ -45,6 +46,7 @@ export function CourseForm({
 }: CourseFormProps) {
   const formId = useId();
   const action = course ? updateCourse : createCourse;
+  const [idempotencyKey] = useState(() => generateIdempotencyKey());
   const [state, formAction, pending] = useActionState(action, initialState);
   const [name, setName] = useState(course?.name ?? "");
   const [code, setCode] = useState(course?.code ?? "");
@@ -77,7 +79,11 @@ export function CourseForm({
       className="flex w-full flex-col"
       aria-busy={pending}
     >
-      {course ? <input type="hidden" name="id" value={course.id} /> : null}
+      {course ? (
+        <input type="hidden" name="id" value={course.id} />
+      ) : (
+        <input type="hidden" name="idempotency_key" value={idempotencyKey} />
+      )}
       <input type="hidden" name="color" value={color} />
       <input type="hidden" name="icon" value={icon} />
 

@@ -3,6 +3,11 @@
 import { revalidatePath } from "next/cache";
 
 import { apiJson } from "@/lib/api/server";
+import {
+  deriveFileIdempotencyKey,
+  generateIdempotencyKey,
+  normalizeIdempotencyKey,
+} from "@/lib/api/idempotency";
 
 export type AttachmentActionState = {
   error?: string;
@@ -23,8 +28,15 @@ export async function addLinkAttachment(
   if (typeof taskId !== "string" || !taskId) {
     return { error: "Task id is required." };
   }
+  const idemKey =
+    normalizeIdempotencyKey(formData.get("idempotency_key")) ??
+    generateIdempotencyKey();
+
   const result = await apiJson("/api/v1/attachments/link", {
     method: "POST",
+    headers: {
+      "Idempotency-Key": idemKey,
+    },
     body: JSON.stringify({
       task_id: taskId,
       url: formData.get("url"),
@@ -53,8 +65,15 @@ export async function addFileAttachment(
     return { error: "File is required." };
   }
 
+  const baseKey =
+    normalizeIdempotencyKey(formData.get("idempotency_key")) ??
+    generateIdempotencyKey();
+
   const notes = formData.get("notes");
-  for (const file of pickedFiles) {
+  for (let i = 0; i < pickedFiles.length; i++) {
+    const file = pickedFiles[i];
+    const fileKey = deriveFileIdempotencyKey(baseKey, i);
+
     const body = new FormData();
     body.set("task_id", taskId);
     if (typeof notes === "string" && notes.trim()) body.set("notes", notes);
@@ -62,6 +81,9 @@ export async function addFileAttachment(
 
     const result = await apiJson("/api/v1/attachments/file", {
       method: "POST",
+      headers: {
+        "Idempotency-Key": fileKey,
+      },
       body,
     });
     if (result.error) {

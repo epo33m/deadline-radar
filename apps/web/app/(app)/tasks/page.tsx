@@ -25,12 +25,17 @@ type ApiTask = {
 };
 
 export default async function TasksPage() {
-  const user = await requireSession();
+  // Fire session + data together: the session is React-cache() deduped and
+  // only its resolved user is needed for render. Awaiting it after the data
+  // settles preserves redirect priority while overlapping the session RTT.
+  const sessionPromise = requireSession();
 
   const [coursesResult, tasksResult] = await Promise.all([
     apiJson<{ courses?: ApiCourse[] }>("/api/v1/courses"),
     apiJson<{ tasks?: ApiTask[] }>("/api/v1/tasks"),
   ]);
+
+  const user = await sessionPromise;
 
   if (coursesResult.error || tasksResult.error) {
     return (
@@ -77,6 +82,7 @@ export default async function TasksPage() {
       tasks={listItems}
       timeZone={user.timezone}
       timeFormat={user.timeFormat}
+      nowIso={new Date().toISOString()}
     />
   );
 }

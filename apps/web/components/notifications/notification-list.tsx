@@ -109,6 +109,11 @@ export function NotificationList({
               <div className="space-y-1">
                 <p className="text-sm font-medium text-ink">
                   <span className="text-primary">{label}</span>
+                  {notification.is_late ? (
+                    <span className="ml-1 rounded bg-amber-100 px-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                      Late
+                    </span>
+                  ) : null}
                   {" · "}
                   {notification.task_title ?? "Task"}
                 </p>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Check, CheckSquare, Circle, ListFilter, Plus, Search } from "lucide-react";
-import { useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useId, useDeferredValue, useMemo, useRef, useState, memo, type ReactNode } from "react";
 import type { TimeFormat } from "@deadline-radar/validation";
 
 import { AddTaskForm } from "@/components/tasks/task-form";
@@ -22,10 +22,12 @@ import type { TaskStatus } from "@/lib/validation/task";
 import { formatDeadlineDate, formatDeadlineTime } from "@/lib/datetime";
 import {
   filterTasksByStatusView,
+  resolveTaskTone,
   resolveTasksEmptyState,
   type TasksStatusView,
 } from "@/lib/tasks/global-tasks";
 import { cn } from "@/lib/utils";
+import { useNow } from "@/lib/use-now";
 import type { CourseListItem } from "@/types/course";
 import type { TaskListItem } from "@/types/task";
 
@@ -75,6 +77,7 @@ type TasksCollectionProps = {
   tasks: TaskListItem[];
   timeZone: string;
   timeFormat: TimeFormat;
+  nowIso?: string;
 };
 
 function matchesSearch(task: TaskListItem, query: string): boolean {
@@ -83,7 +86,13 @@ function matchesSearch(task: TaskListItem, query: string): boolean {
   return haystack.includes(query);
 }
 
-function TaskRow({
+/**
+ * Memoized: parent re-renders on every keystroke and every 60s `useNow`
+ * tick, but all props are memo-stable (task object identity survives
+ * filter/sort; tone/timeZone/courseIcon are primitives). Rows whose inputs
+ * are unchanged skip re-render.
+ */
+const TaskRow = memo(function TaskRow({
   task,
   timeZone,
   timeFormat,
@@ -171,13 +180,7 @@ function TaskRow({
       </Link>
     </li>
   );
-}
-
-function resolveTone(task: TaskListItem): RowTone {
-  if (task.status === "done") return "done";
-  const ms = new Date(task.deadline).getTime();
-  return Number.isNaN(ms) || ms >= Date.now() ? "upcoming" : "late";
-}
+});
 
 function EmptyPanel({
   title,
@@ -211,7 +214,9 @@ export function TasksCollection({
   tasks,
   timeZone,
   timeFormat,
+  nowIso,
 }: TasksCollectionProps) {
+  const now = useNow(60_000, nowIso);
   const [view, setView] = useState<TasksStatusView>("all");
   const [query, setQuery] = useState("");
   const [addOpen, setAddOpen] = useState(false);
@@ -222,8 +227,11 @@ export function TasksCollection({
     STATUS_VIEWS.find((item) => item.id === view)?.label ?? "All";
 
   const normalizedQuery = query.trim().toLowerCase();
+  // Defer the expensive part (filter + sort + grid) so keystrokes stay
+  // responsive; the input itself always shows the raw query.
+  const deferredQuery = useDeferredValue(normalizedQuery);
   const searchEnabled =
-    tasks.length >= SEARCH_MIN_TASKS || normalizedQuery.length > 0;
+    tasks.length >= SEARCH_MIN_TASKS || deferredQuery.length > 0;
 
   const courseIconById = useMemo(() => {
     const map = new Map<string, string | null>();
@@ -234,18 +242,18 @@ export function TasksCollection({
   const searchedTasks = useMemo(
     () =>
       searchEnabled
-        ? tasks.filter((task) => matchesSearch(task, normalizedQuery))
+        ? tasks.filter((task) => matchesSearch(task, deferredQuery))
         : tasks,
-    [tasks, normalizedQuery, searchEnabled],
+    [tasks, deferredQuery, searchEnabled],
   );
 
   const lateTasks = useMemo(
-    () => filterTasksByStatusView(searchedTasks, "late"),
-    [searchedTasks],
+    () => filterTasksByStatusView(searchedTasks, "late", now),
+    [searchedTasks, now],
   );
   const upcomingOpenTasks = useMemo(
-    () => filterTasksByStatusView(searchedTasks, "upcoming"),
-    [searchedTasks],
+    () => filterTasksByStatusView(searchedTasks, "upcoming", now),
+    [searchedTasks, now],
   );
   const doneTasks = useMemo(
     () => filterTasksByStatusView(searchedTasks, "done"),
@@ -448,7 +456,7 @@ export function TasksCollection({
                     task={task}
                     timeZone={timeZone}
                     timeFormat={timeFormat}
-                    tone={resolveTone(task)}
+                    tone={resolveTaskTone(task, now)}
                     courseIcon={courseIconById.get(task.course_id)}
                   />
                 ))}

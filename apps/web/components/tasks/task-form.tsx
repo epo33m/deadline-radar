@@ -23,6 +23,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { SelectMenu } from "@/components/ui/select-menu";
 import { StatusPicker } from "@/components/tasks/status-picker";
+import { generateIdempotencyKey } from "@/lib/api/idempotency";
 import { toDatetimeLocalValue } from "@/lib/datetime";
 import { cn } from "@/lib/utils";
 import type { TaskStatus } from "@/lib/validation/task";
@@ -92,6 +93,7 @@ export function TaskForm({
   returnTo,
 }: TaskFormProps) {
   const action = task ? updateTask : createTask;
+  const [idempotencyKey] = useState(() => generateIdempotencyKey());
   const [state, formAction, pending] = useActionState(action, initialState);
   const [title, setTitle] = useState(task?.title ?? "");
   const [courseId, setCourseId] = useState(
@@ -142,7 +144,11 @@ export function TaskForm({
 
   return (
     <form action={formAction} className="flex w-full flex-col">
-      {task ? <input type="hidden" name="id" value={task.id} /> : null}
+      {task ? (
+        <input type="hidden" name="id" value={task.id} />
+      ) : (
+        <input type="hidden" name="idempotency_key" value={idempotencyKey} />
+      )}
       {returnTo ? <input type="hidden" name="return_to" value={returnTo} /> : null}
       <input type="hidden" name="deadline" value={deadline} />
 

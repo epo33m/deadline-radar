@@ -36,11 +36,15 @@ function mapCourse(row: ApiCourse): Course {
 }
 
 export default async function CoursesPage() {
-  await requireSession();
+  // Overlap the session RTT with the data fetch; the redirect still wins
+  // for unauthenticated viewers because it is awaited before render.
+  const sessionPromise = requireSession();
 
   const result = await apiJson<{ courses?: ApiCourse[]; error?: string }>(
     "/api/v1/courses",
   );
+
+  await sessionPromise;
 
   if (result.error || !result.courses) {
     return (

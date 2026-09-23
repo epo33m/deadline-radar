@@ -1,0 +1,6 @@
+# Deadline Radar — security contact (checklist C5).
+# Owner (epo33m): replace the Contact address with the real prod security
+# mailbox before release. This file is public by design (RFC 9116).
+Contact: mailto:security@example.com
+Expires: 2026-12-20T00:00:00.000Z
+Preferred-Languages: en, id

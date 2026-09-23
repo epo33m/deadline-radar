@@ -1,10 +1,16 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { apiJson } from "@/lib/api/server";
-import { ACCESS_COOKIE, REFRESH_COOKIE } from "@/lib/auth/cookies";
+import {
+  ACCESS_COOKIE,
+  REFRESH_COOKIE,
+  clearedAuthCookieOptions,
+} from "@/lib/auth/cookies";
+import { resolveSafeReturnTo } from "@deadline-radar/validation";
 
 export type AuthActionState = {
   error?: string;
@@ -37,7 +43,10 @@ export async function register(
   }
 
   if (result.redirectTo) {
-    redirect(result.redirectTo);
+    // SEC-005: validate backend-issued redirect; on invalid values stay on
+    // the page (show the confirmation message below) instead of navigating.
+    const safe = resolveSafeReturnTo(result.redirectTo, "");
+    if (safe !== "") redirect(safe);
   }
 
   return {
@@ -68,7 +77,8 @@ export async function login(
     };
   }
 
-  redirect(result.redirectTo ?? "/summary");
+  // SEC-005: never trust redirectTo blindly — validate, fall back internal.
+  redirect(resolveSafeReturnTo(result.redirectTo, "/summary"));
 }
 
 export async function requestPasswordReset(
@@ -119,7 +129,8 @@ export async function updatePassword(
     };
   }
 
-  redirect(result.redirectTo ?? "/login");
+  // SEC-005: never trust redirectTo blindly — validate, fall back internal.
+  redirect(resolveSafeReturnTo(result.redirectTo, "/login"));
 }
 
 export async function changePassword(
@@ -177,16 +188,16 @@ export async function changeEmail(
 export async function logout() {
   await apiJson("/api/v1/auth/logout", { method: "POST" });
   const store = await cookies();
-  store.delete(ACCESS_COOKIE);
-  store.delete(REFRESH_COOKIE);
+  store.set(ACCESS_COOKIE, "", clearedAuthCookieOptions());
+  store.set(REFRESH_COOKIE, "", clearedAuthCookieOptions());
   redirect("/login");
 }
 
 export async function logoutAll() {
   await apiJson("/api/v1/auth/logout-all", { method: "POST" });
   const store = await cookies();
-  store.delete(ACCESS_COOKIE);
-  store.delete(REFRESH_COOKIE);
+  store.set(ACCESS_COOKIE, "", clearedAuthCookieOptions());
+  store.set(REFRESH_COOKIE, "", clearedAuthCookieOptions());
   redirect("/login");
 }
 
@@ -203,6 +214,7 @@ export async function updateTimezone(
     return { error: result.error, fieldErrors: result.fieldErrors };
   }
 
+  revalidatePath("/", "layout");
   return { success: "Timezone updated." };
 }
 
@@ -219,5 +231,6 @@ export async function updateTimeFormat(
     return { error: result.error, fieldErrors: result.fieldErrors };
   }
 
+  revalidatePath("/", "layout");
   return { success: "Time format updated." };
 }

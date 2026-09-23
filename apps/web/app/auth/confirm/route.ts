@@ -9,6 +9,7 @@ import {
   authCookieOptions,
   type AuthTokenBody,
 } from "@/lib/auth/cookies";
+import { resolveConfirmNextPath } from "@deadline-radar/validation";
 
 const API_ORIGIN = process.env.API_ORIGIN ?? "http://127.0.0.1:4025";
 
@@ -24,8 +25,9 @@ export async function GET(request: NextRequest) {
   });
 
   const nextParam = searchParams.get("next");
-  const next =
-    nextParam && nextParam.startsWith("/") ? nextParam : "/summary";
+  // Allow-listed internal path only (same helper as the API confirm
+  // endpoint); attacker-controlled values fall back to /summary.
+  const next = resolveConfirmNextPath(nextParam);
 
   try {
     const upstream = await fetch(target.toString(), {
@@ -53,9 +55,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
 
+    // Defense in depth: re-validate the API-provided destination through
+    // the same allow-list; fall back to the already-sanitized local `next`
+    // (preserves the existing fallback behavior for missing values).
     const redirectTo =
-      typeof data.redirectTo === "string" && data.redirectTo.startsWith("/")
-        ? data.redirectTo
+      typeof data.redirectTo === "string"
+        ? resolveConfirmNextPath(data.redirectTo)
         : next;
     const response = NextResponse.redirect(new URL(redirectTo, request.url));
     response.cookies.set(

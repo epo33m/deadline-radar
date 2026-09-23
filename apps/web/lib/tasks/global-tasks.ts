@@ -19,6 +19,18 @@ export type TaskHorizonGroups<T extends GlobalTask = GlobalTask> = {
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
+export type TaskTone = "late" | "upcoming" | "done";
+
+/** Visual tone for a task card — late once the deadline instant has passed. */
+export function resolveTaskTone<T extends GlobalTask>(
+  task: T,
+  now: Date,
+): TaskTone {
+  if (task.status === "done") return "done";
+  const ms = new Date(task.deadline).getTime();
+  return Number.isNaN(ms) || ms >= now.getTime() ? "upcoming" : "late";
+}
+
 function deadlineMs(task: GlobalTask): number | null {
   const ms = new Date(task.deadline).getTime();
   return Number.isNaN(ms) ? null : ms;

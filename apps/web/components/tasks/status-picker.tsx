@@ -25,11 +25,6 @@ const STATUS_OPTIONS: { value: TaskStatus; label: string; dotClass: string }[] =
       label: "In progress",
       dotClass: "bg-warning",
     },
-    {
-      value: "done",
-      label: "Done",
-      dotClass: "bg-success",
-    },
   ];
 
 function StatusDot({ className }: { className: string }) {

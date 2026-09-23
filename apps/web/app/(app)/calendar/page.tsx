@@ -7,6 +7,7 @@ import {
   buildMonthGrid,
   getZonedDayKey,
   groupTasksByDay,
+  monthVisibleRange,
   parseMonthParam,
   type CalendarTask,
 } from "@/lib/calendar/month";
@@ -24,14 +25,60 @@ type CalendarPageProps = {
   searchParams: Promise<{ month?: string }>;
 };
 
+/** Month-scoped task fetch: visible range only, cursors followed to exhaustion. */
+async function fetchMonthTasks(
+  timeZone: string,
+  year: number,
+  month: number,
+): Promise<{ tasks?: ApiTask[]; error?: unknown }> {
+  const { dueFrom, dueTo } = monthVisibleRange(year, month, timeZone);
+  const tasks: ApiTask[] = [];
+  let cursor: string | null = null;
+  // Safety cap: 10 pages × 200 rows far exceeds any renderable month.
+  // Hitting it means SILENT TRUNCATION (partial month renders as complete),
+  // so it must be observable: counts-only warn, no PII, wired to the
+  // Sentry/log pipeline like the cron outcome line.
+  const MAX_PAGES = 10;
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const qs = new URLSearchParams({ limit: "200", dueFrom, dueTo });
+    if (cursor) qs.set("cursor", cursor);
+    const result = await apiJson<{
+      tasks?: ApiTask[];
+      page?: { nextCursor: string | null };
+    }>(`/api/v1/tasks?${qs.toString()}`);
+    if (result.error || !result.tasks) return { error: result.error };
+    tasks.push(...result.tasks);
+    cursor = result.page?.nextCursor ?? null;
+    if (!cursor) return { tasks };
+  }
+  if (cursor) {
+    console.warn(
+      "[calendar] month fetch hit page cap",
+      JSON.stringify({
+        year,
+        month,
+        maxPages: MAX_PAGES,
+        pageSize: 200,
+        tasksCollected: tasks.length,
+      }),
+    );
+  }
+  return { tasks };
+}
+
 export default async function CalendarPage({ searchParams }: CalendarPageProps) {
-  const { month: monthParam } = await searchParams;
-  const user = await requireSession();
+  // searchParams + session are independent — resolve together. The month
+  // range fetch below still needs the timezone, so it follows.
+  const [{ month: monthParam }, user] = await Promise.all([
+    searchParams,
+    requireSession(),
+  ]);
   const timeZone = user.timezone;
   const month = parseMonthParam(monthParam, timeZone);
-  const todayKey = getZonedDayKey(new Date().toISOString(), timeZone) ?? "";
+  const nowIso = new Date().toISOString();
+  const todayKey = getZonedDayKey(nowIso, timeZone) ?? "";
 
-  const result = await apiJson<{ tasks?: ApiTask[] }>("/api/v1/tasks");
+  const result = await fetchMonthTasks(timeZone, month.year, month.month);
   if (result.error || !result.tasks) {
     return (
       <section className="space-y-2">
@@ -71,6 +118,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
         timeZone={timeZone}
         timeFormat={user.timeFormat}
         todayKey={todayKey}
+        nowIso={nowIso}
         cells={cells}
         tasksByDay={tasksByDay}
       />

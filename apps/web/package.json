@@ -8,12 +8,14 @@
     "start": "next start --port 3025",
     "lint": "eslint .",
     "test": "bun test",
+    "typecheck": "tsc --noEmit -p .",
     "generate-api": "openapi-typescript http://127.0.0.1:4025/openapi/json -o lib/api/schema.d.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
     "@deadline-radar/domain": "workspace:*",
     "@deadline-radar/validation": "workspace:*",
+    "@sentry/nextjs": "^10.75.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "jose": "^6.2.12",

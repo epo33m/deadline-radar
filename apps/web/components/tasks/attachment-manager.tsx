@@ -31,6 +31,8 @@ import {
 } from "@/components/ui/dialog-form";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { generateIdempotencyKey } from "@/lib/api/idempotency";
+import { isSafeExternalHttpUrl } from "@deadline-radar/validation";
 import type { Attachment } from "@/types/task";
 
 const initialState: AttachmentActionState = {};
@@ -43,6 +45,7 @@ type AddFormProps = {
 
 function AddAttachmentForm({ taskId, onSuccess, onCancel }: AddFormProps) {
   const formId = useId();
+  const [idempotencyKey] = useState(() => generateIdempotencyKey());
   const [state, formAction, pending] = useActionState(
     addAttachment,
     initialState,
@@ -101,6 +104,7 @@ function AddAttachmentForm({ taskId, onSuccess, onCancel }: AddFormProps) {
       aria-busy={pending}
     >
       <input type="hidden" name="task_id" value={taskId} />
+      <input type="hidden" name="idempotency_key" value={idempotencyKey} />
       <div className={cn("w-full", formSectionGapClassName)}>
         <div className="space-y-2">
           <ul className={dialogFormListClassName}>
@@ -354,7 +358,11 @@ function AttachmentRow({
               : null}
           </p>
         </div>
-        {attachment.type === "link" && attachment.url ? (
+        {attachment.type === "link" &&
+        attachment.url &&
+        // SEC-006: scheme allow-list at the renderer. Unsafe values stay
+        // visible as plain text above, but never become a clickable href.
+        isSafeExternalHttpUrl(attachment.url) ? (
           <a
             href={attachment.url}
             target="_blank"

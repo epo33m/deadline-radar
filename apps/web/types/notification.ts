@@ -15,4 +15,6 @@ export type NotificationDelivery = {
 export type InAppNotification = NotificationDelivery & {
   task_title: string | null;
   days_before: number | null;
+  /** RF-11: derive-on-read catch-up label (sent >= 1h after the trigger). */
+  is_late: boolean;
 };
