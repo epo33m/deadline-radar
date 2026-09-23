@@ -1,0 +1,20 @@
+# Supabase CLI configuration for Deadline Radar
+# Authoritative database migration source of truth: supabase/migrations/
+
+project_id = "deadline-radar"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage", "graphql_public"]
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[auth]
+enabled = true
+
+[storage]
+enabled = true

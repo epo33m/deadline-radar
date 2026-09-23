@@ -9,9 +9,9 @@
   },
   "scripts": {
     "test": "bun test src",
-    "lint": "echo 'no lint'",
-    "db:generate": "drizzle-kit generate",
-    "db:pull": "drizzle-kit pull"
+    "typecheck": "tsc --noEmit -p .",
+    "lint": "echo 'lint: no linter configured for db — static gate is typecheck (web runs eslint)'",
+    "db:push": "echo 'ERROR: drizzle-kit push is disabled. Migrations must be added to supabase/migrations/ and executed via bun run db:migrate' && exit 1"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
