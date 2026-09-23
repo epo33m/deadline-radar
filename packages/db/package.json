@@ -1,0 +1,25 @@
+{
+  "name": "@deadline-radar/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "test": "bun test src",
+    "typecheck": "tsc --noEmit -p .",
+    "lint": "echo 'lint: no linter configured for db — static gate is typecheck (web runs eslint)'",
+    "db:push": "echo 'ERROR: drizzle-kit push is disabled. Migrations must be added to supabase/migrations/ and executed via bun run db:migrate' && exit 1"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.2",
+    "postgres": "^3.4.9"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.0",
+    "drizzle-kit": "^0.31.10",
+    "typescript": "5"
+  }
+}

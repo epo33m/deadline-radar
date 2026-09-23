@@ -1,0 +1,44 @@
+name: Staging Migration & Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (list pending migrations without applying)"
+        required: true
+        type: boolean
+        default: false
+
+jobs:
+  migrate_staging:
+    name: Apply Staging Migrations
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Check Migration Status
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          supabase migration list --db-url "$DATABASE_URL"
+
+      - name: Apply Migrations
+        if: ${{ !inputs.dry_run }}
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          supabase migration up --db-url "$DATABASE_URL"
+          supabase migration list --db-url "$DATABASE_URL"

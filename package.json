@@ -1,0 +1,30 @@
+{
+  "name": "deadline-radar",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "bun@1.4.0",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "bun --env-file=.env.local run scripts/dev.ts",
+    "dev:web": "bun --env-file=.env.local --cwd apps/web run next dev --port 3025",
+    "dev:api": "bun --env-file=.env.local --cwd apps/api run --watch src/index.ts",
+    "build": "bunx nx run-many -t build --projects=web,api",
+    "lint": "bunx nx run-many -t lint",
+    "typecheck": "bunx nx run-many -t typecheck --projects=web,api,db,domain,validation",
+    "test": "bunx nx run-many -t test",
+    "pretest:e2e": "bunx nx run-many -t build --projects=web",
+    "test:e2e": "bun --env-file=.env.local run --filter e2e test:e2e",
+    "openapi:generate": "bun run --filter web generate-api",
+    "db:migrate": "bun --env-file=.env.local run scripts/migrate.ts up",
+    "db:status": "bun --env-file=.env.local run scripts/migrate.ts status",
+    "db:verify": "bun --env-file=.env.local run scripts/migrate.ts verify",
+    "db:drift": "bun --env-file=.env.local run scripts/verify-schema-drift.ts"
+  },
+  "devDependencies": {
+    "@nx/js": "21.5.2",
+    "@types/bun": "^1.4.0",
+    "@types/node": "^26.4.0",
+    "nx": "21.5.2",
+    "typescript": "5.9.2"
+  }
+}

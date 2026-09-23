@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Deadline Radar MVP",
+    "locale": "en",
+    "output": "mvp-architecture.html",
+    "quality_profile": "showcase",
+    "viewBox": [1100, 720],
+    "views": [
+      {
+        "id": "primary-path",
+        "label": "Primary app path",
+        "focus": ["browser", "nextjs", "api", "auth", "postgres"],
+        "note": "Browser hits Next UI; same-origin /api rewrites to Elysia. Auth + data via API (Drizzle)."
+      },
+      {
+        "id": "reminders",
+        "label": "Reminder delivery",
+        "focus": ["cron", "api", "postgres", "resend"],
+        "note": "Hourly cron hits Elysia evaluate-reminders; email via Resend; in-app via client polling."
+      },
+      {
+        "id": "attachments",
+        "label": "Attachments",
+        "focus": ["browser", "nextjs", "api", "storage"],
+        "note": "Uploads go through the API to Supabase Storage with signed URL access."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "browser",
+      "type": "external",
+      "label": "Browser",
+      "sublabel": "Student",
+      "pos": [60, 300],
+      "size": [130, 64]
+    },
+    {
+      "id": "nextjs",
+      "type": "frontend",
+      "label": "Next.js UI",
+      "sublabel": "apps/web :3025",
+      "tag": "RSC + shadcn",
+      "pos": [260, 200],
+      "size": [170, 80]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "Elysia API",
+      "sublabel": "apps/api :4025",
+      "tag": "OpenAPI + Drizzle",
+      "pos": [260, 360],
+      "size": [170, 80]
+    },
+    {
+      "id": "auth",
+      "type": "security",
+      "label": "Supabase Auth",
+      "sublabel": "email / password",
+      "pos": [600, 120],
+      "size": [160, 64]
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "Postgres",
+      "sublabel": "Drizzle + RLS",
+      "pos": [600, 300],
+      "size": [160, 64]
+    },
+    {
+      "id": "storage",
+      "type": "cloud",
+      "label": "Storage",
+      "sublabel": "attachments bucket",
+      "pos": [600, 480],
+      "size": [160, 64]
+    },
+    {
+      "id": "cron",
+      "type": "backend",
+      "label": "Scheduler",
+      "sublabel": "evaluate-reminders",
+      "tag": "hourly TBD",
+      "pos": [60, 500],
+      "size": [170, 72]
+    },
+    {
+      "id": "resend",
+      "type": "external",
+      "label": "Resend",
+      "sublabel": "reminder email",
+      "pos": [900, 120],
+      "size": [130, 64]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Supabase",
+      "wraps": ["auth", "postgres", "storage"]
+    },
+    {
+      "kind": "region",
+      "label": "Nx monorepo",
+      "wraps": ["nextjs", "api"]
+    }
+  ],
+  "connections": [
+    {
+      "id": "browser-to-nextjs",
+      "from": "browser",
+      "to": "nextjs",
+      "label": "HTTPS"
+    },
+    {
+      "id": "nextjs-to-api",
+      "from": "nextjs",
+      "to": "api",
+      "label": "/api rewrite"
+    },
+    {
+      "id": "api-to-auth",
+      "from": "api",
+      "to": "auth",
+      "label": "identity"
+    },
+    {
+      "id": "api-to-postgres",
+      "from": "api",
+      "to": "postgres",
+      "label": "Drizzle"
+    },
+    {
+      "id": "api-to-storage",
+      "from": "api",
+      "to": "storage",
+      "label": "files"
+    },
+    {
+      "id": "api-to-resend",
+      "from": "api",
+      "to": "resend",
+      "label": "email"
+    },
+    {
+      "id": "cron-to-api",
+      "from": "cron",
+      "to": "api",
+      "label": "Bearer CRON_SECRET"
+    }
+  ],
+  "notes": [
+    "Next.js is UI-only; Elysia owns auth, API, and reminder evaluation.",
+    "OpenAPI contract at /openapi; session cookies are httpOnly on the web origin.",
+    "Scheduler runner is TBD; endpoint is GET /api/cron/evaluate-reminders."
+  ]
+}

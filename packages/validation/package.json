@@ -1,0 +1,22 @@
+{
+  "name": "@deadline-radar/validation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "test": "bun test src",
+    "typecheck": "tsc --noEmit -p .",
+    "lint": "echo 'lint: no linter configured for validation — static gate is typecheck (web runs eslint)'"
+  },
+  "dependencies": {
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.0",
+    "typescript": "5"
+  }
+}

@@ -1,0 +1,59 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# next.js
+.next/
+out/
+build/
+dist/
+.nx/
+
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# logs / debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+bun-debug.log*
+
+# package managers other than Bun (this repo uses Bun)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# vercel / typescript
+.vercel
+*.tsbuildinfo
+
+# OS / IDE
+.DS_Store
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
+
+# supabase local
+supabase/.temp/
+
+# graphify (local only)
+graphify-out/
+raw/
+AGENTS.md
+CLAUDE.md
+
+# mattpocock skills (local only)
+.agents/skills/
+skills-lock.json
+
+# commandcode CLI (local only)
+.commandcode/
+
+# playwright e2e artifacts (local only)
+test-results/
+playwright-report/
+playwright/.cache/
