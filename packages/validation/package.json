@@ -9,7 +9,8 @@
   },
   "scripts": {
     "test": "bun test src",
-    "lint": "echo 'no lint'"
+    "typecheck": "tsc --noEmit -p .",
+    "lint": "echo 'lint: no linter configured for validation — static gate is typecheck (web runs eslint)'"
   },
   "dependencies": {
     "zod": "^4.5.4"

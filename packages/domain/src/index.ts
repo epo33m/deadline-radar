@@ -1,7 +1,15 @@
 export {
+  MAX_ACTIVE_TASKS_PER_USER,
+  MAX_EMAILS_PER_USER_PER_RUN,
+  MAX_THRESHOLDS_PER_TASK,
+} from "./quotas";
+export {
   thresholdTriggerAt,
   isThresholdDue,
   evaluateReminders,
+  MAX_EMAIL_DELIVERY_RETRIES,
+  REMINDER_LATE_AFTER_MS,
+  REMINDER_DEADLINE_GRACE_MS,
   type DeliveryChannel,
   type DeliveryStatus,
   type ReminderDeliveryInput,
@@ -10,6 +18,7 @@ export {
   type CreateDeliveryAction,
   type RetryDeliveryAction,
   type EvaluateReminderAction,
+  type EvaluateRemindersOptions,
 } from "./evaluate";
 export { urgencyLabel } from "./urgency";
 export {

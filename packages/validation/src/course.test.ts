@@ -1,5 +1,94 @@
 import { describe, expect, test } from "bun:test";
-import { courseSchema } from "./course";
+import { coursePatchSchema, courseSchema } from "./course";
+
+describe("coursePatchSchema", () => {
+  test("accepts partial PATCH with only name, keeping omitted fields undefined", () => {
+    const result = coursePatchSchema.safeParse({ name: "Updated Name" });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toEqual({
+        name: "Updated Name",
+        code: undefined,
+        color: undefined,
+        icon: undefined,
+        description: undefined,
+        updatedAt: undefined,
+        updated_at: undefined,
+      });
+    }
+  });
+
+  test("accepts partial PATCH without name", () => {
+    const descResult = coursePatchSchema.safeParse({ description: "New Info" });
+    expect(descResult.success).toBe(true);
+    if (descResult.success) {
+      expect(descResult.data.description).toBe("New Info");
+      expect(descResult.data.name).toBeUndefined();
+    }
+
+    const colorResult = coursePatchSchema.safeParse({ color: "#0066cc" });
+    expect(colorResult.success).toBe(true);
+    if (colorResult.success) {
+      expect(colorResult.data.color).toBe("#0066cc");
+      expect(colorResult.data.name).toBeUndefined();
+    }
+  });
+
+  test("accepts empty payload {} with all fields undefined", () => {
+    const result = coursePatchSchema.safeParse({});
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.name).toBeUndefined();
+      expect(result.data.description).toBeUndefined();
+      expect(result.data.code).toBeUndefined();
+      expect(result.data.color).toBeUndefined();
+      expect(result.data.icon).toBeUndefined();
+    }
+  });
+
+  test("distinguishes explicit null from omitted fields", () => {
+    const result = coursePatchSchema.safeParse({
+      description: null,
+      code: null,
+      color: null,
+      icon: null,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.description).toBeNull();
+      expect(result.data.code).toBeNull();
+      expect(result.data.color).toBeNull();
+      expect(result.data.icon).toBeNull();
+      expect(result.data.name).toBeUndefined();
+    }
+  });
+
+  test("rejects invalid name values (null, empty string, whitespace)", () => {
+    expect(coursePatchSchema.safeParse({ name: null }).success).toBe(false);
+    expect(coursePatchSchema.safeParse({ name: "" }).success).toBe(false);
+    expect(coursePatchSchema.safeParse({ name: "   " }).success).toBe(false);
+  });
+
+  test("normalizes hex color and icon slug on PATCH", () => {
+    const hex = coursePatchSchema.safeParse({ color: "0066cc" });
+    expect(hex.success).toBe(true);
+    if (hex.success) {
+      expect(hex.data.color).toBe("#0066cc");
+    }
+
+    const icon = coursePatchSchema.safeParse({ icon: "Book-Open" });
+    expect(icon.success).toBe(true);
+    if (icon.success) {
+      expect(icon.data.icon).toBe("book-open");
+    }
+  });
+
+  test("rejects invalid color and icon on PATCH", () => {
+    expect(coursePatchSchema.safeParse({ color: "blue" }).success).toBe(false);
+    expect(coursePatchSchema.safeParse({ icon: "invalid_slug" }).success).toBe(false);
+  });
+});
+
 
 describe("courseSchema", () => {
   test("accepts a required non-empty name with optional code and color omitted", () => {
@@ -134,6 +223,31 @@ describe("courseSchema", () => {
     ).toBe(false);
     expect(
       courseSchema.safeParse({ name: "History", icon: "a".repeat(65) }).success,
+    ).toBe(false);
+  });
+
+  test("enforces name length limit (<= 255 chars)", () => {
+    expect(courseSchema.safeParse({ name: "a".repeat(255) }).success).toBe(true);
+    expect(courseSchema.safeParse({ name: "a".repeat(256) }).success).toBe(false);
+  });
+
+  test("enforces code length limit (<= 50 chars)", () => {
+    expect(
+      courseSchema.safeParse({ name: "Course", code: "c".repeat(50) }).success,
+    ).toBe(true);
+    expect(
+      courseSchema.safeParse({ name: "Course", code: "c".repeat(51) }).success,
+    ).toBe(false);
+  });
+
+  test("enforces description length limit (<= 5000 chars)", () => {
+    expect(
+      courseSchema.safeParse({ name: "Course", description: "d".repeat(5000) })
+        .success,
+    ).toBe(true);
+    expect(
+      courseSchema.safeParse({ name: "Course", description: "d".repeat(5001) })
+        .success,
     ).toBe(false);
   });
 });

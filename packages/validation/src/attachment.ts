@@ -13,6 +13,27 @@ const absoluteUrlSchema = z.url({
   error: "URL must be a valid absolute http(s) address",
 });
 
+/**
+ * SEC-006: defense-in-depth for rendering stored link URLs as `<a href>`.
+ * Accepts only absolute `http:`/`https:` URLs. The API already enforces this
+ * via `absoluteUrlSchema`, but the renderer must not depend on that alone:
+ * one loosened schema would turn every stored URL into a scheme-XSS vector.
+ * Non-empty trimmed strings that WHATWG-parse to http(s) pass; `javascript:`,
+ * `data:`, protocol-relative, relative, and non-string inputs fail.
+ */
+export function isSafeExternalHttpUrl(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.length > 2000) return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return false;
+  }
+  return parsed.protocol === "http:" || parsed.protocol === "https:";
+}
+
 function emptyToUndefined(value: unknown): unknown {
   if (value === undefined || value === null) return undefined;
   if (typeof value === "string" && value.trim().length === 0) return undefined;
@@ -88,15 +109,16 @@ export function sanitizeAttachmentFilename(filename: string): string {
 
 /**
  * Storage path convention from ARCHITECTURE.md:
- * `attachments/{user_id}/{task_id}/{filename}`
+ * `attachments/{user_id}/{task_id}/{attachment_id}/{filename}`
  */
 export function buildAttachmentStoragePath(
   userId: string,
   taskId: string,
+  attachmentId: string,
   filename: string,
 ): string {
   const safeName = sanitizeAttachmentFilename(filename);
-  return `attachments/${userId}/${taskId}/${safeName}`;
+  return `attachments/${userId}/${taskId}/${attachmentId}/${safeName}`;
 }
 
 /** Object key inside the private `attachments` bucket (no bucket prefix). */

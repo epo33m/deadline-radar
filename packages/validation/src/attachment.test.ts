@@ -3,6 +3,7 @@ import {
   attachmentObjectKey,
   buildAttachmentStoragePath,
   fileAttachmentSchema,
+  isSafeExternalHttpUrl,
   linkAttachmentSchema,
 } from "./attachment";
 
@@ -111,15 +112,16 @@ describe("fileAttachmentSchema", () => {
 });
 
 describe("buildAttachmentStoragePath", () => {
-  test("builds attachments/{user_id}/{task_id}/{filename}", () => {
+  test("builds attachments/{user_id}/{task_id}/{attachment_id}/{filename}", () => {
     expect(
       buildAttachmentStoragePath(
         "11111111-1111-4111-8111-111111111111",
         "22222222-2222-4222-8222-222222222222",
+        "33333333-3333-4333-8333-333333333333",
         "notes.pdf",
       ),
     ).toBe(
-      "attachments/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/notes.pdf",
+      "attachments/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/notes.pdf",
     );
   });
 
@@ -128,10 +130,11 @@ describe("buildAttachmentStoragePath", () => {
       buildAttachmentStoragePath(
         "11111111-1111-4111-8111-111111111111",
         "22222222-2222-4222-8222-222222222222",
+        "33333333-3333-4333-8333-333333333333",
         "../../etc/passwd",
       ),
     ).toBe(
-      "attachments/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/passwd",
+      "attachments/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/passwd",
     );
   });
 });
@@ -140,10 +143,42 @@ describe("attachmentObjectKey", () => {
   test("strips the attachments/ bucket prefix", () => {
     expect(
       attachmentObjectKey(
-        "attachments/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/notes.pdf",
+        "attachments/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/notes.pdf",
       ),
     ).toBe(
-      "11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/notes.pdf",
+      "11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/notes.pdf",
     );
+  });
+});
+
+describe("isSafeExternalHttpUrl (SEC-006)", () => {
+  test("accepts absolute http(s) URLs", () => {
+    expect(isSafeExternalHttpUrl("https://example.com/doc")).toBe(true);
+    expect(isSafeExternalHttpUrl("http://example.com:8080/a?b=c#d")).toBe(
+      true,
+    );
+  });
+
+  test("rejects scheme payloads and non-absolute inputs", () => {
+    expect(isSafeExternalHttpUrl("javascript:alert(1)")).toBe(false);
+    expect(isSafeExternalHttpUrl("JaVaScRiPt:alert(1)")).toBe(false);
+    expect(isSafeExternalHttpUrl("data:text/html,<h1>x</h1>")).toBe(false);
+    expect(isSafeExternalHttpUrl("//evil.com/phish")).toBe(false);
+    expect(isSafeExternalHttpUrl("/tasks")).toBe(false);
+    expect(isSafeExternalHttpUrl("")).toBe(false);
+    expect(isSafeExternalHttpUrl(undefined)).toBe(false);
+    expect(isSafeExternalHttpUrl(null)).toBe(false);
+  });
+});
+
+describe("linkAttachmentSchema scheme allow-list (SEC-006)", () => {
+  test("rejects javascript: and data: URLs at the API boundary", () => {
+    for (const url of [
+      "javascript:alert(1)",
+      "data:text/html,<h1>x</h1>",
+      "//evil.com/phish",
+    ]) {
+      expect(linkAttachmentSchema.safeParse({ url }).success).toBe(false);
+    }
   });
 });

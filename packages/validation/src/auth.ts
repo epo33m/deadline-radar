@@ -74,9 +74,26 @@ export const changeEmailSchema = z
   })
   .strict();
 
+export function isValidTimeZone(timeZone: string): boolean {
+  if (!timeZone || typeof timeZone !== "string") return false;
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: timeZone.trim() });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export const timezoneUpdateSchema = z
   .object({
-    timezone: z.string().trim().min(1, "Timezone is required").max(64),
+    timezone: z
+      .string()
+      .trim()
+      .min(1, "Timezone is required")
+      .max(64)
+      .refine((tz) => isValidTimeZone(tz), {
+        message: "Enter a valid timezone",
+      }),
   })
   .strict();
 

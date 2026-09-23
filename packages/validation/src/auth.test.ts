@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
   forgotPasswordSchema,
+  isValidTimeZone,
   loginSchema,
   registerSchema,
   resetPasswordSchema,
   timeFormatUpdateSchema,
+  timezoneUpdateSchema,
 } from "./auth";
 
 describe("registerSchema", () => {
@@ -166,3 +168,28 @@ describe("timeFormatUpdateSchema", () => {
     ).toBe(false);
   });
 });
+
+describe("timezoneUpdateSchema & isValidTimeZone (L-5)", () => {
+  test("accepts valid IANA timezones", () => {
+    expect(timezoneUpdateSchema.safeParse({ timezone: "Asia/Jakarta" }).success).toBe(true);
+    expect(timezoneUpdateSchema.safeParse({ timezone: "UTC" }).success).toBe(true);
+    expect(timezoneUpdateSchema.safeParse({ timezone: "America/New_York" }).success).toBe(true);
+  });
+
+  test("rejects invalid timezone names", () => {
+    expect(timezoneUpdateSchema.safeParse({ timezone: "Invalid/Timezone" }).success).toBe(false);
+    expect(timezoneUpdateSchema.safeParse({ timezone: "NotATimezone" }).success).toBe(false);
+  });
+
+  test("rejects empty or whitespace timezone", () => {
+    expect(timezoneUpdateSchema.safeParse({ timezone: "" }).success).toBe(false);
+    expect(timezoneUpdateSchema.safeParse({ timezone: "   " }).success).toBe(false);
+  });
+
+  test("rejects unknown keys", () => {
+    expect(
+      timezoneUpdateSchema.safeParse({ timezone: "UTC", email: "new@example.com" }).success,
+    ).toBe(false);
+  });
+});
+
