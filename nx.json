@@ -30,6 +30,9 @@
     },
     "lint": {
       "cache": true
+    },
+    "typecheck": {
+      "cache": true
     }
   }
 }

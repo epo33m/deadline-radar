@@ -49,3 +49,11 @@ CLAUDE.md
 # mattpocock skills (local only)
 .agents/skills/
 skills-lock.json
+
+# commandcode CLI (local only)
+.commandcode/
+
+# playwright e2e artifacts (local only)
+test-results/
+playwright-report/
+playwright/.cache/

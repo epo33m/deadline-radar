@@ -46,6 +46,15 @@ async function freePort(port: number) {
 console.log("Freeing ports 3025 (web) and 4025 (api)…");
 await Promise.all(ports.map((port) => freePort(port)));
 
+// Construct sanitized environment for Next.js web process (L-12 isolation)
+// Excludes privileged database credentials, service role keys, and backend secrets.
+const webEnv = { ...process.env };
+delete webEnv.SUPABASE_SERVICE_ROLE_KEY;
+delete webEnv.DATABASE_URL;
+delete webEnv.DIRECT_URL;
+delete webEnv.RESEND_API_KEY;
+delete webEnv.CRON_SECRET;
+
 const children = [
   Bun.spawn({
     cmd: ["bun", "--env-file=.env.local", "run", "--watch", "src/index.ts"],
@@ -55,16 +64,9 @@ const children = [
     stdin: "inherit",
   }),
   Bun.spawn({
-    cmd: [
-      "bun",
-      "--env-file=.env.local",
-      "run",
-      "next",
-      "dev",
-      "--port",
-      "3025",
-    ],
+    cmd: ["bun", "run", "next", "dev", "--port", "3025"],
     cwd: `${root}/apps/web`,
+    env: webEnv,
     stdout: "inherit",
     stderr: "inherit",
     stdin: "inherit",
