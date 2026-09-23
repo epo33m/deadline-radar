@@ -4,6 +4,7 @@ import { openapi } from "@elysiajs/openapi";
 
 import { env } from "./env";
 import { requestIdPlugin } from "./lib/api/request-id";
+import { apiSchemas, apiSecuritySchemes } from "./lib/api/openapi-docs";
 import { errorHandlerPlugin } from "./plugins/error-handler";
 import { rateLimitPlugin } from "./plugins/rate-limit";
 import { httpPolicyPlugin } from "./plugins/http-policy";
@@ -16,6 +17,7 @@ import { attachmentRoutes } from "./routes/attachments";
 import { notificationRoutes } from "./routes/notifications";
 import { adminRoutes } from "./routes/admin";
 import { cronRoutes } from "./routes/cron";
+import { healthCronRoutes } from "./routes/health-cron";
 
 export const app = new Elysia()
   .use(requestIdPlugin)
@@ -49,12 +51,36 @@ export const app = new Elysia()
           { name: "Admin" },
           { name: "Cron" },
         ],
+        components: {
+          securitySchemes: apiSecuritySchemes,
+          schemas: apiSchemas,
+        },
       },
       path: "/openapi",
     }),
   )
   .get("/health", () => ({ ok: true, service: "deadline-radar-api" }), {
-    detail: { tags: ["Health"], summary: "Health check" },
+    detail: {
+      tags: ["Health"],
+      summary: "Health check",
+      responses: {
+        200: {
+          description: "Service is up. Exempt from rate limiting.",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["ok", "service"],
+                properties: {
+                  ok: { type: "boolean" },
+                  service: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   })
   .use(authRoutes)
   .use(courseRoutes)
@@ -63,6 +89,7 @@ export const app = new Elysia()
   .use(attachmentRoutes)
   .use(notificationRoutes)
   .use(adminRoutes)
-  .use(cronRoutes);
+  .use(cronRoutes)
+  .use(healthCronRoutes);
 
 export type App = typeof app;

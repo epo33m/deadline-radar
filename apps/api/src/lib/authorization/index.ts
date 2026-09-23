@@ -12,9 +12,13 @@ export type { AuthzDecision, AuthzDenyReason } from "./decide";
 
 export {
   ownedCourse,
+  ownedCourseInTx,
   ownedTask,
+  ownedTaskInTx,
   ownedAttachment,
+  ownedAttachmentInTx,
   ownedAttachmentByStoragePath,
+  ownedAttachmentByStoragePathInTx,
   setOwnershipOverrides,
 } from "./ownership";
 

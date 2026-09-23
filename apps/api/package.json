@@ -8,7 +8,8 @@
     "start": "bun run src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target bun",
     "test": "bun test src",
-    "lint": "echo 'no lint'",
+    "typecheck": "tsc --noEmit -p .",
+    "lint": "echo 'lint: no linter configured for api — static gate is typecheck (web runs eslint)'",
     "openapi": "bun run src/scripts/export-openapi.ts"
   },
   "dependencies": {
@@ -26,6 +27,7 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@sentry/bun": "^10.75.0",
     "@types/bun": "^1.4.0",
     "@types/ioredis": "^5.0.0",
     "openapi-types": "^12.1.3",

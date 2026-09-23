@@ -7,8 +7,8 @@ import {
   extractClientRequestId,
   requestIdPlugin,
 } from "../lib/api";
-import { env } from "../env";
 import { getRedis } from "../lib/redis";
+import { peerAddressOf, resolveClientIp } from "../lib/proxy-trust";
 
 type Bucket = { count: number; resetAt: number };
 
@@ -22,13 +22,8 @@ export type RateLimitStore = {
   ): Promise<{ remaining: number; resetAt: number; limited: boolean }>;
 };
 
-function clientKey(request: Request): string {
-  if (env.trustProxy()) {
-    const forwarded = request.headers.get("x-forwarded-for");
-    if (forwarded) return forwarded.split(",")[0]?.trim() || "unknown";
-    return request.headers.get("x-real-ip") ?? "local";
-  }
-  return "local";
+function clientKey(request: Request, server: unknown): string {
+  return resolveClientIp(request, peerAddressOf(server, request));
 }
 
 function limitForPath(pathname: string): { max: number; windowMs: number } {
@@ -127,17 +122,23 @@ export function setRateLimitStoreForTests(store: RateLimitStore | null): void {
 
 /**
  * Rate limit: Redis when REDIS_URL is set; otherwise in-memory (dev/single-node).
+ *
+ * Security limitation (Finding #9): the in-memory fallback is PROCESS-LOCAL.
+ * It preserves availability and per-process enforcement, but it is NOT a
+ * distributed guarantee — N nodes behind a load balancer effectively grant
+ * N× the configured budget, and a restart wipes buckets. Do not claim
+ * global enforcement unless Redis is configured and reachable.
  */
 export const rateLimitPlugin = new Elysia({ name: "rate-limit" })
   .use(requestIdPlugin)
   .onBeforeHandle(
   { as: "global" },
-  async ({ request, set, requestId }) => {
+  async ({ request, set, requestId, server }) => {
     const pathname = new URL(request.url).pathname;
     if (pathname === "/health" || pathname.startsWith("/openapi")) return;
 
     const { max, windowMs } = limitForPath(pathname);
-    const key = `${clientKey(request)}:${scopeForPath(pathname)}`;
+    const key = `${clientKey(request, server)}:${scopeForPath(pathname)}`;
     const { remaining, resetAt, limited } = await activeStore.consume(
       key,
       max,

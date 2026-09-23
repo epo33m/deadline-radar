@@ -1,7 +1,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { attachments, courses, tasks } from "@deadline-radar/db";
 
-import { withUserRls } from "./rls-context";
+import { withUserRls, type UserTx } from "./rls-context";
 
 type CourseRow = typeof courses.$inferSelect;
 type TaskRow = typeof tasks.$inferSelect;
@@ -48,20 +48,34 @@ export async function ownedCourse(
   if (ownershipOverrides.ownedCourse) {
     return ownershipOverrides.ownedCourse(userId, courseId);
   }
-  return withUserRls(userId, async (tx) => {
-    const [row] = await tx
-      .select()
-      .from(courses)
-      .where(
-        and(
-          eq(courses.id, courseId),
-          eq(courses.userId, userId),
-          isNull(courses.deletedAt),
-        ),
-      )
-      .limit(1);
-    return row ?? null;
-  });
+  return withUserRls(userId, (tx) => ownedCourseInTx(tx, userId, courseId));
+}
+
+/**
+ * Tx-scoped ownership check for single-transaction handlers (P2-3): same
+ * predicate as {@link ownedCourse}, but runs on the caller's `withUserRls`
+ * transaction instead of opening its own. Test overrides still apply.
+ */
+export async function ownedCourseInTx(
+  tx: UserTx,
+  userId: string,
+  courseId: string,
+): Promise<CourseRow | null> {
+  if (ownershipOverrides.ownedCourse) {
+    return ownershipOverrides.ownedCourse(userId, courseId);
+  }
+  const [row] = await tx
+    .select()
+    .from(courses)
+    .where(
+      and(
+        eq(courses.id, courseId),
+        eq(courses.userId, userId),
+        isNull(courses.deletedAt),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
 }
 
 export async function ownedTask(
@@ -71,20 +85,34 @@ export async function ownedTask(
   if (ownershipOverrides.ownedTask) {
     return ownershipOverrides.ownedTask(userId, taskId);
   }
-  return withUserRls(userId, async (tx) => {
-    const [row] = await tx
-      .select()
-      .from(tasks)
-      .where(
-        and(
-          eq(tasks.id, taskId),
-          eq(tasks.userId, userId),
-          isNull(tasks.deletedAt),
-        ),
-      )
-      .limit(1);
-    return row ?? null;
-  });
+  return withUserRls(userId, (tx) => ownedTaskInTx(tx, userId, taskId));
+}
+
+/**
+ * Tx-scoped ownership check for single-transaction handlers (P2-3): same
+ * predicate as {@link ownedTask}, but runs on the caller's `withUserRls`
+ * transaction instead of opening its own. Test overrides still apply.
+ */
+export async function ownedTaskInTx(
+  tx: UserTx,
+  userId: string,
+  taskId: string,
+): Promise<TaskRow | null> {
+  if (ownershipOverrides.ownedTask) {
+    return ownershipOverrides.ownedTask(userId, taskId);
+  }
+  const [row] = await tx
+    .select()
+    .from(tasks)
+    .where(
+      and(
+        eq(tasks.id, taskId),
+        eq(tasks.userId, userId),
+        isNull(tasks.deletedAt),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
 }
 
 /** Attachment row only if the parent task is owned by userId. */
@@ -95,18 +123,34 @@ export async function ownedAttachment(
   if (ownershipOverrides.ownedAttachment) {
     return ownershipOverrides.ownedAttachment(userId, attachmentId);
   }
-  return withUserRls(userId, async (tx) => {
-    const [row] = await tx
-      .select({
-        attachment: attachments,
-        taskUserId: tasks.userId,
-      })
-      .from(attachments)
-      .innerJoin(tasks, eq(attachments.taskId, tasks.id))
-      .where(and(eq(attachments.id, attachmentId), eq(tasks.userId, userId)))
-      .limit(1);
-    return row ?? null;
-  });
+  return withUserRls(userId, (tx) =>
+    ownedAttachmentInTx(tx, userId, attachmentId),
+  );
+}
+
+/**
+ * Tx-scoped ownership check for single-transaction handlers (P2-3): same
+ * predicate as {@link ownedAttachment}, but runs on the caller's
+ * `withUserRls` transaction instead of opening its own.
+ */
+export async function ownedAttachmentInTx(
+  tx: UserTx,
+  userId: string,
+  attachmentId: string,
+): Promise<OwnedAttachmentRow | null> {
+  if (ownershipOverrides.ownedAttachment) {
+    return ownershipOverrides.ownedAttachment(userId, attachmentId);
+  }
+  const [row] = await tx
+    .select({
+      attachment: attachments,
+      taskUserId: tasks.userId,
+    })
+    .from(attachments)
+    .innerJoin(tasks, eq(attachments.taskId, tasks.id))
+    .where(and(eq(attachments.id, attachmentId), eq(tasks.userId, userId)))
+    .limit(1);
+  return row ?? null;
 }
 
 /**
@@ -120,22 +164,38 @@ export async function ownedAttachmentByStoragePath(
   if (ownershipOverrides.ownedAttachmentByStoragePath) {
     return ownershipOverrides.ownedAttachmentByStoragePath(userId, storagePath);
   }
-  return withUserRls(userId, async (tx) => {
-    const [row] = await tx
-      .select({
-        attachment: attachments,
-        taskUserId: tasks.userId,
-      })
-      .from(attachments)
-      .innerJoin(tasks, eq(attachments.taskId, tasks.id))
-      .where(
-        and(
-          eq(attachments.storagePath, storagePath),
-          eq(tasks.userId, userId),
-          eq(attachments.type, "file"),
-        ),
-      )
-      .limit(1);
-    return row ?? null;
-  });
+  return withUserRls(userId, (tx) =>
+    ownedAttachmentByStoragePathInTx(tx, userId, storagePath),
+  );
+}
+
+/**
+ * Tx-scoped ownership check for single-transaction handlers (P2-3): same
+ * predicate as {@link ownedAttachmentByStoragePath}, but runs on the
+ * caller's `withUserRls` transaction instead of opening its own.
+ */
+export async function ownedAttachmentByStoragePathInTx(
+  tx: UserTx,
+  userId: string,
+  storagePath: string,
+): Promise<OwnedAttachmentRow | null> {
+  if (ownershipOverrides.ownedAttachmentByStoragePath) {
+    return ownershipOverrides.ownedAttachmentByStoragePath(userId, storagePath);
+  }
+  const [row] = await tx
+    .select({
+      attachment: attachments,
+      taskUserId: tasks.userId,
+    })
+    .from(attachments)
+    .innerJoin(tasks, eq(attachments.taskId, tasks.id))
+    .where(
+      and(
+        eq(attachments.storagePath, storagePath),
+        eq(tasks.userId, userId),
+        eq(attachments.type, "file"),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
 }

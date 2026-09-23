@@ -35,18 +35,15 @@ export const openApiBodies = {
     },
     ["name"],
   ),
-  coursePatch: objectSchema(
-    {
-      name: string,
-      code: nullableString,
-      color: nullableString,
-      icon: nullableString,
-      description: nullableString,
-      updatedAt: string,
-      updated_at: string,
-    },
-    ["name"],
-  ),
+  coursePatch: objectSchema({
+    name: string,
+    code: nullableString,
+    color: nullableString,
+    icon: nullableString,
+    description: nullableString,
+    updatedAt: string,
+    updated_at: string,
+  }),
   taskCreate: objectSchema(
     {
       title: string,
@@ -57,18 +54,15 @@ export const openApiBodies = {
     },
     ["title", "course_id", "deadline", "status"],
   ),
-  taskPatch: objectSchema(
-    {
-      title: string,
-      course_id: uuid,
-      deadline: string,
-      status: { type: "string", enum: ["todo", "in_progress", "done"] },
-      description: nullableString,
-      updatedAt: string,
-      updated_at: string,
-    },
-    ["title", "course_id", "deadline", "status"],
-  ),
+  taskPatch: objectSchema({
+    title: string,
+    course_id: uuid,
+    deadline: string,
+    status: { type: "string", enum: ["todo", "in_progress", "done"] },
+    description: nullableString,
+    updatedAt: string,
+    updated_at: string,
+  }),
   linkAttachment: objectSchema(
     {
       task_id: uuid,
@@ -128,8 +122,37 @@ export const openApiBodies = {
     ["timeFormat"],
   ),
   threshold: objectSchema(
-    { days_before: { type: "number" } },
+    {
+      days_before: {
+        type: "number",
+        minimum: 0,
+        maximum: 36500,
+        description: "Whole days before the deadline (numeric strings coerce).",
+      },
+    },
     ["days_before"],
+  ),
+  thresholdsPut: objectSchema(
+    {
+      thresholds: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            days_before: {
+              type: "number",
+              minimum: 0,
+              maximum: 36500,
+              description:
+                "Whole days before the deadline (numeric strings coerce).",
+            },
+          },
+          required: ["days_before"],
+          additionalProperties: false,
+        },
+      },
+    },
+    ["thresholds"],
   ),
 };
 

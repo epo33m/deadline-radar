@@ -138,8 +138,10 @@ process.env.TRUST_PROXY = "true";
 const { AUTH_BRIDGE_HEADER } = await import("./auth-bridge");
 const AUTH_BRIDGE_VALUE = process.env.AUTH_BRIDGE_SECRET!;
 const { AUTH_ERRORS } = await import("./auth-errors");
+const { env } = await import("../env");
 const { resetRateLimitBuckets } = await import("../plugins/rate-limit");
-const { setVerifyAccessTokenOverride } = await import("./auth-tokens");
+const { setVerifyAccessTokenOverride, setVerifyAccessTokenClaimsOverride } =
+  await import("./auth-tokens");
 const {
   setLoadAuthorizationContextOverride,
   createAuthorizationContext,
@@ -153,6 +155,7 @@ describe("auth routes integration / security", () => {
     resetLoginAttemptStore();
     resetRateLimitBuckets();
     setVerifyAccessTokenOverride(null);
+    setVerifyAccessTokenClaimsOverride(null);
     setLoadAuthorizationContextOverride(null);
     signInWithPassword.mockClear();
     signUp.mockClear();
@@ -262,6 +265,99 @@ describe("auth routes integration / security", () => {
     expect(body.success).toContain("If that email is registered");
   });
 
+  test("forgot-password ignores an attacker Origin header", async () => {
+    {
+      const response = await app.handle(
+        new Request("http://localhost/api/v1/auth/forgot-password", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            origin: "https://evil.example",
+          },
+          body: JSON.stringify({ email: "student@example.com" }),
+        }),
+      );
+      expect(response.status).toBe(200);
+      const calls = resetPasswordForEmail.mock.calls as unknown as Array<
+        [string, { redirectTo?: string }?]
+      >;
+      expect(calls.length).toBeGreaterThan(0);
+      const redirectTo = calls[calls.length - 1][1]?.redirectTo;
+      expect(redirectTo).toBe(
+        `${env.webOrigin.replace(/\/$/, "")}/auth/confirm?next=/reset-password`,
+      );
+      expect(redirectTo).not.toContain("evil");
+    }
+  });
+
+  test("forgot-password ignores an attacker X-Forwarded-Host header", async () => {
+    {
+      const response = await app.handle(
+        new Request("http://localhost/api/v1/auth/forgot-password", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-forwarded-host": "evil.example",
+          },
+          body: JSON.stringify({ email: "student@example.com" }),
+        }),
+      );
+      expect(response.status).toBe(200);
+      const calls = resetPasswordForEmail.mock.calls as unknown as Array<
+        [string, { redirectTo?: string }?]
+      >;
+      const redirectTo = calls[calls.length - 1][1]?.redirectTo;
+      expect(redirectTo).toBe(
+        `${env.webOrigin.replace(/\/$/, "")}/auth/confirm?next=/reset-password`,
+      );
+      expect(redirectTo).not.toContain("evil");
+    }
+  });
+
+  test("forgot-password ignores both attacker headers at once", async () => {
+    {
+      const response = await app.handle(
+        new Request("http://localhost/api/v1/auth/forgot-password", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            origin: "https://evil.example",
+            "x-forwarded-host": "evil.example",
+          },
+          body: JSON.stringify({ email: "student@example.com" }),
+        }),
+      );
+      expect(response.status).toBe(200);
+      const calls = resetPasswordForEmail.mock.calls as unknown as Array<
+        [string, { redirectTo?: string }?]
+      >;
+      const redirectTo = calls[calls.length - 1][1]?.redirectTo;
+      expect(redirectTo).toBe(
+        `${env.webOrigin.replace(/\/$/, "")}/auth/confirm?next=/reset-password`,
+      );
+    }
+  });
+
+  test("forgot-password without Origin uses the trusted webOrigin", async () => {
+    {
+      const response = await app.handle(
+        new Request("http://localhost/api/v1/auth/forgot-password", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email: "student@example.com" }),
+        }),
+      );
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as { success?: string };
+      expect(body.success).toContain("If that email is registered");
+      const calls = resetPasswordForEmail.mock.calls as unknown as Array<
+        [string, { redirectTo?: string }?]
+      >;
+      expect(calls[calls.length - 1][1]?.redirectTo).toBe(
+        `${env.webOrigin.replace(/\/$/, "")}/auth/confirm?next=/reset-password`,
+      );
+    }
+  });
   test("refresh without cookie returns session expired", async () => {
     const response = await app.handle(
       new Request("http://localhost/api/v1/auth/refresh", { method: "POST" }),
@@ -279,6 +375,35 @@ describe("auth routes integration / security", () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as { ok?: boolean };
     expect(body.ok).toBe(true);
+  });
+
+  test("logout emits scoped deletion cookies for both session cookies", async () => {
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/auth/logout", { method: "POST" }),
+    );
+    expect(response.status).toBe(200);
+    const setCookies =
+      typeof response.headers.getSetCookie === "function"
+        ? response.headers.getSetCookie()
+        : [];
+    const byName = new Map(
+      setCookies.map((header) => [
+        header.slice(0, header.indexOf("=")),
+        header.toLowerCase(),
+      ]),
+    );
+    for (const name of ["dr_access_token", "dr_refresh_token"]) {
+      const header = byName.get(name);
+      expect(header, `deletion Set-Cookie for ${name}`).toBeDefined();
+      // Deletion scope matches creation: HttpOnly, Path=/, SameSite=Lax,
+      // Max-Age=0 (+Secure in production, covered by unit matrix).
+      expect(header).toContain("httponly");
+      expect(header).toContain("path=/");
+      expect(header).toContain("samesite=lax");
+      expect(header).toMatch(/max-age=0/);
+      // No token values leak into the deletion emission.
+      expect(header).not.toContain("bearer");
+    }
   });
 
   test("protected course route rejects unauthenticated requests", async () => {
@@ -454,6 +579,10 @@ describe("auth routes integration / security", () => {
       email: "student@example.com",
       sessionId: "sess-1",
     }));
+    setVerifyAccessTokenClaimsOverride(async () => ({
+      sub: "user-1",
+      amr: [{ method: "recovery", timestamp: 1700000000 }],
+    }));
 
     const response = await app.handle(
       new Request("http://localhost/api/v1/auth/reset-password", {
@@ -482,6 +611,10 @@ describe("auth routes integration / security", () => {
       email: "student@example.com",
       sessionId: "sess-1",
     }));
+    setVerifyAccessTokenClaimsOverride(async () => ({
+      sub: "user-1",
+      amr: [{ method: "recovery", timestamp: 1700000000 }],
+    }));
 
     const response = await app.handle(
       new Request("http://localhost/api/v1/auth/reset-password", {
@@ -501,6 +634,220 @@ describe("auth routes integration / security", () => {
     const errMsg = typeof body.error === "string" ? body.error : body.error?.message;
     expect(errMsg).toBe(AUTH_ERRORS.invalidDetails);
     expect(updateUser).not.toHaveBeenCalled();
+  });
+
+  test("reset-password rejects a normal login session token", async () => {
+    setVerifyAccessTokenOverride(async () => ({
+      id: "user-1",
+      email: "student@example.com",
+      sessionId: "sess-1",
+    }));
+    setVerifyAccessTokenClaimsOverride(async () => ({
+      sub: "user-1",
+      amr: [{ method: "password", timestamp: 1700000000 }],
+    }));
+
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/auth/reset-password", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer normal-login-session-token",
+        },
+        body: JSON.stringify({
+          password: "new-secret12",
+          confirmPassword: "new-secret12",
+        }),
+      }),
+    );
+    expect(response.status).toBe(401);
+    const body = (await response.json()) as {
+      error?: { code?: string; message?: string } | string;
+    };
+    const err = body.error;
+    expect(typeof err === "string" ? err : err?.code).toBe("UNAUTHORIZED");
+    expect(typeof err === "string" ? err : err?.message).toBe(
+      AUTH_ERRORS.invalidReset,
+    );
+    expect(updateUser).not.toHaveBeenCalled();
+    expect(signOut).not.toHaveBeenCalled();
+  });
+
+  test("reset-password accepts a recovery session with string amr format", async () => {
+    setVerifyAccessTokenOverride(async () => ({
+      id: "user-1",
+      email: "student@example.com",
+      sessionId: "sess-1",
+    }));
+    setVerifyAccessTokenClaimsOverride(async () => ({
+      sub: "user-1",
+      amr: ["recovery"],
+    }));
+
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/auth/reset-password", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer recovery-session-token",
+        },
+        body: JSON.stringify({
+          password: "new-secret12",
+          confirmPassword: "new-secret12",
+        }),
+      }),
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { ok?: boolean; redirectTo?: string };
+    expect(body.ok).toBe(true);
+    expect(body.redirectTo).toBe("/login");
+    expect(updateUser).toHaveBeenCalledTimes(1);
+  });
+
+  test("reset-password rejects an unverifiable token", async () => {
+    setVerifyAccessTokenClaimsOverride(async () => null);
+
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/auth/reset-password", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer forged-or-expired-token",
+        },
+        body: JSON.stringify({
+          password: "new-secret12",
+          confirmPassword: "new-secret12",
+        }),
+      }),
+    );
+    expect(response.status).toBe(401);
+    const body = (await response.json()) as {
+      error?: { code?: string; message?: string } | string;
+    };
+    const err = body.error;
+    expect(typeof err === "string" ? err : err?.code).toBe("UNAUTHORIZED");
+    expect(typeof err === "string" ? err : err?.message).toBe(
+      AUTH_ERRORS.invalidReset,
+    );
+    expect(updateUser).not.toHaveBeenCalled();
+  });
+
+  test("reset-password ignores a spoofed userId in the request body", async () => {
+    setVerifyAccessTokenOverride(async () => ({
+      id: "user-1",
+      email: "student@example.com",
+      sessionId: "sess-1",
+    }));
+    setVerifyAccessTokenClaimsOverride(async () => ({
+      sub: "user-1",
+      amr: [{ method: "recovery", timestamp: 1700000000 }],
+    }));
+
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/auth/reset-password", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer recovery-session-token-user-1",
+        },
+        body: JSON.stringify({
+          password: "new-secret12",
+          confirmPassword: "new-secret12",
+          userId: "user-B",
+        }),
+      }),
+    );
+    // Strict schema rejects unknown keys: identity can only come from the
+    // server-verified token, never from the client body.
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as {
+      error?: { code?: string; message?: string } | string;
+    };
+    const err = body.error;
+    expect(typeof err === "string" ? err : err?.code).toBe("VALIDATION_ERROR");
+    expect(updateUser).not.toHaveBeenCalled();
+  });
+
+  test("reset-password rejects a genuinely expired JWT via real signature verification", async () => {
+    const { SignJWT } = await import("jose");
+    const { resolveSupabaseUrl } = await import("../env");
+    process.env.SUPABASE_URL ??= "http://127.0.0.1:54321";
+    process.env.SUPABASE_JWT_SECRET ??= "test-only-jwt-secret-32-chars-min!!";
+    const secret = process.env.SUPABASE_JWT_SECRET!;
+    const issuer = `${resolveSupabaseUrl().replace(/\/$/, "")}/auth/v1`;
+    const now = Math.floor(Date.now() / 1000);
+    const expiredRecoveryToken = await new SignJWT({
+      sub: "user-1",
+      amr: [{ method: "recovery", timestamp: now - 7200 }],
+    })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuer(issuer)
+      .setIssuedAt(now - 7200)
+      .setExpirationTime(now - 3600)
+      .sign(new TextEncoder().encode(secret));
+
+    // No overrides: exercises the real JWKS→HS256 verification path.
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/auth/reset-password", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${expiredRecoveryToken}`,
+        },
+        body: JSON.stringify({
+          password: "new-secret12",
+          confirmPassword: "new-secret12",
+        }),
+      }),
+    );
+    expect(response.status).toBe(401);
+    const body = (await response.json()) as {
+      error?: { code?: string; message?: string } | string;
+    };
+    const err = body.error;
+    expect(typeof err === "string" ? err : err?.code).toBe("UNAUTHORIZED");
+    expect(updateUser).not.toHaveBeenCalled();
+  });
+
+  test("reset-password accepts a genuinely signed recovery JWT via real verification", async () => {
+    const { SignJWT } = await import("jose");
+    const { resolveSupabaseUrl } = await import("../env");
+    process.env.SUPABASE_URL ??= "http://127.0.0.1:54321";
+    process.env.SUPABASE_JWT_SECRET ??= "test-only-jwt-secret-32-chars-min!!";
+    const secret = process.env.SUPABASE_JWT_SECRET!;
+    const issuer = `${resolveSupabaseUrl().replace(/\/$/, "")}/auth/v1`;
+    const now = Math.floor(Date.now() / 1000);
+    const validRecoveryToken = await new SignJWT({
+      sub: "user-1",
+      email: "student@example.com",
+      amr: [{ method: "recovery", timestamp: now }],
+    })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuer(issuer)
+      .setAudience("authenticated")
+      .setIssuedAt(now)
+      .setExpirationTime(now + 3600)
+      .sign(new TextEncoder().encode(secret));
+
+    // No overrides: real signature + expiry + recovery-amr verification.
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/auth/reset-password", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${validRecoveryToken}`,
+        },
+        body: JSON.stringify({
+          password: "new-secret12",
+          confirmPassword: "new-secret12",
+        }),
+      }),
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { ok?: boolean; redirectTo?: string };
+    expect(body.ok).toBe(true);
+    expect(body.redirectTo).toBe("/login");
+    expect(updateUser).toHaveBeenCalledTimes(1);
   });
 
   test("confirm with an invalid or expired code returns unable to complete", async () => {
@@ -543,6 +890,114 @@ describe("auth routes integration / security", () => {
     expect(body.redirectTo).toBe("/reset-password");
   });
 
+  test("confirm bridge preserves a legitimate summary next", async () => {
+    exchangeCodeForSession.mockImplementationOnce(async () => ({
+      data: {
+        session: {
+          access_token: "recovery-access",
+          refresh_token: "recovery-refresh",
+          expires_in: 3600,
+        },
+        user: { id: "user-1", email: "student@example.com" },
+      },
+      error: null,
+    }));
+
+    const response = await app.handle(
+      new Request(
+        "http://localhost/api/v1/auth/confirm?code=valid-code&next=/summary",
+        { headers: { [AUTH_BRIDGE_HEADER]: AUTH_BRIDGE_VALUE } },
+      ),
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { redirectTo?: string };
+    expect(body.redirectTo).toBe("/summary");
+  });
+
+  test.each([
+    "//evil.com",
+    "///evil.com",
+    "/\\evil.com",
+    "https://evil.com",
+    "http://evil.com",
+    "javascript:alert(1)",
+    "data:text/html,<h1>x</h1>",
+    "/settings",
+  ])("confirm bridge falls back to /summary for next=%s", async (next) => {
+    exchangeCodeForSession.mockImplementationOnce(async () => ({
+      data: {
+        session: {
+          access_token: "recovery-access",
+          refresh_token: "recovery-refresh",
+          expires_in: 3600,
+        },
+        user: { id: "user-1", email: "student@example.com" },
+      },
+      error: null,
+    }));
+
+    const response = await app.handle(
+      new Request(
+        `http://localhost/api/v1/auth/confirm?code=valid-code&next=${encodeURIComponent(next)}`,
+        { headers: { [AUTH_BRIDGE_HEADER]: AUTH_BRIDGE_VALUE } },
+      ),
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { redirectTo?: string };
+    expect(body.redirectTo).toBe("/summary");
+  });
+
+  test("confirm non-bridge never leaks an attacker next into Location", async () => {
+    exchangeCodeForSession.mockImplementationOnce(async () => ({
+      data: {
+        session: {
+          access_token: "recovery-access",
+          refresh_token: "recovery-refresh",
+          expires_in: 3600,
+        },
+        user: { id: "user-1", email: "student@example.com" },
+      },
+      error: null,
+    }));
+
+    const response = await app.handle(
+      new Request(
+        `http://localhost/api/v1/auth/confirm?code=valid-code&next=${encodeURIComponent("//evil.com")}`,
+      ),
+    );
+    // NOTE: `set.redirect` is not honored by the installed Elysia version
+    // (pre-existing, out of scope) — assert the security property directly:
+    // no external/protocol-relative Location may ever be emitted.
+    const location = response.headers.get("location");
+    expect(location === null || location.startsWith(env.webOrigin)).toBe(true);
+    expect(location ?? "").not.toContain("evil");
+  });
+
+  test("confirm non-bridge still creates the recovery session", async () => {
+    exchangeCodeForSession.mockImplementationOnce(async () => ({
+      data: {
+        session: {
+          access_token: "recovery-access",
+          refresh_token: "recovery-refresh",
+          expires_in: 3600,
+        },
+        user: { id: "user-1", email: "student@example.com" },
+      },
+      error: null,
+    }));
+
+    const response = await app.handle(
+      new Request(
+        "http://localhost/api/v1/auth/confirm?code=valid-code&next=/reset-password",
+      ),
+    );
+    expect(response.status).toBe(200);
+    const setCookie =
+      typeof response.headers.getSetCookie === "function"
+        ? response.headers.getSetCookie().join(";")
+        : (response.headers.get("set-cookie") ?? "");
+    expect(setCookie).toContain("dr_access_token");
+  });
   test("change-password rejects an incorrect current password", async () => {
     setVerifyAccessTokenOverride(async () => ({
       id: "user-1",

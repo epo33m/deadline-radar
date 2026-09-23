@@ -15,7 +15,13 @@ export function isAuthBridgeRequest(request: Request): boolean {
   return timingSafeEqualString(header, secret);
 }
 
-function timingSafeEqualString(a: string, b: string): boolean {
+/**
+ * Constant-time string comparison for shared secrets (Finding #11).
+ * Length mismatch short-circuits to false (safe: no throw, no oracle beyond
+ * length, which is not secret); equal lengths compare every code unit so the
+ * timing does not reveal the mismatch position. Reused by cron auth.
+ */
+export function timingSafeEqualString(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let out = 0;
   for (let i = 0; i < a.length; i++) {

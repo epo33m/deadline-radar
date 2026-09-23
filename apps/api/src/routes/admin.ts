@@ -9,14 +9,19 @@ import {
 } from "../lib/authorization/role-admin";
 import {
   ApiError,
+  apiDoc,
   beginIdempotent,
   completeIdempotent,
+  envelope,
+  idempotent,
   jsonBodyDetail,
   openApiBodies,
   pageMeta,
   parsePaginationQuery,
+  R,
   readIdempotencyKey,
   readJsonBody,
+  secured,
   serializeAuditEvent,
   validationFromZod,
 } from "../lib/api";
@@ -29,7 +34,7 @@ export const adminRoutes = new Elysia({ prefix: "/api/v1/admin" })
     async ({ requireAuthz, request, set }) => {
       const ctx = await requireAuthz("role.assign");
       const body = await readJsonBody(request);
-      assertNoForbiddenMutationKeys(body);
+      assertNoForbiddenMutationKeys(body, { allow: ["user_id"] });
       const parsed = roleAssignSchema.safeParse(body);
       if (!parsed.success) {
         throw validationFromZod(
@@ -88,6 +93,19 @@ export const adminRoutes = new Elysia({ prefix: "/api/v1/admin" })
         tags: ["Admin"],
         summary: "Assign role to user",
         requestBody: jsonBodyDetail(openApiBodies.roleAssign),
+        ...secured(),
+        ...apiDoc({
+          ok: envelope(
+            {
+              ok: { type: "boolean" },
+              userId: { type: "string", format: "uuid" },
+              roleSlug: { type: "string" },
+            },
+            ["ok", "userId", "roleSlug"],
+          ),
+          errors: [400, 401, 403, 404, 409, 429],
+        }),
+        ...idempotent(),
       },
     },
   )
@@ -96,7 +114,7 @@ export const adminRoutes = new Elysia({ prefix: "/api/v1/admin" })
     async ({ requireAuthz, request }) => {
       const ctx = await requireAuthz("role.revoke");
       const body = await readJsonBody(request);
-      assertNoForbiddenMutationKeys(body);
+      assertNoForbiddenMutationKeys(body, { allow: ["user_id"] });
       const parsed = roleRevokeSchema.safeParse(body);
       if (!parsed.success) {
         throw validationFromZod(
@@ -123,6 +141,18 @@ export const adminRoutes = new Elysia({ prefix: "/api/v1/admin" })
         tags: ["Admin"],
         summary: "Revoke role from user",
         requestBody: jsonBodyDetail(openApiBodies.roleAssign),
+        ...secured(),
+        ...apiDoc({
+          ok: envelope(
+            {
+              ok: { type: "boolean" },
+              userId: { type: "string", format: "uuid" },
+              roleSlug: { type: "string" },
+            },
+            ["ok", "userId", "roleSlug"],
+          ),
+          errors: [400, 401, 403, 404, 429],
+        }),
       },
     },
   )
@@ -145,6 +175,20 @@ export const adminRoutes = new Elysia({ prefix: "/api/v1/admin" })
         limit: t.Optional(t.String()),
         cursor: t.Optional(t.String()),
       }),
-      detail: { tags: ["Admin"], summary: "List auth audit events" },
+      detail: {
+        tags: ["Admin"],
+        summary: "List auth audit events",
+        ...secured(),
+        ...apiDoc({
+          ok: envelope(
+            {
+              events: { type: "array", items: R("AuditEvent") },
+              page: R("Page"),
+            },
+            ["events", "page"],
+          ),
+          errors: [400, 401, 403, 429],
+        }),
+      },
     },
   );

@@ -9,6 +9,7 @@ import {
   changeEmailSchema,
   timezoneUpdateSchema,
   timeFormatUpdateSchema,
+  resolveConfirmNextPath,
 } from "@deadline-radar/validation";
 import { profiles } from "@deadline-radar/db";
 
@@ -22,8 +23,11 @@ import {
   ACCESS_COOKIE,
   REFRESH_COOKIE,
   REFRESH_COOKIE_MAX_AGE_SECONDS,
+  clearedCookieOptions,
   cookieOptions,
+  isRecoverySession,
   verifyAccessToken,
+  verifyAccessTokenClaims,
 } from "../lib/auth-tokens";
 import {
   isAuthBridgeRequest,
@@ -31,15 +35,28 @@ import {
 } from "../lib/auth-bridge";
 import { recordAuthEvent } from "../lib/auth-audit";
 import {
+  accountAttemptKey,
+  clearAccountFailures,
   clearLoginFailures,
   clientIpFromRequest,
+  getAccountDelayMs,
   getLoginDelayMs,
   loginAttemptKey,
+  recordAccountFailure,
   recordLoginFailure,
 } from "../lib/auth-abuse";
+import { peerAddressOf } from "../lib/proxy-trust";
 import { AUTH_ERRORS, logAuthProviderError } from "../lib/auth-errors";
 import { ApiError, validationFromZod } from "../lib/api/errors";
-import { readJsonBody, jsonBodyDetail, openApiBodies } from "../lib/api";
+import {
+  apiDoc,
+  envelope,
+  jsonBodyDetail,
+  openApiBodies,
+  R,
+  readJsonBody,
+  secured,
+} from "../lib/api";
 import { env } from "../env";
 
 function isValidTimeZone(timeZone: string): boolean {
@@ -74,8 +91,9 @@ function setSessionCookies(
 }
 
 function clearSessionCookies(cookie: CookieBag) {
-  cookie[ACCESS_COOKIE].remove();
-  cookie[REFRESH_COOKIE].remove();
+  for (const name of [ACCESS_COOKIE, REFRESH_COOKIE]) {
+    cookie[name].set({ value: "", ...clearedCookieOptions() });
+  }
 }
 
 function readRefreshCookie(cookie: CookieBag): string | null {
@@ -184,12 +202,44 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
         tags: ["Auth"],
         summary: "Register",
         requestBody: jsonBodyDetail(openApiBodies.register),
+        ...apiDoc({
+          ok: envelope(
+            {
+              user: {
+                type: "object",
+                required: ["id", "email"],
+                properties: {
+                  id: { type: "string", format: "uuid" },
+                  email: { type: "string", nullable: true },
+                },
+              },
+              redirectTo: { type: "string" },
+            },
+            ["user", "redirectTo"],
+          ),
+          description:
+            "200 with a session when email confirmation is off; 202 " +
+            "when a confirmation email was sent.",
+          errors: [400, 429],
+          extraResponses: {
+            202: {
+              description: "Confirmation email sent; no session yet.",
+              content: {
+                "application/json": {
+                  schema: envelope({ message: { type: "string" } }, [
+                    "message",
+                  ]),
+                },
+              },
+            },
+          },
+        }),
       },
     },
   )
   .post(
     "/login",
-    async ({ cookie, set, request }) => {
+    async ({ cookie, set, request, server }) => {
       const bridge = isAuthBridgeRequest(request);
       const body = await readJsonBody(request);
       const parsed = loginSchema.safeParse(body);
@@ -200,18 +250,37 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
         );
       }
 
-      const ip = clientIpFromRequest(request);
+      const ip = clientIpFromRequest(request, peerAddressOf(server, request));
       const attemptKey = loginAttemptKey(parsed.data.email, ip);
-      const delayMs = getLoginDelayMs(attemptKey);
+      const delayMs = await getLoginDelayMs(attemptKey);
       if (delayMs > 0) {
         await recordAuthEvent({
           event: "login.failure_rate_limited",
           result: "denied",
           method: "password",
           request,
-          metadata: { delayMs },
+          metadata: { delayMs, scope: "ip" },
         });
         set.headers["Retry-After"] = String(Math.ceil(delayMs / 1000));
+        throw ApiError.rateLimited(AUTH_ERRORS.rateLimited);
+      }
+
+      // Account-level throttle (Finding #9): survives client-IP rotation.
+      // Keyed by normalized email for any address, so it reveals nothing
+      // about account existence; same generic 429 as the IP scope.
+      const accountKey = accountAttemptKey(parsed.data.email);
+      const accountDelayMs = await getAccountDelayMs(accountKey);
+      if (accountDelayMs > 0) {
+        await recordAuthEvent({
+          event: "login.failure_rate_limited",
+          result: "denied",
+          method: "password",
+          request,
+          metadata: { delayMs: accountDelayMs, scope: "account" },
+        });
+        set.headers["Retry-After"] = String(
+          Math.ceil(accountDelayMs / 1000),
+        );
         throw ApiError.rateLimited(AUTH_ERRORS.rateLimited);
       }
 
@@ -223,7 +292,8 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
 
       if (error || !data.session || !data.user) {
         logAuthProviderError("login", error);
-        const nextDelay = recordLoginFailure(attemptKey);
+        const nextDelay = await recordLoginFailure(attemptKey);
+        await recordAccountFailure(accountKey);
         await recordAuthEvent({
           event: "login.failure",
           result: "failure",
@@ -234,7 +304,8 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
         throw ApiError.unauthorized(AUTH_ERRORS.invalidCredentials);
       }
 
-      clearLoginFailures(attemptKey);
+      await clearLoginFailures(attemptKey);
+      await clearAccountFailures(accountKey);
       setSessionCookies(
         cookie as never,
         data.session.access_token,
@@ -270,6 +341,25 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
         tags: ["Auth"],
         summary: "Login",
         requestBody: jsonBodyDetail(openApiBodies.login),
+        ...apiDoc({
+          ok: envelope(
+            {
+              user: {
+                type: "object",
+                required: ["id", "email"],
+                properties: {
+                  id: { type: "string", format: "uuid" },
+                  email: { type: "string", nullable: true },
+                },
+              },
+              redirectTo: { type: "string" },
+            },
+            ["user", "redirectTo"],
+          ),
+          description:
+            "Throttled responses carry a `Retry-After` (seconds) header.",
+          errors: [400, 401, 429],
+        }),
       },
     },
   )
@@ -327,7 +417,23 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
         bridge,
       );
     },
-    { detail: { tags: ["Auth"], summary: "Refresh session" } },
+    {
+      detail: {
+        tags: ["Auth"],
+        summary: "Refresh session",
+        ...apiDoc({
+          ok: envelope(
+            {
+              ok: { type: "boolean" },
+              authenticated: { type: "boolean" },
+            },
+            ["ok", "authenticated"],
+          ),
+          description: "Reads the `dr_refresh_token` cookie; rotates both.",
+          errors: [401, 429],
+        }),
+      },
+    },
   )
   .post(
     "/logout",
@@ -354,7 +460,20 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
       });
       return { ok: true, redirectTo: "/login" };
     },
-    { detail: { tags: ["Auth"], summary: "Logout current session" } },
+    {
+      detail: {
+        tags: ["Auth"],
+        summary: "Logout current session",
+        ...apiDoc({
+          ok: envelope({ ok: { type: "boolean" }, redirectTo: { type: "string" } }, [
+            "ok",
+            "redirectTo",
+          ]),
+          description: "Idempotent without a session; never requires auth.",
+          errors: [429],
+        }),
+      },
+    },
   )
   .post(
     "/logout-all",
@@ -383,7 +502,20 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
       });
       return { ok: true, redirectTo: "/login" };
     },
-    { detail: { tags: ["Auth"], summary: "Logout all sessions" } },
+    {
+      detail: {
+        tags: ["Auth"],
+        summary: "Logout all sessions",
+        ...secured(),
+        ...apiDoc({
+          ok: envelope({ ok: { type: "boolean" }, redirectTo: { type: "string" } }, [
+            "ok",
+            "redirectTo",
+          ]),
+          errors: [401, 429],
+        }),
+      },
+    },
   )
   .post(
     "/forgot-password",
@@ -397,13 +529,10 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
         );
       }
 
-      const origin =
-        request.headers.get("origin") ??
-        request.headers.get("x-forwarded-host") ??
-        env.webOrigin;
-      const base = origin.includes("://")
-        ? origin.replace(/\/$/, "")
-        : env.webOrigin.replace(/\/$/, "");
+      // Trusted server-side origin only. Never derive the reset-link
+      // destination from client-controlled headers (Origin, X-Forwarded-Host):
+      // an attacker-supplied base would poison the password-reset email link.
+      const base = env.webOrigin.replace(/\/$/, "");
       const redirectTo = `${base}/auth/confirm?next=/reset-password`;
 
       const supabase = createAnonClient();
@@ -431,6 +560,12 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
         tags: ["Auth"],
         summary: "Request password reset",
         requestBody: jsonBodyDetail(openApiBodies.forgotPassword),
+        ...apiDoc({
+          ok: envelope({ success: { type: "string" } }, ["success"]),
+          description:
+            "Always generic — reveals nothing about account existence.",
+          errors: [400, 429],
+        }),
       },
     },
   )
@@ -447,6 +582,26 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
       }
 
       if (!accessToken) {
+        throw ApiError.unauthorized(AUTH_ERRORS.invalidReset);
+      }
+
+      // Recovery-scoped authorization: only a session established through the
+      // password-recovery flow (Supabase `amr: [{ method: "recovery" }]`,
+      // issued by /auth/confirm after a valid recovery link) may use this
+      // endpoint. A normal login session must use change-password with
+      // currentPassword instead. The scope comes from the server-verified JWT
+      // claims — never from body/query/header input. Same generic 401 as an
+      // invalid session so token validity is not oracle-able.
+      const recoveryClaims = await verifyAccessTokenClaims(accessToken);
+      if (!isRecoverySession(recoveryClaims)) {
+        await recordAuthEvent({
+          event: "password_reset.denied",
+          result: "denied",
+          userId: recoveryClaims?.sub,
+          method: "password",
+          request,
+          metadata: { reason: "not_recovery_session" },
+        });
         throw ApiError.unauthorized(AUTH_ERRORS.invalidReset);
       }
 
@@ -484,6 +639,17 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
         tags: ["Auth"],
         summary: "Reset password",
         requestBody: jsonBodyDetail(openApiBodies.resetPassword),
+        ...secured(),
+        ...apiDoc({
+          ok: envelope({ ok: { type: "boolean" }, redirectTo: { type: "string" } }, [
+            "ok",
+            "redirectTo",
+          ]),
+          description:
+            "Requires a recovery-scoped session (amr: recovery); normal " +
+            "login sessions are rejected. Signs out all sessions on success.",
+          errors: [400, 401, 429],
+        }),
       },
     },
   )
@@ -585,6 +751,12 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
         tags: ["Auth"],
         summary: "Change password (signed in)",
         requestBody: jsonBodyDetail(openApiBodies.changePassword),
+        ...secured(),
+        ...apiDoc({
+          ok: envelope({ ok: { type: "boolean" } }, ["ok"]),
+          description: "Verifies `currentPassword` before updating.",
+          errors: [400, 401, 403, 429],
+        }),
       },
     },
   )
@@ -664,6 +836,19 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
         tags: ["Auth"],
         summary: "Change email (signed in)",
         requestBody: jsonBodyDetail(openApiBodies.changeEmail),
+        ...secured(),
+        ...apiDoc({
+          ok: envelope(
+            {
+              ok: { type: "boolean" },
+              message: { type: "string" },
+              pendingEmail: { type: "string" },
+            },
+            ["ok", "message", "pendingEmail"],
+          ),
+          description: "Verifies `currentPassword` before requesting.",
+          errors: [400, 401, 403, 429],
+        }),
       },
     },
   )
@@ -672,10 +857,9 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
     async ({ query, cookie, set, request }) => {
       const bridge = isAuthBridgeRequest(request);
       const supabase = createAnonClient();
-      const next =
-        typeof query.next === "string" && query.next.startsWith("/")
-          ? query.next
-          : "/summary";
+      // Allow-listed internal path only; protocol-relative/absolute/
+      // javascript:/data: inputs fall back to /summary (see validation).
+      const next = resolveConfirmNextPath(query.next);
 
       let session: {
         access_token: string;
@@ -765,7 +949,33 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
         type: t.Optional(t.String()),
         next: t.Optional(t.String()),
       }),
-      detail: { tags: ["Auth"], summary: "Confirm email / recovery" },
+      detail: {
+        tags: ["Auth"],
+        summary: "Confirm email / recovery",
+        description:
+          "`next` must be an allow-listed internal path " +
+          "(`/reset-password`, `/summary`); anything else falls back to " +
+          "`/summary`. Bridge callers receive JSON; others get a 302.",
+        ...apiDoc({
+          ok: envelope(
+            { ok: { type: "boolean" }, redirectTo: { type: "string" } },
+            ["ok", "redirectTo"],
+          ),
+          errors: [400, 429],
+          extraResponses: {
+            302: {
+              description:
+                "Non-bridge success: redirect to `<web-origin><next>`.",
+              headers: {
+                Location: {
+                  description: "Trusted same-origin redirect target.",
+                  schema: { type: "string" },
+                },
+              },
+            },
+          },
+        }),
+      },
     },
   )
   .get(
@@ -817,7 +1027,28 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
         },
       };
     },
-    { detail: { tags: ["Auth"], summary: "Current session" } },
+    {
+      detail: {
+        tags: ["Auth"],
+        summary: "Current session",
+        ...secured(),
+        ...apiDoc({
+          ok: envelope(
+            {
+              authenticated: { type: "boolean" },
+              user: R("SessionUser"),
+            },
+            ["authenticated", "user"],
+          ),
+          errors: [401, 403, 429],
+          errorSchemas: {
+            401: envelope({ authenticated: { type: "boolean" } }, [
+              "authenticated",
+            ]),
+          },
+        }),
+      },
+    },
   )
   .patch(
     "/timezone",
@@ -834,7 +1065,7 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
       }
       await getDb()
         .update(profiles)
-        .set({ timezone })
+        .set({ timezone, updatedAt: new Date() })
         .where(eq(profiles.id, ctx.subject.id));
       return { ok: true, timezone };
     },
@@ -843,6 +1074,14 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
         tags: ["Auth"],
         summary: "Update timezone",
         requestBody: jsonBodyDetail(openApiBodies.timezone),
+        ...secured(),
+        ...apiDoc({
+          ok: envelope(
+            { ok: { type: "boolean" }, timezone: { type: "string" } },
+            ["ok", "timezone"],
+          ),
+          errors: [400, 401, 403, 429],
+        }),
       },
     },
   )
@@ -857,7 +1096,7 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
       }
       await getDb()
         .update(profiles)
-        .set({ timeFormat: parsed.data.timeFormat })
+        .set({ timeFormat: parsed.data.timeFormat, updatedAt: new Date() })
         .where(eq(profiles.id, ctx.subject.id));
       return { ok: true, timeFormat: parsed.data.timeFormat };
     },
@@ -866,6 +1105,17 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
         tags: ["Auth"],
         summary: "Update time format",
         requestBody: jsonBodyDetail(openApiBodies.timeFormat),
+        ...secured(),
+        ...apiDoc({
+          ok: envelope(
+            {
+              ok: { type: "boolean" },
+              timeFormat: { type: "string", enum: ["24h", "12h"] },
+            },
+            ["ok", "timeFormat"],
+          ),
+          errors: [400, 401, 403, 429],
+        }),
       },
     },
   );

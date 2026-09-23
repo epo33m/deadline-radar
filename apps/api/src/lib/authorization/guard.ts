@@ -25,14 +25,23 @@ export async function requireCapability(
   }
 
   const reason: AuthzDenyReason = decision.reason;
-  await recordAuthzDenied({
-    ctx,
-    capability,
-    reason,
-    resource: options?.resource,
-    resourceId: options?.resourceId,
-    request: options?.request,
-  });
+  try {
+    // Audit must never break the verdict: a throwing audit sink would
+    // otherwise convert this deny into a 500 (fail-open observability).
+    await recordAuthzDenied({
+      ctx,
+      capability,
+      reason,
+      resource: options?.resource,
+      resourceId: options?.resourceId,
+      request: options?.request,
+    });
+  } catch (error) {
+    console.error(
+      "[authz] denial audit failed",
+      error instanceof Error ? error.message : "unknown",
+    );
+  }
 
   if (reason === "missing_identity") {
     unauthorizedResponse();

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 
 import {
   ADMIN_CAPABILITIES,
@@ -12,9 +12,19 @@ import {
   isAllowed,
   isCapability,
   isRoleSlug,
+  requireCapability,
   resetAuthzCache,
   setCachedAuthz,
 } from "./index";
+import { ApiError } from "../api/errors";
+
+// Fail-closed seam: the audit sink is down for this file, so any test that
+// reaches recordAuthzDenied proves the verdict survives it.
+mock.module("../auth-audit", () => ({
+  recordAuthEvent: async () => {
+    throw new Error("AUDIT_SINK_DOWN");
+  },
+}));
 
 const subject = { id: "user-1", email: "a@example.com", sessionId: "s1" };
 
@@ -163,5 +173,44 @@ describe("authz cache", () => {
       capabilities: ["role.assign"],
     });
     expect(getCachedAuthz("")).toBeNull();
+  });
+});
+
+describe("F-8 — requireCapability stays fail-closed when the audit sink throws", () => {
+  const deniedCtx = createAuthorizationContext({
+    subject,
+    roles: ["user"],
+    capabilities: [],
+  });
+  const allowedCtx = createAuthorizationContext({
+    subject,
+    roles: ["user"],
+    capabilities: ["task.view"],
+  });
+
+  test("denied capability still throws 403 (not the audit error)", async () => {
+    const err = await requireCapability(deniedCtx, "task.view").then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).status).toBe(403);
+    expect((err as ApiError).message).toBe("Forbidden");
+    expect((err as ApiError).message).not.toContain("AUDIT_SINK_DOWN");
+  });
+
+  test("missing identity still throws 401 when the audit sink throws", async () => {
+    const err = await requireCapability(null, "task.view").then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).status).toBe(401);
+  });
+
+  test("allowed capability returns ctx without touching audit", async () => {
+    await expect(requireCapability(allowedCtx, "task.view")).resolves.toBe(
+      allowedCtx,
+    );
   });
 });

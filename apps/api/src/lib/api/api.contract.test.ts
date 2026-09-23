@@ -61,19 +61,38 @@ describe("pagination", () => {
   });
 
   test("round-trips cursors", () => {
+    const validUuid = "11111111-1111-4111-8111-111111111111";
     const encoded = encodeCursor({
       v: 1,
       k: "2026-01-01T00:00:00.000Z",
-      id: "abc",
+      id: validUuid,
     });
     expect(decodeCursor(encoded)).toEqual({
       v: 1,
       k: "2026-01-01T00:00:00.000Z",
-      id: "abc",
+      id: validUuid,
     });
   });
 
   test("rejects invalid cursors", () => {
     expect(() => decodeCursor("!!!")).toThrow();
+  });
+
+  test("rejects cursors with an unparseable sort key", () => {
+    const validUuid = "11111111-1111-4111-8111-111111111111";
+    const crafted = Buffer.from(
+      JSON.stringify({ v: 1, k: "not-a-date", id: validUuid }),
+      "utf8",
+    ).toString("base64url");
+    // Previously accepted, then failed inside the database layer (500).
+    expect(() => decodeCursor(crafted)).toThrow();
+  });
+
+  test("accepts epoch and far-future sort keys", () => {
+    const validUuid = "11111111-1111-4111-8111-111111111111";
+    for (const k of ["1970-01-01T00:00:00.000Z", "2999-12-31T00:00:00.000Z"]) {
+      const encoded = encodeCursor({ v: 1, k, id: validUuid });
+      expect(decodeCursor(encoded)).toEqual({ v: 1, k, id: validUuid });
+    }
   });
 });

@@ -8,24 +8,34 @@ import { getDb } from "../lib/db";
 import {
   assertNoForbiddenMutationKeys,
   ownedCourse,
+  ownedCourseInTx,
+  withUserRls,
 } from "../lib/authorization";
 import {
   ApiError,
+  apiDoc,
   beginIdempotent,
   completeIdempotent,
   decodeCursor,
   encodeCursor,
+  envelope,
+  idempotent,
   pageMeta,
   parsePaginationQuery,
+  R,
   readIdempotencyKey,
   readJsonBody,
+  secured,
   serializeCourse,
   validationFromZod,
   jsonBodyDetail,
   openApiBodies,
 } from "../lib/api";
 
-function normalizeCourseColor(raw: string | null | undefined): string | null {
+function normalizeCourseColor(
+  raw: string | null | undefined,
+): string | null | undefined {
+  if (raw === undefined) return undefined;
   if (!raw) return null;
   const trimmed = raw.trim();
   if (!trimmed) return null;
@@ -34,7 +44,10 @@ function normalizeCourseColor(raw: string | null | undefined): string | null {
     : `#${trimmed.toLowerCase()}`;
 }
 
-function normalizeCourseIcon(raw: string | null | undefined): string | null {
+function normalizeCourseIcon(
+  raw: string | null | undefined,
+): string | null | undefined {
+  if (raw === undefined) return undefined;
   if (!raw) return null;
   const trimmed = raw.trim().toLowerCase();
   if (!trimmed) return null;
@@ -109,7 +122,21 @@ export const courseRoutes = new Elysia({ prefix: "/api/v1/courses" })
         limit: t.Optional(t.String()),
         cursor: t.Optional(t.String()),
       }),
-      detail: { tags: ["Courses"], summary: "List courses" },
+      detail: {
+        tags: ["Courses"],
+        summary: "List courses",
+        ...secured(),
+        ...apiDoc({
+          ok: envelope(
+            {
+              courses: { type: "array", items: R("Course") },
+              page: R("Page"),
+            },
+            ["courses", "page"],
+          ),
+          errors: [400, 401, 403, 429],
+        }),
+      },
     },
   )
   .get(
@@ -122,7 +149,15 @@ export const courseRoutes = new Elysia({ prefix: "/api/v1/courses" })
     },
     {
       params: t.Object({ id: t.String({ format: "uuid" }) }),
-      detail: { tags: ["Courses"], summary: "Get course" },
+      detail: {
+        tags: ["Courses"],
+        summary: "Get course",
+        ...secured(),
+        ...apiDoc({
+          ok: envelope({ course: R("Course") }, ["course"]),
+          errors: [401, 403, 404, 429],
+        }),
+      },
     },
   )
   .post(
@@ -190,6 +225,12 @@ export const courseRoutes = new Elysia({ prefix: "/api/v1/courses" })
         tags: ["Courses"],
         summary: "Create course",
         requestBody: jsonBodyDetail(openApiBodies.courseCreate),
+        ...secured(),
+        ...apiDoc({
+          ok: envelope({ course: R("Course") }, ["course"]),
+          errors: [400, 401, 403, 409, 429],
+        }),
+        ...idempotent(),
       },
     },
   )
@@ -209,8 +250,12 @@ export const courseRoutes = new Elysia({ prefix: "/api/v1/courses" })
       assertNoForbiddenMutationKeys(body);
       const parsed = coursePatchSchema.safeParse({
         ...body,
-        color: normalizeCourseColor(body.color ?? null),
-        icon: normalizeCourseIcon(body.icon ?? null),
+        ...(body.color !== undefined
+          ? { color: normalizeCourseColor(body.color) }
+          : {}),
+        ...(body.icon !== undefined
+          ? { icon: normalizeCourseIcon(body.icon) }
+          : {}),
       });
       if (!parsed.success) {
         throw validationFromZod(
@@ -218,34 +263,59 @@ export const courseRoutes = new Elysia({ prefix: "/api/v1/courses" })
           parsed.error.flatten().fieldErrors,
         );
       }
-      const existing = await ownedCourse(ctx.subject.id, params.id);
-      if (!existing) throw ApiError.notFound("Course not found");
-      const clientUpdatedAt = parsed.data.updatedAt ?? parsed.data.updated_at;
-      assertFreshUpdatedAt(
-        existing.updatedAt ?? existing.createdAt,
-        clientUpdatedAt,
-      );
 
-      const [row] = await getDb()
-        .update(courses)
-        .set({
-          name: parsed.data.name,
-          code: parsed.data.code,
-          color: parsed.data.color,
-          icon: parsed.data.icon,
-          description: parsed.data.description,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(courses.id, params.id),
-            eq(courses.userId, ctx.subject.id),
-            isNull(courses.deletedAt),
-          ),
-        )
-        .returning();
-      if (!row) throw ApiError.notFound("Course not found");
-      return { course: serializeCourse(row) };
+      const updates: Record<string, unknown> = {};
+      if (parsed.data.name !== undefined) updates.name = parsed.data.name;
+      if (parsed.data.code !== undefined) updates.code = parsed.data.code;
+      if (parsed.data.color !== undefined) updates.color = parsed.data.color;
+      if (parsed.data.icon !== undefined) updates.icon = parsed.data.icon;
+      if (parsed.data.description !== undefined)
+        updates.description = parsed.data.description;
+
+      if (Object.keys(updates).length === 0) {
+        throw ApiError.validation("At least one field must be provided to update");
+      }
+
+      // Check + mutate + conditional re-read in one transaction (P2-3).
+      return withUserRls(ctx.subject.id, async (tx) => {
+        const existing = await ownedCourseInTx(tx, ctx.subject.id, params.id);
+        if (!existing) throw ApiError.notFound("Course not found");
+        const clientUpdatedAt = parsed.data.updatedAt ?? parsed.data.updated_at;
+        assertFreshUpdatedAt(
+          existing.updatedAt ?? existing.createdAt,
+          clientUpdatedAt,
+        );
+
+        updates.updatedAt = new Date();
+
+        const [row] = await tx
+          .update(courses)
+          .set(updates)
+          .where(
+            and(
+              eq(courses.id, params.id),
+              eq(courses.userId, ctx.subject.id),
+              isNull(courses.deletedAt),
+              clientUpdatedAt
+                ? eq(
+                    courses.updatedAt,
+                    new Date(existing.updatedAt ?? existing.createdAt),
+                  )
+                : undefined,
+            ),
+          )
+          .returning();
+        if (!row) {
+          const check = await ownedCourseInTx(tx, ctx.subject.id, params.id);
+          if (check && clientUpdatedAt) {
+            throw ApiError.conflict("Resource was modified; refresh and retry", [
+              { field: "updatedAt", message: "Stale updatedAt" },
+            ]);
+          }
+          throw ApiError.notFound("Course not found");
+        }
+        return { course: serializeCourse(row) };
+      });
     },
     {
       params: t.Object({ id: t.String({ format: "uuid" }) }),
@@ -253,6 +323,11 @@ export const courseRoutes = new Elysia({ prefix: "/api/v1/courses" })
         tags: ["Courses"],
         summary: "Update course",
         requestBody: jsonBodyDetail(openApiBodies.coursePatch),
+        ...secured(),
+        ...apiDoc({
+          ok: envelope({ course: R("Course") }, ["course"]),
+          errors: [400, 401, 403, 404, 409, 429],
+        }),
       },
     },
   )
@@ -276,6 +351,14 @@ export const courseRoutes = new Elysia({ prefix: "/api/v1/courses" })
     },
     {
       params: t.Object({ id: t.String({ format: "uuid" }) }),
-      detail: { tags: ["Courses"], summary: "Soft-delete course" },
+      detail: {
+        tags: ["Courses"],
+        summary: "Soft-delete course",
+        ...secured(),
+        ...apiDoc({
+          ok: envelope({ ok: { type: "boolean" } }, ["ok"]),
+          errors: [401, 403, 404, 429],
+        }),
+      },
     },
   );

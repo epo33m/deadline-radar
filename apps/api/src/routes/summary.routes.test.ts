@@ -3,6 +3,7 @@ process.env.AUTH_BRIDGE_SECRET ??= "test-auth-bridge-secret";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   summarizeDeadlineBuckets,
+  summarizeProgress,
   type ProgressSummary,
   type WeekSummary,
 } from "@deadline-radar/domain";
@@ -20,22 +21,18 @@ const USER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
 mock.module("../lib/db", () => ({
   getDb: () => {
-    let tasksMode = false;
     const chain = {
       select: () => chain,
       from: () => chain,
-      leftJoin: () => chain,
       where: () => chain,
-      limit: async () => (tasksMode ? [] : profileQueryReturn),
-      then: (
-        resolve: (v: unknown) => unknown,
-        reject?: (e: unknown) => unknown,
-      ) => {
-        tasksMode = true;
-        return taskQueryReturn.then(resolve, reject);
-      },
+      limit: async () => profileQueryReturn,
+      // Mirrors public.get_user_summary: aggregates the fixture rows in the
+      // resolved timezone. The route guarantees a valid IANA name (UTC
+      // fallback), so the mock applies the same fallback Postgres would
+      // require — unknown zones never reach the RPC.
+      execute: async () => [{ summary: await buildRpcSummary() }],
     };
-    return { select: () => chain };
+    return chain;
   },
 }));
 
@@ -84,6 +81,47 @@ function setFixture(tasks: FixtureTask[], timezone: string | null) {
         courseColor: t.courseColor ?? null,
       })),
   );
+}
+
+/**
+ * In-test stand-in for public.get_user_summary: aggregates the same fixture
+ * rows with the shared domain summarizers in the resolved timezone, so the
+ * route tests prove pass-through shape and tz resolution, not PG internals.
+ * (SQL-vs-domain equivalence belongs to a DB-backed test, not this mock.)
+ */
+async function buildRpcSummary(): Promise<{
+  summary: WeekSummary;
+  progress: ProgressSummary;
+}> {
+  const rawTz = profileQueryReturn[0]?.timezone;
+  let timeZone = "UTC";
+  if (rawTz) {
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: rawTz }).format(new Date());
+      timeZone = rawTz;
+    } catch {
+      timeZone = "UTC";
+    }
+  }
+  const rows = await taskQueryReturn;
+  return {
+    summary: summarizeDeadlineBuckets(
+      rows.map((r) => ({
+        deadline: r.deadline.toISOString(),
+        status: r.status,
+      })),
+      timeZone,
+    ),
+    progress: summarizeProgress(
+      rows.map((r) => ({
+        status: r.status,
+        deadline: r.deadline.toISOString(),
+        completedAt: r.completedAt ? r.completedAt.toISOString() : null,
+        courseName: r.courseName,
+        courseColor: r.courseColor,
+      })),
+    ),
+  };
 }
 
 function baseTasks(): FixtureTask[] {
@@ -246,6 +284,22 @@ describe("GET /api/v1/summary — HTTP end-to-end", () => {
     const before = new Date();
     const tasks = baseTasks();
     const { status, json } = await fetchSummary("user-token", tasks, null);
+    const after = new Date();
+
+    expect(status).toBe(200);
+    const summary = (json as { summary: WeekSummary }).summary;
+    const utcExpected = [before, after].map((n) =>
+      expectedSummary(tasks, "UTC", n),
+    );
+    expect(utcExpected.map((e) => JSON.stringify(e))).toContain(
+      JSON.stringify(summary),
+    );
+  });
+
+  test("falls back to UTC when the profile timezone is invalid", async () => {
+    const before = new Date();
+    const tasks = baseTasks();
+    const { status, json } = await fetchSummary("user-token", tasks, "Not/AZone");
     const after = new Date();
 
     expect(status).toBe(200);

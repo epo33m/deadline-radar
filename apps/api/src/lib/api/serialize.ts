@@ -1,5 +1,10 @@
 /** Public API DTOs — never return raw DB rows from handlers without going through these. */
 
+import {
+  REMINDER_LATE_AFTER_MS,
+  thresholdTriggerAt,
+} from "@deadline-radar/domain";
+
 function iso(value: Date | string | null | undefined): string | null {
   if (value == null) return null;
   if (value instanceof Date) return value.toISOString();
@@ -39,7 +44,8 @@ export type TaskRow = {
   userId: string;
   courseId: string;
   title: string;
-  description: string | null;
+  /** Absent in slim list projections (`serializeTaskList`); present otherwise. */
+  description?: string | null;
   deadline: Date | string;
   status: string;
   createdAt: Date | string;
@@ -56,7 +62,7 @@ export function serializeTask(row: TaskRow) {
     userId: row.userId,
     courseId: row.courseId,
     title: row.title,
-    description: row.description,
+    description: row.description ?? null,
     deadline: iso(row.deadline)!,
     status: row.status,
     createdAt: iso(row.createdAt)!,
@@ -72,6 +78,16 @@ export function serializeTask(row: TaskRow) {
     };
   }
   return base;
+}
+
+/**
+ * Slim list projection: everything the list/calendar UI renders, minus
+ * `description` (unbounded text × N rows). Detail + write paths keep the
+ * full {@link serializeTask} shape.
+ */
+export function serializeTaskList(row: TaskRow) {
+  const { description: _omitted, ...rest } = serializeTask(row);
+  return rest;
 }
 
 export type ThresholdRow = {
@@ -126,7 +142,37 @@ export type NotificationRow = {
   createdAt: Date | string;
   taskTitle?: string | null;
   daysBefore?: number | null;
+  /** RF-11: current task deadline (UTC instant of the local deadline). */
+  taskDeadline?: Date | string | null;
+  /** RF-11: recipient profile timezone, needed to derive the trigger instant. */
+  timeZone?: string | null;
 };
+
+/**
+ * RF-11: the email path freezes a `late` label into the body at first attempt.
+ * In-app notifications have no body, so the same label is derived on read:
+ * the delivery is "late" when its sent time was at least
+ * REMINDER_LATE_AFTER_MS after the (timezone-aware) trigger instant for the
+ * reminder offset. Absent inputs → not late.
+ */
+export function notificationIsLate(row: NotificationRow): boolean {
+  if (
+    !row.sentAt ||
+    row.daysBefore == null ||
+    !row.taskDeadline ||
+    !row.timeZone
+  ) {
+    return false;
+  }
+  const trigger = thresholdTriggerAt(
+    new Date(row.taskDeadline).toISOString(),
+    row.daysBefore,
+    row.timeZone,
+  );
+  return (
+    new Date(row.sentAt).getTime() - trigger.getTime() >= REMINDER_LATE_AFTER_MS
+  );
+}
 
 export function serializeNotification(row: NotificationRow) {
   return {
@@ -141,6 +187,7 @@ export function serializeNotification(row: NotificationRow) {
     createdAt: iso(row.createdAt)!,
     taskTitle: row.taskTitle ?? null,
     daysBefore: row.daysBefore ?? null,
+    isLate: notificationIsLate(row),
   };
 }
 

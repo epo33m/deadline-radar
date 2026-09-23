@@ -5,3 +5,4 @@ export * from "./serialize";
 export * from "./idempotency";
 export * from "./read-json";
 export * from "./openapi-bodies";
+export * from "./openapi-docs";

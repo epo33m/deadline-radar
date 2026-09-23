@@ -1,4 +1,5 @@
 import { Elysia } from "elysia";
+import * as Sentry from "@sentry/bun";
 
 import {
   ApiError,
@@ -35,6 +36,8 @@ export const errorHandlerPlugin = new Elysia({
 
   if (error instanceof ApiError) {
     set.status = error.status;
+    // 5xx only: routine 4xx (validation, authz, rate limits) stay out of Sentry.
+    if (error.status >= 500) Sentry.captureException(error);
     return toErrorBody(error, rid);
   }
 
@@ -56,7 +59,8 @@ export const errorHandlerPlugin = new Elysia({
     error &&
     typeof error === "object" &&
     "code" in error &&
-    (error as { code?: string }).code === "VALIDATION"
+    ((error as { code?: string }).code === "VALIDATION" ||
+      (error as { code?: string }).code === "INVALID_FILE_TYPE")
   ) {
     set.status = 400;
     return toErrorBody(
@@ -81,6 +85,24 @@ export const errorHandlerPlugin = new Elysia({
   ) {
     set.status = 404;
     return toErrorBody(ApiError.notFound(), rid);
+  }
+
+  // PostgreSQL foreign key violation (23503)
+  if (
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    ((error as { code?: string | number }).code === "23503" ||
+      (error as { code?: string | number }).code === 23503)
+  ) {
+    set.status = 400;
+    return toErrorBody(
+      ApiError.validation(
+        "Invalid referenced resource or cross-owner violation",
+        [{ message: "Referenced resource does not exist or owner mismatch" }],
+      ),
+      rid,
+    );
   }
 
   // Thrown Response (legacy auth helpers) — rewrite body when possible
@@ -117,6 +139,7 @@ export const errorHandlerPlugin = new Elysia({
   }
 
   console.error("[api] unhandled error", rid, error);
+  Sentry.captureException(error);
   set.status = 500;
   return toErrorBody(ApiError.internal(), rid);
 });

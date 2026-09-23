@@ -31,55 +31,64 @@ export async function assignRole(input: {
   }
 
   const db = getDb();
-  const [target] = await db
-    .select({ id: profiles.id })
-    .from(profiles)
-    .where(eq(profiles.id, input.targetUserId))
-    .limit(1);
-  if (!target) {
-    return { ok: false, error: "user_not_found" };
-  }
+  const result = await db.transaction(async (tx) => {
+    const [target] = await tx
+      .select({ id: profiles.id })
+      .from(profiles)
+      .where(eq(profiles.id, input.targetUserId))
+      .limit(1);
+    if (!target) {
+      return { ok: false as const, error: "user_not_found" as const };
+    }
 
-  const [role] = await db
-    .select()
-    .from(roles)
-    .where(eq(roles.slug, input.roleSlug))
-    .limit(1);
-  if (!role) {
-    return { ok: false, error: "invalid_role" };
-  }
+    const [role] = await tx
+      .select()
+      .from(roles)
+      .where(eq(roles.slug, input.roleSlug))
+      .limit(1);
+    if (!role) {
+      return { ok: false as const, error: "invalid_role" as const };
+    }
 
-  const [existing] = await db
-    .select({ id: userRoles.id })
-    .from(userRoles)
-    .where(
-      and(
-        eq(userRoles.userId, input.targetUserId),
-        eq(userRoles.roleId, role.id),
-      ),
-    )
-    .limit(1);
-  if (existing) {
-    return { ok: false, error: "already_assigned" };
-  }
+    const [inserted] = await tx
+      .insert(userRoles)
+      .values({
+        userId: input.targetUserId,
+        roleId: role.id,
+        assignedBy: input.actorId,
+      })
+      .onConflictDoNothing({
+        target: [userRoles.userId, userRoles.roleId],
+      })
+      .returning({ id: userRoles.id });
 
-  await db.insert(userRoles).values({
-    userId: input.targetUserId,
-    roleId: role.id,
-    assignedBy: input.actorId,
+    if (!inserted) {
+      return { ok: false as const, error: "already_assigned" as const };
+    }
+
+    await recordRoleChange(
+      {
+        event: "role.assigned",
+        actorId: input.actorId,
+        targetUserId: input.targetUserId,
+        roleSlug: input.roleSlug,
+        request: input.request,
+      },
+      tx,
+    );
+
+    return {
+      ok: true as const,
+      roleSlug: input.roleSlug as RoleSlug,
+      userId: input.targetUserId,
+    };
   });
 
-  invalidateAuthzCache(input.targetUserId);
+  if (result.ok) {
+    invalidateAuthzCache(input.targetUserId);
+  }
 
-  await recordRoleChange({
-    event: "role.assigned",
-    actorId: input.actorId,
-    targetUserId: input.targetUserId,
-    roleSlug: input.roleSlug,
-    request: input.request,
-  });
-
-  return { ok: true, roleSlug: input.roleSlug, userId: input.targetUserId };
+  return result;
 }
 
 export async function revokeRole(input: {
@@ -93,40 +102,53 @@ export async function revokeRole(input: {
   }
 
   const db = getDb();
-  const [role] = await db
-    .select()
-    .from(roles)
-    .where(eq(roles.slug, input.roleSlug))
-    .limit(1);
-  if (!role) {
-    return { ok: false, error: "invalid_role" };
-  }
+  const result = await db.transaction(async (tx) => {
+    const [role] = await tx
+      .select()
+      .from(roles)
+      .where(eq(roles.slug, input.roleSlug))
+      .limit(1);
+    if (!role) {
+      return { ok: false as const, error: "invalid_role" as const };
+    }
 
-  const [removed] = await db
-    .delete(userRoles)
-    .where(
-      and(
-        eq(userRoles.userId, input.targetUserId),
-        eq(userRoles.roleId, role.id),
-      ),
-    )
-    .returning({ id: userRoles.id });
+    const [removed] = await tx
+      .delete(userRoles)
+      .where(
+        and(
+          eq(userRoles.userId, input.targetUserId),
+          eq(userRoles.roleId, role.id),
+        ),
+      )
+      .returning({ id: userRoles.id });
 
-  if (!removed) {
-    return { ok: false, error: "not_assigned" };
-  }
+    if (!removed) {
+      return { ok: false as const, error: "not_assigned" as const };
+    }
 
-  invalidateAuthzCache(input.targetUserId);
+    await recordRoleChange(
+      {
+        event: "role.revoked",
+        actorId: input.actorId,
+        targetUserId: input.targetUserId,
+        roleSlug: input.roleSlug,
+        request: input.request,
+      },
+      tx,
+    );
 
-  await recordRoleChange({
-    event: "role.revoked",
-    actorId: input.actorId,
-    targetUserId: input.targetUserId,
-    roleSlug: input.roleSlug,
-    request: input.request,
+    return {
+      ok: true as const,
+      roleSlug: input.roleSlug as RoleSlug,
+      userId: input.targetUserId,
+    };
   });
 
-  return { ok: true, roleSlug: input.roleSlug, userId: input.targetUserId };
+  if (result.ok) {
+    invalidateAuthzCache(input.targetUserId);
+  }
+
+  return result;
 }
 
 export async function listAuditEvents(options: {

@@ -27,16 +27,23 @@ export type ForbiddenMutationKey = (typeof FORBIDDEN_MUTATION_KEYS)[number];
  */
 export function findForbiddenMutationKeys(
   body: unknown,
+  options?: { allow?: readonly ForbiddenMutationKey[] },
 ): ForbiddenMutationKey[] {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     return [];
   }
   const keys = Object.keys(body as Record<string, unknown>);
-  return FORBIDDEN_MUTATION_KEYS.filter((k) => keys.includes(k));
+  const allowed = new Set<string>(options?.allow ?? []);
+  return FORBIDDEN_MUTATION_KEYS.filter(
+    (k) => keys.includes(k) && !allowed.has(k),
+  );
 }
 
-export function assertNoForbiddenMutationKeys(body: unknown): void {
-  const found = findForbiddenMutationKeys(body);
+export function assertNoForbiddenMutationKeys(
+  body: unknown,
+  options?: { allow?: readonly ForbiddenMutationKey[] },
+): void {
+  const found = findForbiddenMutationKeys(body, options);
   if (found.length > 0) {
     throw new ForbiddenFieldError(found);
   }

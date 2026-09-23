@@ -14,6 +14,8 @@ import {
   setCachedAuthz,
 } from "./cache";
 
+type Db = ReturnType<typeof getDb>;
+
 type LoadFn = (
   subject: AuthUser,
   requestId?: string | null,
@@ -35,6 +37,7 @@ export function setLoadAuthorizationContextOverride(fn: LoadFn | null): void {
 export async function loadAuthorizationContext(
   subject: AuthUser,
   requestId?: string | null,
+  options?: { db?: Db },
 ): Promise<AuthorizationContext> {
   if (loadOverride) {
     return loadOverride(subject, requestId);
@@ -60,7 +63,7 @@ export async function loadAuthorizationContext(
   }
 
   try {
-    const db = getDb();
+    const db = options?.db ?? getDb();
     const assigned = await db
       .select({
         roleId: roles.id,

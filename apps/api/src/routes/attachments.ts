@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { Elysia, t } from "elysia";
 import {
   attachmentObjectKey,
@@ -6,7 +6,7 @@ import {
   linkAttachmentRequestSchema,
   sanitizeAttachmentFilename,
 } from "@deadline-radar/validation";
-import { attachments } from "@deadline-radar/db";
+import { attachments, tasks } from "@deadline-radar/db";
 
 import { requireAuthPlugin } from "../plugins/auth";
 import { getDb } from "../lib/db";
@@ -16,22 +16,36 @@ import {
   ownedAttachment,
   ownedAttachmentByStoragePath,
   ownedTask,
+  ownedTaskInTx,
+  withUserRls,
 } from "../lib/authorization";
 import {
   ApiError,
+  apiDoc,
   beginIdempotent,
   completeIdempotent,
+  envelope,
+  idempotent,
   jsonBodyDetail,
   openApiBodies,
+  R,
   readIdempotencyKey,
   readJsonBody,
+  secured,
   serializeAttachment,
+  sha256Hex,
   validationFromZod,
 } from "../lib/api";
 import {
   assertAllowedUploadMime,
   assertUploadSize,
 } from "../plugins/body-limit";
+import {
+  isStorageDuplicateError,
+  storageRemove,
+  storageSignedUrl,
+  storageUpload,
+} from "../lib/storage";
 
 export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
   .use(requireAuthPlugin)
@@ -64,19 +78,23 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
           parsed.error.flatten().fieldErrors,
         );
       }
-      const task = await ownedTask(ctx.subject.id, parsed.data.task_id);
-      if (!task) throw ApiError.notFound("Task not found");
-      const [row] = await getDb()
-        .insert(attachments)
-        .values({
-          taskId: task.id,
-          type: "link",
-          notes: parsed.data.notes,
-          url: parsed.data.url,
-          storagePath: null,
-        })
-        .returning();
-      const response = { attachment: serializeAttachment(row) };
+      // Check + insert in one transaction (P2-3). Idempotency bookkeeping
+      // keeps its own protocol outside the data tx.
+      const response = await withUserRls(ctx.subject.id, async (tx) => {
+        const task = await ownedTaskInTx(tx, ctx.subject.id, parsed.data.task_id);
+        if (!task) throw ApiError.notFound("Task not found");
+        const [row] = await tx
+          .insert(attachments)
+          .values({
+            taskId: task.id,
+            type: "link",
+            notes: parsed.data.notes,
+            url: parsed.data.url,
+            storagePath: null,
+          })
+          .returning();
+        return { attachment: serializeAttachment(row) };
+      });
       if (idemKey) {
         await completeIdempotent({
           userId: ctx.subject.id,
@@ -92,6 +110,12 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
         tags: ["Attachments"],
         summary: "Add link attachment",
         requestBody: jsonBodyDetail(openApiBodies.linkAttachment),
+        ...secured(),
+        ...apiDoc({
+          ok: envelope({ attachment: R("Attachment") }, ["attachment"]),
+          errors: [400, 401, 403, 404, 409, 429],
+        }),
+        ...idempotent(),
       },
     },
   )
@@ -114,6 +138,14 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
       assertAllowedUploadMime(file.type);
       assertUploadSize(file.size);
 
+      // Read bytes before the idempotency check so the fingerprint can bind
+      // the actual content (not just filename/size metadata).
+      const bytes = await file.arrayBuffer();
+      assertUploadSize(bytes.byteLength);
+      assertAllowedUploadMime(file.type, bytes);
+      const contentHash = sha256Hex(bytes);
+      const filename = sanitizeAttachmentFilename(file.name || "upload");
+
       const idemKey = readIdempotencyKey(request);
       if (idemKey) {
         const { replay } = await beginIdempotent({
@@ -121,7 +153,15 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
           key: idemKey,
           method: "POST",
           path: "/api/v1/attachments/file",
-          body: { task_id: taskId, size: file.size, type: file.type },
+          body: {
+            task_id: taskId,
+            user_id: ctx.subject.id,
+            filename,
+            notes,
+            size: bytes.byteLength,
+            type: file.type,
+            sha256: contentHash,
+          },
         });
         if (replay) {
           set.status = replay.statusCode;
@@ -132,26 +172,32 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
       const task = await ownedTask(ctx.subject.id, taskId);
       if (!task) throw ApiError.notFound("Task not found");
 
-      const filename = sanitizeAttachmentFilename(file.name || "upload");
+      const attachmentId = crypto.randomUUID();
       const dbPath = buildAttachmentStoragePath(
         ctx.subject.id,
         task.id,
+        attachmentId,
         filename,
       );
       const objectKey = attachmentObjectKey(dbPath);
 
-      const bytes = await file.arrayBuffer();
-      assertUploadSize(bytes.byteLength);
-
       const supabase = createServiceClient();
-      const { error: uploadError } = await supabase.storage
-        .from("attachments")
-        .upload(objectKey, bytes, {
-          contentType: file.type || "application/octet-stream",
-          upsert: false,
-        });
+      // Transport timeout via the service client fetch; bounded retries on
+      // thrown transport failures only (upsert:false makes duplicates
+      // impossible, and returned errors are definitive answers).
+      const { error: uploadError } = await storageUpload(
+        supabase,
+        objectKey,
+        bytes,
+        file.type || "application/octet-stream",
+      );
 
       if (uploadError) {
+        if (isStorageDuplicateError(uploadError)) {
+          throw ApiError.conflict(
+            "An attachment with this file name already exists for this task",
+          );
+        }
         console.error("[attachments] upload failed", uploadError.message);
         throw new ApiError({
           status: 502,
@@ -160,16 +206,46 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
         });
       }
 
-      const [row] = await getDb()
-        .insert(attachments)
-        .values({
-          taskId: task.id,
-          type: "file",
-          notes,
-          storagePath: dbPath,
-          url: null,
-        })
-        .returning();
+      let row;
+      try {
+        [row] = await getDb()
+          .insert(attachments)
+          .values({
+            id: attachmentId,
+            taskId: task.id,
+            type: "file",
+            notes,
+            storagePath: dbPath,
+            url: null,
+          })
+          .returning();
+      } catch (dbError) {
+        // Best-effort compensation: remove only the object this request just
+        // uploaded so a DB failure cannot leave an orphan in storage. A
+        // cleanup failure is logged for operations and never replaces the
+        // original (generic) error contract.
+        try {
+          const { error: cleanupError } = await supabase.storage
+            .from("attachments")
+            .remove([objectKey]);
+          if (cleanupError) {
+            console.error(
+              "[attachments] orphan cleanup failed",
+              objectKey,
+              cleanupError.message,
+            );
+          }
+        } catch (cleanupError) {
+          console.error(
+            "[attachments] orphan cleanup failed",
+            objectKey,
+            cleanupError instanceof Error
+              ? cleanupError.message
+              : "unknown",
+          );
+        }
+        throw dbError;
+      }
 
       const response = { attachment: serializeAttachment(row) };
       if (idemKey) {
@@ -185,7 +261,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
     {
       body: t.Object({
         task_id: t.String({ format: "uuid" }),
-        notes: t.Optional(t.String()),
+        notes: t.Optional(t.String({ maxLength: 1000 })),
         file: t.File({
           type: [
             "application/pdf",
@@ -200,7 +276,19 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
           maxSize: "10m",
         }),
       }),
-      detail: { tags: ["Attachments"], summary: "Upload file attachment" },
+      detail: {
+        tags: ["Attachments"],
+        summary: "Upload file attachment",
+        ...secured(),
+        ...apiDoc({
+          ok: envelope({ attachment: R("Attachment") }, ["attachment"]),
+          errors: [400, 401, 403, 404, 409, 413, 429, 502],
+          description:
+            "Multipart upload (10 MiB max, allowlisted MIME types). " +
+            "Success returns the created attachment.",
+        }),
+        ...idempotent(),
+      },
     },
   )
   .delete(
@@ -217,16 +305,55 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
           "",
         );
         const supabase = createServiceClient();
-        await supabase.storage.from("attachments").remove([objectKey]);
+        const { error: removeError } = await storageRemove(supabase, [objectKey]);
+
+        if (removeError) {
+          console.error("[attachments] remove failed", removeError.message);
+          throw new ApiError({
+            status: 502,
+            code: "DEPENDENCY_FAILURE",
+            message: "Unable to remove attachment",
+          });
+        }
       }
 
-      await getDb().delete(attachments).where(eq(attachments.id, params.id));
+      const deleted = await getDb()
+        .delete(attachments)
+        .where(
+          and(
+            eq(attachments.id, params.id),
+            // Ownership is enforced in the mutation itself, not only by the
+            // lookup above: attachments carry no userId column, so scope
+            // through the parent task owned by the requester.
+            inArray(
+              attachments.taskId,
+              getDb()
+                .select({ id: tasks.id })
+                .from(tasks)
+                .where(eq(tasks.userId, ctx.subject.id)),
+            ),
+          ),
+        )
+        .returning({ id: attachments.id });
+      if (deleted.length === 0) {
+        // Ownership changed (or row vanished) between lookup and delete.
+        // Same generic 404 as a missing attachment — no enumeration.
+        throw ApiError.notFound("Attachment not found");
+      }
 
       return { ok: true };
     },
     {
       params: t.Object({ id: t.String({ format: "uuid" }) }),
-      detail: { tags: ["Attachments"], summary: "Remove attachment" },
+      detail: {
+        tags: ["Attachments"],
+        summary: "Remove attachment",
+        ...secured(),
+        ...apiDoc({
+          ok: envelope({ ok: { type: "boolean" } }, ["ok"]),
+          errors: [401, 403, 404, 429, 502],
+        }),
+      },
     },
   )
   .get(
@@ -247,9 +374,11 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
 
       const objectKey = storagePath.replace(/^attachments\//, "");
       const supabase = createServiceClient();
-      const { data, error } = await supabase.storage
-        .from("attachments")
-        .createSignedUrl(objectKey, 60 * 10);
+      const { data, error } = await storageSignedUrl(
+        supabase,
+        objectKey,
+        60 * 10,
+      );
       if (error || !data?.signedUrl) {
         console.error("[attachments] signed url failed", error?.message);
         throw new ApiError({
@@ -262,6 +391,17 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
     },
     {
       query: t.Object({ storage_path: t.String() }),
-      detail: { tags: ["Attachments"], summary: "Signed URL for file" },
+      detail: {
+        tags: ["Attachments"],
+        summary: "Signed URL for file",
+        ...secured(),
+        ...apiDoc({
+          ok: envelope({ url: { type: "string" } }, ["url"]),
+          description:
+            "Short-lived (10 minute) signed download URL. Requires both " +
+            "the `attachments/{userId}/` path prefix and an owned file row.",
+          errors: [401, 403, 429, 502],
+        }),
+      },
     },
   );

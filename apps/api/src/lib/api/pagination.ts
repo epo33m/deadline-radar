@@ -51,6 +51,9 @@ export function encodeCursor(payload: CursorPayload): string {
   return Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
 }
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function decodeCursor(cursor: string | undefined): CursorPayload | null {
   if (!cursor) return null;
   try {
@@ -60,7 +63,10 @@ export function decodeCursor(cursor: string | undefined): CursorPayload | null {
       parsed?.v !== 1 ||
       typeof parsed.k !== "string" ||
       typeof parsed.id !== "string" ||
-      parsed.id.length === 0
+      !UUID_REGEX.test(parsed.id) ||
+      // `k` feeds `new Date(k)` in list queries: reject unparseable values
+      // here (400) instead of failing in the database layer (500).
+      Number.isNaN(Date.parse(parsed.k))
     ) {
       throw new Error("invalid");
     }

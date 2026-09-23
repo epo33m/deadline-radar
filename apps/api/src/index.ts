@@ -1,18 +1,14 @@
 import { app } from "./app";
-import { env } from "./env";
+import { env, assertStartupConfig } from "./env";
+import { initSentry } from "./lib/sentry";
+import { assertReminderSchemaPrerequisites } from "./lib/schema-prereqs";
 
-function assertBootEnv(): void {
-  if (env.isProduction && !env.authBridgeSecret()) {
-    throw new Error(
-      "AUTH_BRIDGE_SECRET is required in production (Next→API auth bridge)",
-    );
-  }
-  if (env.isProduction && !env.cronSecret()) {
-    throw new Error("CRON_SECRET is required in production");
-  }
-}
-
-assertBootEnv();
+initSentry();
+assertStartupConfig();
+// RF-15: refuse to boot when the database is behind this API build in the
+// way that would silently break every sweep claim. Only ever runs in
+// production; non-prod boots skip the DB check.
+await assertReminderSchemaPrerequisites();
 
 app.listen(env.port);
 
