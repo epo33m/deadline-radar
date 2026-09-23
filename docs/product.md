@@ -44,7 +44,7 @@ The app is hosted and multi-user (each user has their own account, with data iso
 | Storage | Supabase Storage |
 | Email | Resend |
 | Hosting | **TBD** |
-| Scheduler | **TBD** — hits Elysia `GET /api/cron/evaluate-reminders` (at least hourly) |
+| Scheduler | One production instance (RF-16). Managed HTTP cron — Railway Cron Job (recommended default), Cron-job.org, or UptimeRobot — hits Elysia `GET /api/cron/evaluate-reminders` hourly |
 
 ## 5. Core Features (MVP)
 
@@ -134,7 +134,7 @@ auth.users
 | title | text |
 | description | text (nullable) |
 | deadline | timestamptz |
-| status | enum: `todo` \| `in_progress` \| `done` |
+| status | enum: `todo` \| `in_progress` \| `done` (`done` is terminal — no reopen in v1) |
 | created_at | timestamp |
 | updated_at | timestamp |
 | deleted_at | timestamp (nullable; soft delete) |
@@ -194,7 +194,7 @@ The following features are **intentionally excluded from the MVP**, noted as can
 
 ## 10. Open Questions / Decisions Needed
 
-- [ ] Final scheduler runner for Elysia `/api/cron/evaluate-reminders` (host cron, pg_cron, etc.; requirement: at least hourly)
+- [x] Final scheduler runner for Elysia `/api/cron/evaluate-reminders` (decision: one instance, managed HTTP cron — Railway / Cron-job.org / UptimeRobot; requirement: at least hourly). See `docs/MVP.md` §7 and `docs/ARCHITECTURE.md` §2.6.
 - [ ] Final hosting: Vercel or something else?
 - [ ] Size limit & allowed file types for attachments (`type = file`)?
 - [ ] Is a PWA / installable app needed?

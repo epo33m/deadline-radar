@@ -50,9 +50,9 @@ Per `product.md` §9 — **intentionally not built** in the MVP:
 3. The system automatically generates 4 reminder thresholds (H-7/H-3/H-1/H-0).
 4. (Optional) user customizes thresholds, adds attachments (file/link).
 
-### 4.4 Update Status & Reopen a Task
-1. User changes the task status: `todo → in_progress → done` (or reopens it the other way).
-2. Once `done`, reminders that haven't fired yet automatically stop being evaluated.
+### 4.4 Update Status & Complete a Task
+1. User changes the task status between `todo ↔ in_progress`, or completes it via the explicit **Mark as done** action (`status = done`, `completed_at = now()`).
+2. `done` is terminal in v1 — completed tasks cannot be reopened and are read-only. Once `done`, reminders that haven't fired yet automatically stop being evaluated.
 
 ### 4.5 Automatic Reminders (system-triggered)
 1. Scheduler runs hourly, checks for due thresholds.
@@ -100,7 +100,7 @@ Per `product.md` §9 — **intentionally not built** in the MVP:
 
 ## 7. Still-Pending Decisions (don't block starting development, but must be finalized before launch)
 
-- [ ] Scheduler runner for Elysia cron endpoint (`ARCHITECTURE.md` §2.6)
+- [x] Scheduler runner for Elysia cron endpoint (`ARCHITECTURE.md` §2.6). Decision: single instance (RF-16), managed HTTP cron (Railway / Cron-job.org / UptimeRobot).
 - [ ] Final hosting
 - [ ] Attachment file size & type limits
 - [ ] Max retry attempts for failed email deliveries

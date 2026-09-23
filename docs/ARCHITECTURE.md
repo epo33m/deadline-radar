@@ -27,7 +27,7 @@
      │ (identity)     │   │ via Drizzle    │   │ (attachments)    │
      └────────────────┘   └────────────────┘   └──────────────────┘
                                     ▲
-                                    │ hourly (scheduler TBD)
+                                    │ hourly (managed HTTP cron)
                        ┌────────────────────────┐
                        │ Cron → GET /api/v1/cron│
                        │ /evaluate-reminders    │
@@ -89,9 +89,14 @@ Codes include: `VALIDATION_ERROR`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CO
 **Operational requirements:** apply migration `20260905020000_api_contract.sql` (course `updated_at` + `idempotency_keys`) before relying on those features. Set `AUTH_BRIDGE_SECRET` on both API and web. Production boot fails closed without `AUTH_BRIDGE_SECRET` / `CRON_SECRET`. `REDIS_URL` is required for multi-node rate limits; local/dev uses in-memory by design. Optimistic concurrency (`updatedAt`) applies to course/task PATCH — the only domain resources with mutable version columns.
 
 ### 2.3 Database — Supabase Postgres + Drizzle
-- DDL / triggers / RLS: `supabase/migrations/` (source of schema truth for this branch)
-- Query layer: `@deadline-radar/db` (Drizzle schema mirroring `DATA-MODEL.md`)
+- **Authoritative Schema Authority:** `supabase/migrations/*` is the sole source of truth for all database DDL, CHECK constraints, triggers, functions, foreign keys, unique keys, and RLS policies.
+- **Migration Runner & Tracking:** Supabase CLI migration engine (`supabase migration up --db-url "$DATABASE_URL"`, mapped to `bun run db:migrate`) tracks applied versions in `supabase_migrations.schema_migrations`. Re-runs are idempotent and pending migrations are detectable via `bun run db:status` / `bun run db:verify`.
+- **Query & ORM Layer:** `@deadline-radar/db` (Drizzle ORM) provides TypeScript types and query mapping for application code. Drizzle is strictly a consumer of the database schema, NOT a migration authority. `drizzle-kit push` is disabled and errors out; `drizzle-kit generate`/`pull` are not wired — all schema changes go through SQL migrations only, so Drizzle can never be mistaken for the schema source of truth (I-2).
+- **Schema Drift Gate:** CI and tests run `bun run db:drift` to verify live PostgreSQL metadata against the authoritative schema contract across all 12 tables, 100 columns, 22 CHECK constraints, 13 foreign keys, 7 unique constraints, 5 indexes, 3 triggers, 6 functions, and 18 RLS policies.
 - Privileged `DATABASE_URL` from the API for cron/admin writes. Domain ownership lookups run inside `withUserRls(userId)` transactions that set Supabase JWT claim GUCs (`request.jwt.claim.sub`) with `is_local=true` so pooled connections cannot leak identity. For Postgres RLS to enforce (not only app filters), point `DATABASE_URL` at a role **without** `BYPASSRLS`; otherwise RLS remains defense-in-depth only.
+
+> **RLS policy shape (I-4):** owner-scoped policies on `tasks` use `user_id = auth.uid()` directly; child-table policies (`reminder_thresholds`, `attachments`, `notification_deliveries`) scope via `task_id IN (SELECT id FROM tasks WHERE user_id = auth.uid())`. These are uncorrelated subqueries over `tasks.id`, served by `idx_tasks_user_id` (plus the composite/filtered task indexes), and PostgreSQL plans them as semi-joins. They are intentionally kept as `IN` subqueries — an `EXISTS` rewrite is semantically identical and offers no measured gain at this scale, so it was declined to avoid churn in the RLS contract.
+
 
 ### 2.4 Storage — Supabase Storage
 - Private bucket `attachments`; API uses service role for upload/signed URLs
@@ -99,11 +104,21 @@ Codes include: `VALIDATION_ERROR`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CO
 
 ### 2.5 Email — Resend
 - Reminder emails from the API cron/evaluator path
+- F-13 recipient rule: `profiles.email` is normalized (`lower(trim())`) by the provision/sync triggers; sends normalize defensively as well. Quotas are keyed by `user_id`, so aliases can never double-spend. When a preference/unsubscribe feature is ever added, its check MUST run before delivery-row insert (never after the send) to avoid ghost `pending` rows.
 
 ### 2.6 Scheduler
 - Endpoint lives on Elysia (`/api/v1/cron/evaluate-reminders`)
-- Production runner (pg_cron, external cron, host scheduler) remains **TBD** per `product.md`
+- Production runs on exactly **one scheduler instance** (RF-16 decided: single-replica, no clock-skew false stamps, dedup key as backstop). The trigger is a managed HTTP cron service — **Railway Cron Job (recommended default), Cron-job.org, or UptimeRobot** — hitting the endpoint every `REMINDER_RUN_INTERVAL_MS` (default 1h) with `Authorization: Bearer $CRON_SECRET`.
 - Local: `curl -H "Authorization: Bearer $CRON_SECRET" http://127.0.0.1:4025/api/v1/cron/evaluate-reminders`
+- Before evaluating reminders, the cron entry purges expired idempotency keys and — when `AUTH_AUDIT_RETENTION_DAYS` is set — expired `auth_audit_events` rows in bounded batches (L-11). Without the env var the audit trail is append-only (no purge).
+- First-run burst guard (F-03): `REMINDER_CUTOFF_ISO` is the scheduler-activation instant; thresholds that triggered before it stay silent (no creates, no retries), so activating the scheduler over historical tasks cannot flood users with stale reminders. **Required in production** — the API refuses to boot without a valid value (RF-11 fail-closed). In dev/test an unset/invalid value means no cutoff (pre-existing behavior, warning logged for invalid values).
+- Catch-up hygiene (RF-11): a reminder whose trigger is ≥ 1h stale at evaluation time is labeled `late` (email subject/body `[LATE]`, in-app badge derived on read from `sent_at` vs. the timezone-aware trigger; `REMINDER_LATE_AFTER_MS`). Once a task's deadline is beyond a 1h grace (`REMINDER_DEADLINE_GRACE_MS`), no reminders are scheduled for it at all (creates and retries alike) — a catch-up run never nags about an already-overdue task, while H-0 "today!" still fires in the first hourly run after the deadline.
+- Run ledger (F-04): every evaluation writes one `reminder_runs` row (`started_at` → `finished_at` + counts + `ok`/`error`). Observability only — never read for skip/catch-up logic. Distinguishes "processed, zero deliveries" from "scheduler never ran" and crashes from silence.
+- **Single-flight is fail-closed (NEW-01):** if the run lock cannot be acquired (3 bounded attempts, 250 ms backoff) the evaluation **aborts — no deliveries are produced** and the HTTP layer answers `200 {ok:true}` with `outcome: "lock-unavailable"` plus a Sentry warning. A run whose ledger start-row insert fails non-lock (DB down) aborts the same way (`lockUnavailable` flag). The old fail-open tradeoff (deliver despite no lock) is revoked: the ledger observation must never silently defer delivery again.
+- Bounded run (RF-12): one invocation evaluates at most `MAX_TASKS_PER_RUN` tasks or `MAX_RUN_DURATION_MS` of wall-clock (env, defaults 10 000 / 120 000 ms), checked between batches so batches stay atomic. A run that hits a bound finishes cleanly — `status ok` with `truncated = true` (+ cursor `last_seen_task_id`) — and the **next scheduled run mops up the remainder** (send suppression via (task, offset, channel) identity prevents double-sends). `MAX_RUN_DURATION_MS` is clamped below the single-flight lock horizon so a bounded run can never wedge the lock. Invalid knob values never fail boot (warn + default). Host-side `timeout`/`maxDuration` is set generously (≥ 2× the local wall-clock cap); RF-18 (scheduler spin-up cost) is **N/A — no process is spun up per fire**: the runner is the already-running API process, so there is no per-fire cost beyond the cron provider's own HTTP hit.
+- Scheduler health (RF-14): `GET /health/cron` (public, read-only, rate-limited) reports whether the latest `reminder_runs` row is `ok`, finished, and started within `2 × REMINDER_RUN_INTERVAL_MS` (default 1h) — `200 {ok,lastRunAt,lastStatus,evaluatedTasks}` or `503`. Uptime monitors poll it as the automated "no ok run within 2× interval" alert. A run that truncates (RF-12) raises a warning-level Sentry message out-of-band, distinct from the blackout alert. Env check: `RESEND_API_KEY` (`re_` format) + `RESEND_FROM_EMAIL` (valid, non-sandbox) are **required in production** — the API refuses to boot without them (RF-13 fail-closed). Deploy-ordering guard (RF-15): prod boot verifies enum `sending` + column `claimed_at` exist before listening and fails with a clear "run `bun run db:migrate`" message if the DB predates that migration.
+
+> **Supabase CLI / local config (I-1):** the repo ships `supabase/config.toml` (minimal, matched to the migration workflow) and `supabase/bootstrap.sql` (Supabase system stubs for disposable/CI Postgres). No `seed.sql` is provided by design — dev and CI boot from real Supabase projects or the bootstrap stubs, and the SQL regression suite (`supabase/tests/*`) seeds its own fixtures; fabricated sample data would rot unverified. No pg_cron / `[cron]` Supabase job is configured either: the scheduler contract is an external HTTP hit on `/api/v1/cron/evaluate-reminders` (managed HTTP cron, see §2.6), so a Supabase-internal cron job would be dead config. Migrations are applied to target databases via `bun run db:migrate` (Supabase CLI); they are never edited in a SQL editor anymore.
 
 ## 3. Data Flow: Reminder Evaluation (per run)
 
@@ -118,6 +133,7 @@ Codes include: `VALIDATION_ERROR`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CO
 ### Identity model
 - Supabase Auth owns identity, password hashing, email confirmation, and reset tokens (email/password MVP).
 - **Out of scope (deferred):** MFA/2FA, Google OAuth, magic link (`MVP.md`, issue #38).
+- **Known limitation (I-3):** `profiles.email` is `NOT NULL` and `handle_new_user()` mirrors `auth.users.email`. A phone-only or provider signup that carries no email would fail profile provisioning (the `AFTER INSERT` trigger rolls back the `auth.users` insert). Accepted for the email/password MVP; enabling email-less signups first requires a migration to make `profiles.email` nullable plus Drizzle/DTO/validation and email-sync trigger updates — deliberately deferred rather than fabricating a placeholder email.
 - App auth context (`AuthUser`): `userId` (`id`), optional `email`, optional `sessionId` from JWT `session_id`. Authentication answers “who”; authorization is separate (see below).
 
 ### Authorization model (RBAC + ownership)
@@ -131,7 +147,8 @@ Codes include: `VALIDATION_ERROR`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CO
 - **Field-level:** mutation deny-list blocks client `userId` / `role` / `capabilities` / `deletedAt` injection; Zod `.strict()` rejects unknown keys.
 - **Caching:** short-lived in-memory authz snapshot per `userId` (30s TTL). Cache keys are subject ids only (no cross-user collision). Invalidated on `role.assign` / `role.revoke`. Fail closed on load errors (empty capabilities).
 - **RLS:** ownership helpers use `withUserRls` (transaction-local JWT claim GUCs). App-layer RBAC remains primary; RLS applies when `DATABASE_URL` is a non-`BYPASSRLS` role.
-- **Audit:** `auth_audit_events` records auth events plus `authz.denied`, `role.assigned`, `role.revoked` (no secrets).
+- **Privilege boundary (L-5):** app roles (`anon`, `authenticated`, `service_role`) receive **`USAGE` on `public` only — never `CREATE`** (verified in `supabase/bootstrap.sql` and on a live cluster), so they cannot create functions or triggers; DDL/`CREATE` is held solely by the migration deployer (a separate superuser connection). `profiles.email` mutation is confined to the `handle_user_email_change()` auth-sync path: that `SECURITY DEFINER` function uses a **transaction-local** `app.in_auth_sync` marker plus `pg_trigger_depth() > 1`, so a direct email UPDATE is rejected even for a privileged owner (the guard keys on trigger depth + marker, not on role), and a session-level marker cannot bypass it.
+- **Audit:** `auth_audit_events` records auth events plus `authz.denied`, `role.assigned`, `role.revoked` (no secrets). Admin-read via `audit.view`; purge (L-11) is server-side on the cron entry and inert until product/legal sets `AUTH_AUDIT_RETENTION_DAYS`.
 
 ### Session / cookies
 - Elysia sets `dr_access_token` / `dr_refresh_token` httpOnly cookies (`Secure` in production, `SameSite=lax`, `Path=/`) after login/register/confirm/refresh.
@@ -194,11 +211,11 @@ Codes include: `VALIDATION_ERROR`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CO
 
 ## 6. Deployment
 - Hosting: **TBD** (`product.md` §10). Local: Bun + Nx (`bun run dev`).
-- Production scheduler / API host: **TBD**.
+- Production scheduler: **one instance** (RF-16) hitting the API cron route from a managed HTTP cron (Railway Cron Job recommended default; Alternates Cron-job.org / UptimeRobot). API host: **TBD**.
 
 ## 7. Open Architecture Questions
 - [ ] Final production host for `apps/api` and cron runner.
 - [ ] Final hosting for `apps/web`.
 - [ ] Realtime notifications vs polling (MVP: polling).
-- [ ] Storage cleanup when attachments/tasks are deleted.
+- [ ] Storage cleanup when attachments/tasks are deleted, **gated on the soft-delete retention decision (`DOMAIN.md` §5/§7, course retention tracked in issue #16).** Cleanup may only remove rows/files after the (undefined as of now) retention window for `deleted_at IS NOT NULL` rows expires; and a complete sweep for zero-row storage orphans (files whose `attachments` row is gone) requires recursive bucket-listing reconciliation that the current per-object storage abstraction (`apps/api/src/lib/storage.ts`) does not support. Until both exist, eager deletion (`attachments.service.ts` delete-then-best-effort-upload-rollback) is the mitigation, and no server-side orphan purge runs. A future implementation should be a bounded batch job (server-side cron, same shape as the existing L-11/idempotency purges) driven by the retention decision.
 - [ ] Max retry / backoff for failed emails (`DOMAIN.md` §7).
