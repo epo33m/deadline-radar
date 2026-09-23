@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "master", "dev"]
+  pull_request:
+    branches: ["main", "master", "dev"]
+
+jobs:
+  verify:
+    name: Lint, Test & Migration Drift Verification
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgrespassword
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgrespassword@localhost:5432/postgres?sslmode=disable
+      SUPABASE_URL: http://127.0.0.1:54321
+      SUPABASE_ANON_KEY: test-anon-key
+      SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
+      AUTH_BRIDGE_SECRET: test-auth-bridge-secret-min-length-required
+      CRON_SECRET: test-cron-secret-min-length-required
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Setup PostgreSQL client tools
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Bootstrap Disposable Test Database
+        run: |
+          psql "$DATABASE_URL" -f supabase/bootstrap.sql
+
+      - name: Apply Supabase SQL Migrations (Fresh DB Verification)
+        run: |
+          supabase migration up --db-url "$DATABASE_URL"
+
+      - name: Verify Migration History & Unapplied Status Gate
+        run: |
+          bun run scripts/migrate.ts status
+          bun run scripts/migrate.ts verify
+
+      - name: Run SQL Database Regression Tests (11/11 files)
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/c1_delivery_read_at_only.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/h2_task_course_owner_invariant.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/m8_database_integrity_test.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/m9_query_list_indexes_test.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/p3_list_indexes_test.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/l1_index_set_test.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/scheduler_state_test.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/f13_profile_email_normalization_test.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/rls_matrix.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/sec003_quota.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/bug01_registration_rbac_test.sql
+
+      - name: Verify Schema Drift
+        run: |
+          bun run scripts/verify-schema-drift.ts
+
+      - name: Run Lint
+        run: bun run lint
+
+      - name: Run Typecheck
+        run: bun run typecheck
+
+      - name: Run Workspace Tests
+        run: bun run test
+
+      # NOTE (F-7): Playwright E2E (apps/e2e) is deliberately NOT run here.
+      # It needs Chromium, a production web build, and a live Supabase
+      # project (Auth/Storage/Admin API + secrets); this job provides vanilla
+      # PostgreSQL only. E2E is advisory: run `bun run test:e2e` manually
+      # pre-release / against staging (see apps/e2e/README.md).
+
+      - name: Build Projects
+        run: bun run build
