@@ -4,6 +4,8 @@
 > Status awal: sebagian besar BELUM (prod belum deploy).
 > Keputusan tercatat: single replica · `AUTH_AUDIT_RETENTION_DAYS=90` ·
 > Redis wajib (SEC-007, boot gagal tanpanya).
+> Cara isi per platform (Railway = ENV-API, Vercel = ENV-WEB) + urutan deploy:
+> `docs/DEPLOY-PROD.md`.
 
 Legenda lokasi:
 - **ENV-API** — environment variables service API (hosting API)
@@ -34,7 +36,7 @@ Legenda lokasi:
 | `WEB_ORIGIN` | ENV-API + ENV-WEB | ☐ | Origin publik web prod (cookie/CORS/redirect) |
 | `API_ORIGIN` / `API_PORT` | ENV-WEB / ENV-API | ☐ | Alamat API yang di-rewrite Web |
 | `AUTH_AUDIT_RETENTION_DAYS` | ENV-API | ☐ | Sudah diputuskan **90**; template aktif 90 |
-| `REMINDER_CUTOFF_ISO` | ENV-API | ☐ | F-03 + sign-off N-2: WAJIB isi dengan instant aktivasi scheduler saat deploy (format ISO) + komunikasikan ke user. **WAJIB di production (RF-11 fail-closed): API refusal boot kalau kosong/format salah.** Kosong = run pertama PASTI burst (terbatas kuota 50/run/user — puluhan email per user, bukan nol) |
+| `REMINDER_CUTOFF_ISO` | ENV-API | ☐ | F-03 + sign-off N-2: WAJIB isi dengan instant aktivasi scheduler saat deploy (format ISO) + komunikasikan ke user. **WAJIB di production (RF-11 fail-closed): API refusal boot kalau kosong/format salah.** Kosong = run pertama PASTI burst (terbatas kuota 50/run/user — puluhan email per user, bukan nol). Nilai dipilih: `2026-09-26T04:07:00Z` (aktivasi scheduler 2026-09-26; naikkan kalau run pertama jauh lebih akhir, jangan turunkan) |
 | `MAX_TASKS_PER_RUN` | ENV-API | ☐ | RF-12 opsional: cap task per run. Kosong = **10000**; invalid = diabaikan (warning) + default, tidak gagal boot. Set lebih kecil bila host timeout < budget default |
 | `MAX_RUN_DURATION_MS` | ENV-API | ☐ | RF-12 opsional: deadline wall-clock per run (ms). Kosong = **120000**; invalid = diabaikan (warning) + default. Selalu < 30 mnt (di-clamp) agar tak menggembok single-flight lock; selaraskan dengan `timeout`/`maxDuration` host saat hosting diputuskan |
 | `REMINDER_RUN_INTERVAL_MS` | ENV-API | ☐ | RF-14 opsional: interval antar run scheduler (ms). Kosong = **3600000** (1 jam). Dipakai `/health/cron`: scheduler dinyatakan unhealthy bila > 2× interval sejak run `ok` terakhir |

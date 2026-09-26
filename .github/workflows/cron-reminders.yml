@@ -1,0 +1,38 @@
+name: Scheduler Trigger
+
+# Hourly reminder evaluation. The API itself is long-running (Railway); this
+# workflow only calls the scheduler entrypoint, mirroring an external cron.
+#
+# Why not `cronSchedule` in railway.json: Railway executes the service *start
+# command* on the schedule, and railway.json is repo-wide (not per-service), so
+# a cron on the API service would re-run the API boot hourly instead of calling
+# the endpoint. See docs/DEPLOY-PROD.md for the Railway-cron-service variant.
+#
+# Required repository secrets: PROD_API_URL, CRON_SECRET (must equal the API's
+# CRON_SECRET exactly).
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 * * * *"
+
+concurrency:
+  group: cron-reminders
+  cancel-in-progress: false
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    # A bounded run stops at MAX_RUN_DURATION_MS (default 120s); the single-
+    # flight lock makes a duplicate or overlapping call a no-op anyway.
+    timeout-minutes: 10
+    steps:
+      - name: Call evaluate-reminders
+        env:
+          PROD_API_URL: ${{ secrets.PROD_API_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "$PROD_API_URL" -a -n "$CRON_SECRET"
+          curl --fail-with-body --silent --show-error --max-time 540 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$PROD_API_URL/api/v1/cron/evaluate-reminders"

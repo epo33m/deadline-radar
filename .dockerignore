@@ -1,0 +1,16 @@
+# Never bake secrets into the image: every real env file must be excluded.
+.env
+.env.*
+!.env.example
+
+.git
+.github
+node_modules
+**/node_modules
+**/.next
+**/dist
+**/coverage
+.nx
+graphify-out
+*.log
+.DS_Store
