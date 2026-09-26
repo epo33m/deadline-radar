@@ -5,6 +5,7 @@ import { openapi } from "@elysiajs/openapi";
 import { env } from "./env";
 import { requestIdPlugin } from "./lib/api/request-id";
 import { apiSchemas, apiSecuritySchemes } from "./lib/api/openapi-docs";
+import { perfTimingPlugin } from "./plugins/perf-timing";
 import { errorHandlerPlugin } from "./plugins/error-handler";
 import { rateLimitPlugin } from "./plugins/rate-limit";
 import { httpPolicyPlugin } from "./plugins/http-policy";
@@ -20,6 +21,8 @@ import { cronRoutes } from "./routes/cron";
 import { healthCronRoutes } from "./routes/health-cron";
 
 export const app = new Elysia()
+  // First: bracket every other plugin/handler in the [perf] wall time.
+  .use(perfTimingPlugin)
   .use(requestIdPlugin)
   .use(errorHandlerPlugin)
   .use(

@@ -21,6 +21,7 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 bun-debug.log*
+scripts/perf-logs/
 
 # package managers other than Bun (this repo uses Bun)
 package-lock.json
