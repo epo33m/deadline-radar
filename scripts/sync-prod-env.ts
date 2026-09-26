@@ -317,7 +317,9 @@ function applyRailway(planned: Planned[]): void {
 function applyVercel(planned: Planned[]): void {
   for (const { key, value } of planned) {
     const args = ["env", "add", key, environment, "--force", "--yes"];
-    if (!WEB_PUBLIC.has(key)) args.push("--sensitive");
+    // `--sensitive` only: leaving the public default unset makes the CLI abort
+    // on its "looks like a credential" prompt even with --yes.
+    args.push(WEB_PUBLIC.has(key) ? "--no-sensitive" : "--sensitive");
     if (vercelProject) args.push("--project", vercelProject);
     const { ok } = run("vercel", args, value);
     if (!ok) failures.push(`vercel: ${key} not set`);
