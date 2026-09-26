@@ -132,3 +132,20 @@ panggilan kedua keluar `skipped` tanpa kerja.
    email benar-benar keluar.
 7. Pasang monitor eksternal (UptimeRobot/StatusCake) ke `/health/cron` setiap
    menit — alerted saat `503` (RF-14 MTTD).
+
+## 7. Rekaman installasi production (2026-09-26)
+
+| Item | Nilai |
+|---|---|
+| Railway project / service | `deadline-radar-api` / `deadline-radar-api` (`6886d8eb-b917-4820-bc2e-74ac3c0b16c2`) |
+| Domain API | `https://deadline-radar-api-production.up.railway.app` |
+| Vercel project | `deadline-radar-web` (`prj_BT7yRuoU4Jw7MXggiQDenlfffovJ`), root `apps/web`, GitHub connected |
+| Domain Web | `https://deadline-radar-web.vercel.app` |
+| GitHub secrets | `PROD_API_URL`, `CRON_SECRET` |
+
+`API_ORIGIN` = domain API, `WEB_ORIGIN` = domain Web. `railway.json` masih
+dipakai (deprecated CLI, tetap jalan sampai 2026-12-01; migrasi ke
+`.railway/railway.ts` bila perlu). CLI: `railway link` (project+environment
+`production`+service) sudah terpasang di repo ini, `vercel link` ada di
+`apps/web/.vercel` (tidak di-commit).
+
