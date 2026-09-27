@@ -61,6 +61,21 @@ Server-side `[perf]` (container US East):
 
 Bacaan: pindah Supabase menghemat ~150–200ms di path DB, tetapi **Redis (~174ms) kini biaya server-side dominan** — gate Upstash→US East (§7.2) diproyeksi memangkasnya ke ~5–15ms, membawa `/health/cron` ke ~50–80ms.
 
+### 2c. Transport comparison — TCP vs REST (2026-09-27, keduanya us-east-1)
+
+DB Upstash baru (`flexible-ghost-305441`, console: N. Virginia / us-east-1) diuji
+dua transport dari container Virginia:
+
+| Transport | 401 warm (`INCR` saja) | Cold (connect) |
+|---|---|---|
+| ioredis TCP (`rediss://…:6379`) | **122–124ms stabil** | ~420ms |
+| @upstash/redis REST | **121–136ms stabil** | ~322ms |
+
+Identik → overhead BUKAN di transport atau region, melainkan di path
+(Railway egress → Upstash gateway, ~120ms tetap). Proyeksi ~5–15ms GAGAL.
+Opsi: (a) terima 120ms (masih 60ms lebih baik dari 181ms APAC); (b) Redis
+plugin Railway (private network, ~1ms, berbayar) — keputusan pemilik.
+
 ---
 
 ## 3. Findings (ranked) + status
