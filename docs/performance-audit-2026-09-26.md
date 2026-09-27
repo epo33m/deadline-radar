@@ -93,12 +93,32 @@ plugin Railway (private network, ~1ms, berbayar) — keputusan pemilik.
 **Cost** ~400–500ms tak terhapuskan (edge `sin1` ↔ eksekusi `iad1`) untuk user Asia.
 **Fix** Tidak ada di Hobby. Opsi struktural (ditolak untuk sekarang, lihat §6): pindah web ke Railway satu region dengan API, atau upgrade Vercel untuk pin `sin1`.
 
-### [R3] Nonce per-request mematikan static rendering — DONE
+### [R3] Nonce per-request mematikan static rendering — DONE (parsial, `/` saja)
 
-**Where** `apps/web/proxy.ts:171,199-200` + `export const dynamic = "force-dynamic"` di 4 halaman (`app/page.tsx`, `app/(app)/login|register|forgot-password/page.tsx`).
-**Cost** `/login` (19KB, statis secara konten) = 435–464ms + `x-vercel-cache: MISS` tiap hit; `Cache-Control: private, no-cache, no-store`.
+**Where** `apps/web/proxy.ts:171,199-200` + `export const dynamic = "force-dynamic"` di 4 halaman.
+**Cost** `/login` (19KB, statis secara konten) = 435–464ms + `x-vercel-cache: MISS` tiap hit.
 **Fix** Hash-CSP (§4). SEC-002 tetap: tidak ada `unsafe-inline`, framing/object/base/form locks identik (diuji di `lib/security-headers.test.ts`).
 **Verify** lokal (`next start`): `/login` → `script-src 'self' 'sha256-…' 'sha256-…' 'strict-dynamic'`, `Cache-Control: s-maxage=31536000`, hash HTML cocok dengan header (skrip dijamin jalan), 0 referensi nonce. `/tasks` tetap nonce-path.
+
+#### R3b — Insiden 2026-09-27: form login hilang (pelajaran hash-CSP)
+
+**Gejala:** `/login` live tidak mengandung `<form>` sama sekali — form tak pernah tampil.
+**Root cause:** `LoginForm` memakai `useSearchParams()` dalam Suspense → boundary
+tersebut BAIL OUT saat prerender (fallback kosong, tanpa form di `login.html`
+hasil build) dan mengandalkan request-time streaming. Streaming flight datang
+sebagai inline `<script>` TANPA hash build-time → hash-CSP memblokirnya →
+form tak pernah termaterialisasi. Tidak ada yang gagal: build/typecheck/test/
+`--verify` semua hijau — kegagalan SILENT.
+**Perbaikan:**
+- 3 halaman form auth (`login`, `register`, `forgot-password`) kembali ke
+  `force-dynamic` + nonce (aturan sederhana: halaman auth = dynamic).
+- Hash-CSP + edge cache (`s-maxage`) hanya untuk `/` (Link-only, prerender
+  terbukti komplet).
+- Guard build-time: `REQUIRED_MARKERS` di `scripts/build-csp-hashes.ts` —
+  allowlist yang prerender-nya tak memuat marker interaktifnya MENGGAGALKAN
+  build dengan pesan eksplisit (regresi `checkMarkers` di test).
+**Aturan allowlist:** HANYA halaman dengan nol request-time dynamic boundary,
+masing-masing dengan marker bukti; pelanggaran = build merah, bukan outage.
 
 ### [R4] Redis `INCR` di hot path tiap `/api/*` — DONE (kode), PENDING (region)
 

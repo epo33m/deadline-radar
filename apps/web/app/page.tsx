@@ -1,5 +1,11 @@
 import Link from "next/link";
 
+// Static + hash-CSP (perf plan, Fase C). Allowed ONLY because this page has
+// zero request-time dynamic boundaries (no useSearchParams, no session):
+// its prerendered HTML is complete — verified by the absence of bailing
+// Suspense (built HTML contains no empty dynamic boundary). Do NOT extend
+// the hash allowlist to interactive pages without the same proof;
+// see (auth)/login/page.tsx for the failure mode.
 export default function HomePage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-canvas-parchment px-6 text-center font-sans text-ink sm:px-8">

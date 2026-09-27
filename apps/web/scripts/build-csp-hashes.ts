@@ -30,9 +30,23 @@ const OUT_FILE = join(WEB_ROOT, "lib", "csp-hashes.ts");
 /** Pathname → prerendered HTML file (flat Turbopack output, verified). */
 const STATIC_ROUTES: Record<string, string> = {
   "/": "index.html",
-  "/login": "login.html",
-  "/register": "register.html",
-  "/forgot-password": "forgot-password.html",
+};
+
+/**
+ * Per-route markers that MUST be present in the built HTML.
+ *
+ * This is the guard against the 2026-09-27 outage class: a page whose
+ * Suspense boundary bails at prerender (e.g. useSearchParams without
+ * request-time render) emits an EMPTY fallback — no form, no inputs — and
+ * hash-CSP then blocks the streamed flight chunks that would carry them,
+ * so the interactive content never appears. Nothing else fails: not the
+ * build, not typecheck, not the drift check. These markers fail the build
+ * loudly instead. ONLY allowlist pages with zero request-time dynamic
+ * boundaries, and give each a marker proving its interactive content
+ * prerendered completely.
+ */
+const REQUIRED_MARKERS: Record<string, string[]> = {
+  "/": ['href="/login"', "Stay ahead of every"],
 };
 
 export type StaticCspHashes = {
@@ -64,6 +78,20 @@ export function extractInlineBlocks(
   return out;
 }
 
+/** Fail loudly when a prerender bailed to a dynamic boundary. Exported for tests. */
+export function checkMarkers(pathname: string, file: string, html: string): void {
+  for (const marker of REQUIRED_MARKERS[pathname] ?? []) {
+    if (!html.includes(marker)) {
+      throw new Error(
+        `[csp-hashes] ${file} missing marker ${JSON.stringify(marker)} — ` +
+          `the page bailed to a dynamic boundary at prerender (see ` +
+          `app/(auth)/login/page.tsx comment). Remove it from the ` +
+          `allowlist (force-dynamic + nonce) instead of shipping it.`,
+      );
+    }
+  }
+}
+
 function computeHashes(): Record<string, StaticCspHashes> {
   const result: Record<string, StaticCspHashes> = {};
   for (const [pathname, file] of Object.entries(STATIC_ROUTES)) {
@@ -75,6 +103,7 @@ function computeHashes(): Record<string, StaticCspHashes> {
       );
     }
     const html = readFileSync(path, "utf8");
+    checkMarkers(pathname, file, html);
     const scripts = extractInlineBlocks(html, "script").map(sha256Base64);
     const styles = extractInlineBlocks(html, "style").map(sha256Base64);
     if (scripts.length === 0) {
