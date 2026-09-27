@@ -75,7 +75,7 @@ Legenda lokasi:
 | Project `deadline-radar-web` + `deadline-radar-api` dibuat | ☑ (2026-09-27, API) | `sentry.io/epo33m`: `deadline-radar-web` (javascript-nextjs), `deadline-radar-api` (node); template `javascript-nextjs` tak dipakai |
 | `SENTRY_DSN` | ENV-API **dan** ENV-WEB | ☑ (2026-09-27, sync) | Kecuali itu: `SENTRY_DSN` sempat tak ada di sync `WEB_KEYS` (server/edge web takkan pernah aktif) — dibetulkan. `NEXT_PUBLIC_SENTRY_DSN` untuk client |
 | `sendDefaultPii: false` + scrub `beforeSend` aktif (sudah di kode) | ☑ | Diverifikasi test scrub |
-| Alert error-rate + cron gagal aktif | ☐ | Pemicu: API `rules/` 404 via token (kemungkinan scope) — buat manual: project → Alerts → Create Alert Rule → Issue Alert. (1) error-rate: errors > 10/jam. (2) blackout: message contains `reminder delivery blackout`. Drill: `bun run scripts/sentry-drill.ts --tag <nama-alert>` (pesan drill blackout: `--message "reminder delivery blackout: DRILL"`) sampai alert menyala sekali, lalu resolve issue drill |
+| Alert error-rate + cron gagal aktif | ☑ terbukti menyala (2026-09-27) | Drill: blackout message → GH issue #53 otomatis; 12 events/jam → detector `api-error-rate` fire + metric issue #5 → GH issue #54. GH drill #52/#53/#54 di-close. Sisa disarankan (bukan blocking): persempit rule blackout dengan filter message-contains (kini fire untuk SEMUA issue baru → spam GH issue), dan tambah action email di `api-error-rate` (detector tanpa workflow = deteksi tanpa notifikasi). Drill issues Sentry dibiarkan open (API tolak manual-resolve); berlabel DRILL jelas |
 
 ## 6. Repo hygiene pra-rilis
 
