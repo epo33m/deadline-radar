@@ -16,7 +16,7 @@
 |---|---|---|
 | Web function (Vercel) | `iad1` (Virginia, USA) — Hobby, terkunci | header `x-vercel-id: sin1::iad1::…` konsisten |
 | API (Railway) | `sfo` → **dipindah ke US East** (Fase B) | `railway status` → `region: US East` |
-| DB (Supabase) | `aws-0-ap-southeast-2` = **Sydney** → target `us-east-1` (Fase B, pending) | `DATABASE_URL` di `.env.production` |
+| DB (Supabase) | `aws-0-us-east-1` = **N. Virginia** (pindah 2026-09-27 dari `ap-southeast-2` Sydney; project lama siap dihapus) | `DATABASE_URL` di `.env.production` |
 | Redis (Upstash) | region tak terenkode; ~180ms dari Virginia → target US East (Fase D, pending) | `[perf]` split §2 |
 
 Alur request: Browser (ID) → Vercel edge `sin1` → function `iad1` → Railway → Supabase/Upstash. Tiga benua per navigasi.
