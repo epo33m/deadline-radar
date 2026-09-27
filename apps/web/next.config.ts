@@ -31,6 +31,22 @@ function resolveBuildId(): string {
 
 const nextConfig: NextConfig = {
   generateBuildId: async () => resolveBuildId(),
+  async headers() {
+    // Edge cache for the prerendered-static pages (perf plan, Fase C).
+    // Same bytes for every viewer until the next deploy (chunks are
+    // content-addressed and immutable), so a 1h edge TTL with 24h
+    // stale-while-revalidate is safe. Middleware still runs first at the
+    // edge, so the session gate (logged-in → away from /login) keeps
+    // working — only anonymous viewers ever hit the cached copy.
+    const staticEdgeCache = {
+      key: "Cache-Control",
+      value: "public, s-maxage=3600, stale-while-revalidate=86400",
+    };
+    return ["/", "/login", "/register", "/forgot-password"].map((source) => ({
+      source,
+      headers: [staticEdgeCache],
+    }));
+  },
   async redirects() {
     return [
       {
