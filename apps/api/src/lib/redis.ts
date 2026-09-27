@@ -47,12 +47,40 @@ export function setRedisClientForTests(
   redisClient = client;
 }
 
+function restConfig(): { url: string; token: string } | null {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  return url && token ? { url, token } : null;
+}
+
 /**
- * Optional Redis (ioredis-compatible via Bun redis or dynamic import).
- * Returns null when REDIS_URL is unset — callers must fall back to memory.
+ * Optional Redis, two transports (perf plan, Fase D):
+ * 1. Upstash REST (`UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`) —
+ *    HTTP, no connection management, preferred when present. REST takes
+ *    precedence over `REDIS_URL` so rate-limit accounting never splits
+ *    across two stores.
+ * 2. ioredis TCP (`REDIS_URL`) — legacy path, kept for environments that
+ *    already run it.
+ * Returns null when neither is set — callers must fall back to memory.
  */
 export async function getRedis(): Promise<RedisLike | null> {
   if (redisClient !== undefined) return redisClient;
+  const rest = restConfig();
+  if (rest) {
+    try {
+      // Dynamic import keeps the transport optional for local/dev.
+      const { Redis } = await import("@upstash/redis");
+      redisClient = new Redis(rest) as unknown as RedisLike;
+      return redisClient;
+    } catch (err) {
+      console.warn(
+        "[redis] REST unavailable, falling back to in-memory stores",
+        err,
+      );
+      redisClient = null;
+      return null;
+    }
+  }
   const url = env.redisUrl();
   if (!url) {
     redisClient = null;
