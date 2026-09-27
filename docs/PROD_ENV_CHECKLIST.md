@@ -349,11 +349,11 @@ sebelum perubahan (log di `scripts/perf-logs/`, gitignored).
 | Item | Status | Cara verifikasi |
 |---|---|---|
 | Railway region = US East, 1 replika (`railway status`) | ☑ (2026-09-26, CLI) | `region: US East`, `sfo (0) · US East (1)` |
-| Supabase project `us-east-1`: 41 migrasi applied, 0 pending | ☐ | `bun run db:migrate status` + `supabase/verify-prod.sql` §1–§5 + `db:drift` bersih kecuali `profiles_id_fkey → users` |
+| Supabase project `us-east-1`: 41 migrasi applied, 0 pending | ☑ (2026-09-27) | 42/42 applied, `db:verify` + `verify-prod.sql` exit 0 (12 RLS, 17 policy, bucket private, quota triggers), `db:drift` hijau |
 | Upstash Redis region = US East | ☐ | `[perf]` pada 401: 181ms → ~5–15ms |
-| Vercel Build Command = rantai double-build (`DEPLOY-PROD.md` §3) | ☐ | Build log memuat `[csp-hashes] verify ok`; `/login` balas `sha256` (tanpa `nonce-`) + `s-maxage` |
-| ENV-API: 5 nilai Supabase baru + `REDIS_URL` baru tersinkron (`scripts/sync-prod-env.ts --apply`) | ☐ | `railway run env` / dashboard; API boot tanpa RF-11/RF-13 refusal |
-| ENV-WEB: `NEXT_PUBLIC_SUPABASE_*` baru + redeploy (di-inline saat build) | ☐ | Login end-to-end di browser prod |
-| Re-probe pasca-semua-fase, angka masuk tabel audit §2 kolom "sesudah" | ☐ | `sh scripts/perf-probe.sh`; target `/health/cron` ~150–250ms, `/login` ~50–100ms dari Asia |
+| Vercel Build Command = rantai double-build (`DEPLOY-PROD.md` §3) | ☑ (2026-09-26, API) | Build log memuat `[csp-hashes] verify ok`; `/login` balas `sha256` (tanpa `nonce-`) + `s-maxage` |
+| ENV-API: 5 nilai Supabase baru + `REDIS_URL` baru tersinkron (`scripts/sync-prod-env.ts --apply`) | ☑ sebagian (2026-09-27) | Railway+GitHub via script; Vercel via `--only web --vercel-project`; API redeploy eksplisit (`redeploy --yes`) karena env change tak memicu redeploy |
+| ENV-WEB: `NEXT_PUBLIC_SUPABASE_*` baru + redeploy (di-inline saat build) | ☑ (2026-09-27) | Redeploy via empty commit `e13d1cb` (CLI deploy dari subdir gagal — rootDir); JWKS project baru 200 |
+| Re-probe pasca-semua-fase, angka masuk tabel audit §2 kolom "sesudah" | ☑ parsial (2026-09-27) | Audit §2b; sisa: re-probe final setelah Upstash pindah |
 | Sentry traces (0.1) aktif di ENV-API + ENV-WEB bila DSN diisi | ☐ | Span `GET /api/v1/bootstrap` terlihat di Sentry |
-| Rilis dari commit berisi HANYA perubahan terverifikasi plan ini | ☐ | Lihat §6: jangan campur feature work paralel |
+| Rilis dari commit berisi HANYA perubahan terverifikasi plan ini | ☑ (2026-09-27) | `1343602`, `4aec301`, `f286be5`, `e13d1cb` — hanya plan + redeploy; tree bersih |

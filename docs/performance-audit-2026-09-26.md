@@ -47,6 +47,20 @@ Railway metrics (edge, 6h, pre-move): p50 188ms / p90 673ms / p95 1447ms.
 
 **Kesimpulan baseline:** compute ≈ 1ms. Hampir semua latensi adalah geografi: SFO↔Sydney ~180ms/RTT, Redis ~180ms/op, `iad1` ~250ms/hop. Audit 2026-09-20 mengoptimasi jumlah round trip (benar), tetapi biaya per round trip-nya tidak pernah diukur.
 
+### 2b. Sesudah — parsial (2026-09-27, Supabase us-east-1 live; Upstash masih APAC)
+
+Server-side `[perf]` (container US East):
+
+| Endpoint | Sebelum (SFO→Sydney) | Sesudah (US East→us-east-1) |
+|---|---|---|
+| `GET /health` | 1ms | **0–2ms** |
+| `GET /health/cron` (Redis + DB) | 458–637ms | **487–488ms warm** (1613ms cold) |
+| `GET /api/v1/*` 401 (Redis saja) | 181ms | **174ms** (tak berubah — Upstash masih jauh) |
+
+`/login` (Vercel): 435–500ms MISS → **~230–330ms HIT** (`age` naik, hash-CSP tanpa nonce, `s-maxage=3600`).
+
+Bacaan: pindah Supabase menghemat ~150–200ms di path DB, tetapi **Redis (~174ms) kini biaya server-side dominan** — gate Upstash→US East (§7.2) diproyeksi memangkasnya ke ~5–15ms, membawa `/health/cron` ke ~50–80ms.
+
 ---
 
 ## 3. Findings (ranked) + status
