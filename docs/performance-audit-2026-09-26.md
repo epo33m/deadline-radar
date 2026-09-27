@@ -180,6 +180,7 @@ Estimasi TTFB `/tasks`: ~1.2–1.5s → ~350–450ms. Sisa dominan = hop `iad1` 
 
 ---
 
+
 ## 6. Keputusan yang ditolak / diterima tertulis
 
 | ID | Keputusan | Rasional |
@@ -226,3 +227,13 @@ Pemicu: outage form-login hilang yang lolos SEMUA gate (R3b). Peta ke workstream
   auth-smoke + verify-deploy. Secrets baru: `SUPABASE_URL`,
   `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `AUTH_BRIDGE_SECRET`,
   `PROD_WEB_URL` (`PROD_API_URL` sudah ada).
+
+## 9. Live-fire email reminder (2026-09-27)
+
+Akun uji nyata (`giorey524@gmail.com`): register → **200 + session langsung**
+(bukti confirm-email OFF bekerja), login → token, course + task (deadline
++6 mnt) → trigger cron manual pasca-deadline → `{ok:true}` →
+`notification_deliveries`: email H-0 **`sent`** + in_app H-0 **`sent`**
+(retry 0, tanpa error). **Email terkonfirmasi mendarat di inbox user.**
+Cleanup total: deliveries/task/course (SQL) + auth user (Admin API) →
+verifikasi 0 baris di semua tabel + login 401. Nol residu.

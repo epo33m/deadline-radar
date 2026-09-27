@@ -133,13 +133,15 @@ panggilan kedua keluar `skipped` tanpa kerja.
 2. `GET https://<api>/openapi` → 200 (dokumentasi API hidup).
 3. `GET https://<web>/health` → 200 (rewrite ke API lewat Vercel).
 4. Trigger manual: GitHub Actions → Scheduler Trigger → Run workflow. Log harus
-   `[cron] evaluate-reminders finished: …` di log Railway.
+   `[cron] evaluate-reminders finished: …` di log Railway. ☑ (2026-09-27:
+   trigger manual via API + cron per jam tercatat `ok` di `reminder_runs`)
 5. `GET https://<api>/health/cron` → **503 sampai run pertama `ok` tercatat**
    (`reminder_runs` masih 0 row saat dokumen ini ditulis). Setelah run pertama
    harus `200 {ok:true, lastRunAt, lastStatus, evaluatedTasks}`.
 6. Login end-to-end di browser prod (auth bridge butuh `AUTH_BRIDGE_SECRET` yang
    sama di kedua sisi) + satu task uji dengan threshold H-1 untuk memastikan
-   email benar-benar keluar.
+   email benar-benar keluar. ☑ (2026-09-27: register 200 + login + task H-0 →
+   delivery `sent` + email mendarat di inbox; audit §9; akun uji dihapus)
 7. Pasang monitor eksternal (UptimeRobot/StatusCake) ke `/health/cron` setiap
    menit — alerted saat `503` (RF-14 MTTD).
 
