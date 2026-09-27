@@ -72,9 +72,10 @@ Legenda lokasi:
 
 | Item | Status | Catatan |
 |---|---|---|
-| Project `deadline-radar-web` + `deadline-radar-api` dibuat | ☐ | Ambil DSN → isi `SENTRY_DSN` (ENV-API + ENV-WEB) |
+| Project `deadline-radar-web` + `deadline-radar-api` dibuat | ☑ (2026-09-27, API) | `sentry.io/epo33m`: `deadline-radar-web` (javascript-nextjs), `deadline-radar-api` (node); template `javascript-nextjs` tak dipakai |
+| `SENTRY_DSN` | ENV-API **dan** ENV-WEB | ☑ (2026-09-27, sync) | Kecuali itu: `SENTRY_DSN` sempat tak ada di sync `WEB_KEYS` (server/edge web takkan pernah aktif) — dibetulkan. `NEXT_PUBLIC_SENTRY_DSN` untuk client |
 | `sendDefaultPii: false` + scrub `beforeSend` aktif (sudah di kode) | ☑ | Diverifikasi test scrub |
-| Alert error-rate + cron gagal aktif | ☐ | F-06 wired: Sentry `reminder delivery blackout` saat semua send gagal (counts-only, no PII); log `[cron] evaluate-reminders finished` selalu membawa outcome+durationMs; HTTP tetap `200 {ok:true}`. Sign-off: buat rule-nya + drill staging sampai alert benar-benar menyala sekali (alert yang belum pernah menyala belum terbukti bekerja) |
+| Alert error-rate + cron gagal aktif | ☐ | Pemicu: API `rules/` 404 via token (kemungkinan scope) — buat manual: project → Alerts → Create Alert Rule → Issue Alert. (1) error-rate: errors > 10/jam. (2) blackout: message contains `reminder delivery blackout`. Drill: `bun run scripts/sentry-drill.ts --tag <nama-alert>` (pesan drill blackout: `--message "reminder delivery blackout: DRILL"`) sampai alert menyala sekali, lalu resolve issue drill |
 
 ## 6. Repo hygiene pra-rilis
 
