@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
 
 import { TaskDetailPanel } from "@/components/tasks/task-detail";
+import { requireBootstrap } from "@/lib/api/bootstrap";
 import { apiJson } from "@/lib/api/server";
-import { requireSession } from "@/lib/api/session";
 import type { Course } from "@/types/course";
 import type { Attachment, ReminderThreshold, Task } from "@/types/task";
 
@@ -21,15 +21,6 @@ type ApiTask = {
   createdAt: string | Date;
   updatedAt: string | Date;
   deletedAt: string | Date | null;
-};
-
-type ApiCourse = {
-  id: string;
-  name: string;
-  code: string | null;
-  color: string | null;
-  icon?: string | null;
-  description: string | null;
 };
 
 type ApiThreshold = {
@@ -57,22 +48,27 @@ function iso(value: string | Date | null | undefined): string | null {
 
 export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
   const { id } = await params;
-  // Overlap the session RTT with the data fetch; redirect/notFound priority
-  // is preserved by awaiting the session before the branches below.
-  const sessionPromise = requireSession();
+  // Overlap the bootstrap RTT with the data fetch; redirect/notFound
+  // priority is preserved by awaiting the bootstrap before the branches.
+  // Bootstrap (React-cached with the layout) covers user + course options.
+  const bootstrapPromise = requireBootstrap();
 
-  const [detailResult, coursesResult] = await Promise.all([
-    apiJson<{
-      task?: ApiTask;
-      course?: ApiCourse | null;
-      thresholds?: ApiThreshold[];
-      attachments?: ApiAttachment[];
-      error?: string;
-    }>(`/api/v1/tasks/${id}`),
-    apiJson<{ courses?: ApiCourse[] }>("/api/v1/courses"),
-  ]);
+  const detailResult = await apiJson<{
+    task?: ApiTask;
+    course?: {
+      id: string;
+      name: string;
+      code: string | null;
+      color: string | null;
+      icon?: string | null;
+      description: string | null;
+    } | null;
+    thresholds?: ApiThreshold[];
+    attachments?: ApiAttachment[];
+    error?: string;
+  }>(`/api/v1/tasks/${id}`);
 
-  const user = await sessionPromise;
+  const { user, courses: bootstrapCourses } = await bootstrapPromise;
 
   if (detailResult.error === "Task not found") {
     notFound();
@@ -91,7 +87,7 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
 
   const task = detailResult.task;
   const course = detailResult.course;
-  const courses = coursesResult.courses ?? [];
+  const courses = bootstrapCourses;
 
   const courseOptions: Pick<
     Course,

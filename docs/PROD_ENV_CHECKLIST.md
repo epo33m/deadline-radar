@@ -25,6 +25,8 @@ Legenda lokasi:
 | `CRON_SECRET` | ENV-API + scheduler cron | ☐ | Acak panjang; scheduler memanggil `GET /api/v1/cron/evaluate-reminders` dengan `Authorization: Bearer …` |
 | `AUTH_BRIDGE_SECRET` | ENV-API **dan** ENV-WEB (sama) | ☐ | Acak panjang; tidak pernah literal `"1"` |
 | `REDIS_URL` | ENV-API | ☐ | Wajib prod (SEC-007); single replica tetap wajib isi |
+| `REDIS_TIMEOUT_MS` | ENV-API | ☐ | Opsional: batas satu round trip Redis (ms). Kosong = **250**. Lambat/lebih dari ini = fallback bucket memory + warn (bukan 500); samakan region Upstash dengan region API agar jarang terpicu |
+| `BOOTSTRAP_CACHE_TTL_MS` | ENV-API | ☐ | Opsional: TTL cache `GET /api/v1/bootstrap` per-user (ms). Kosong = **30000**. `0` = matikan. Eviksi otomatis tiap mutasi 2xx (hook global); over-evict hanya buang refetch |
 
 ## 2. Fungsional (degradasi bila kosong)
 
@@ -338,3 +340,20 @@ menjadi masalah saat horizontal scale (snapshot tidak terbagi antar instance, re
 |---|---|---|
 | SEBELUM scale horizontal: pindahkan snapshot authz ke Redis (`REDIS_URL` yang sama) atau terima hit DB dan buang map lokal | ☐ | Hit-rate cache authz; query authz per request di APM |
 | `revalidate`/`staleTime` Next hanya untuk bacaan yang benar-benar statis — bukan untuk list bergerbang-session | ☐ | Review saat menambah cache bacaan |
+
+## 12. Verifikasi pasca-deploy — perf plan 2026-09-26
+
+Rujukan: `docs/performance-audit-2026-09-26.md`. Baseline: `sh scripts/perf-probe.sh`
+sebelum perubahan (log di `scripts/perf-logs/`, gitignored).
+
+| Item | Status | Cara verifikasi |
+|---|---|---|
+| Railway region = US East, 1 replika (`railway status`) | ☑ (2026-09-26, CLI) | `region: US East`, `sfo (0) · US East (1)` |
+| Supabase project `us-east-1`: 41 migrasi applied, 0 pending | ☐ | `bun run db:migrate status` + `supabase/verify-prod.sql` §1–§5 + `db:drift` bersih kecuali `profiles_id_fkey → users` |
+| Upstash Redis region = US East | ☐ | `[perf]` pada 401: 181ms → ~5–15ms |
+| Vercel Build Command = rantai double-build (`DEPLOY-PROD.md` §3) | ☐ | Build log memuat `[csp-hashes] verify ok`; `/login` balas `sha256` (tanpa `nonce-`) + `s-maxage` |
+| ENV-API: 5 nilai Supabase baru + `REDIS_URL` baru tersinkron (`scripts/sync-prod-env.ts --apply`) | ☐ | `railway run env` / dashboard; API boot tanpa RF-11/RF-13 refusal |
+| ENV-WEB: `NEXT_PUBLIC_SUPABASE_*` baru + redeploy (di-inline saat build) | ☐ | Login end-to-end di browser prod |
+| Re-probe pasca-semua-fase, angka masuk tabel audit §2 kolom "sesudah" | ☐ | `sh scripts/perf-probe.sh`; target `/health/cron` ~150–250ms, `/login` ~50–100ms dari Asia |
+| Sentry traces (0.1) aktif di ENV-API + ENV-WEB bila DSN diisi | ☐ | Span `GET /api/v1/bootstrap` terlihat di Sentry |
+| Rilis dari commit berisi HANYA perubahan terverifikasi plan ini | ☐ | Lihat §6: jangan campur feature work paralel |

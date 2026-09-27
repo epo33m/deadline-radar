@@ -11,6 +11,43 @@ type RedisLike = {
 let redisClient: RedisLike | null | undefined;
 
 /**
+ * Bound for a single Redis round trip (perf plan, Fase D).
+ *
+ * The rate limiter runs on EVERY /api/* request, so a slow Redis region
+ * becomes a per-request tax (measured: ~180ms INCR from us-east). Healthy
+ * in-region Redis answers in single-digit ms; anything beyond the bound is
+ * treated like Redis being down (memory fallback + warn) instead of
+ * stalling the request. Overridable via `REDIS_TIMEOUT_MS`.
+ */
+export function redisTimeoutMs(): number {
+  const raw = Number(process.env.REDIS_TIMEOUT_MS ?? "");
+  return Number.isFinite(raw) && raw > 0 ? raw : 250;
+}
+
+/** Race a Redis op against the bound; `null` on timeout (caller falls back). */
+export async function withRedisTimeout<T>(
+  promise: Promise<T>,
+  ms: number = redisTimeoutMs(),
+): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const timeout = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), ms);
+    });
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+/** Test helper — inject a fake client (mirrors auth-abuse redisOverride). */
+export function setRedisClientForTests(
+  client: RedisLike | null | undefined,
+): void {
+  redisClient = client;
+}
+
+/**
  * Optional Redis (ioredis-compatible via Bun redis or dynamic import).
  * Returns null when REDIS_URL is unset — callers must fall back to memory.
  */

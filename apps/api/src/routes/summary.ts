@@ -11,7 +11,7 @@ import { getDb } from "../lib/db";
 import { ApiError, apiDoc, envelope, secured } from "../lib/api";
 
 /** Postgres rejects unknown timezones, same as Intl — validate once up front. */
-function resolveTimeZone(raw: string | null | undefined): string {
+export function resolveTimeZone(raw: string | null | undefined): string {
   if (!raw) return "UTC";
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: raw }).format(new Date());

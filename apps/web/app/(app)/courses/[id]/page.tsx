@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
 
 import { CourseDetail } from "@/components/courses/course-detail";
+import { requireBootstrap } from "@/lib/api/bootstrap";
 import { apiJson } from "@/lib/api/server";
-import { requireSession } from "@/lib/api/session";
 import type { Course } from "@/types/course";
 import type { Task } from "@/types/task";
 
@@ -48,10 +48,10 @@ export default async function CourseDetailPage({
   params,
   searchParams,
 }: CourseDetailPageProps) {
-  const [{ id }, { view }, user] = await Promise.all([
+  const [{ id }, { view }, { user }] = await Promise.all([
     params,
     searchParams,
-    requireSession(),
+    requireBootstrap(),
   ]);
 
   const [courseResult, tasksResult] = await Promise.all([

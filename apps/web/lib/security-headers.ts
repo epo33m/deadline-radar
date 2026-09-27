@@ -25,6 +25,12 @@ export interface SecurityHeaderOptions {
   isDev: boolean;
   /** `true` when `NODE_ENV === "production"` (emits HSTS). */
   isProd: boolean;
+  /**
+   * Static-page hashes (`STATIC_CSP_HASHES[pathname]`). When present with at
+   * least one script hash, the CSP uses the hash variant and the `nonce`
+   * above is ignored for `script-src`/`style-src`.
+   */
+  staticHashes?: { scripts: string[]; styles: string[] };
 }
 
 export function buildContentSecurityPolicy(
@@ -49,12 +55,55 @@ export function buildContentSecurityPolicy(
   return csp;
 }
 
+/**
+ * Hash-based CSP for prerendered-static pages (perf plan, Fase C).
+ *
+ * Same policy shape as the nonce variant, but the per-request nonce is
+ * replaced by the SHA-256 hashes of the page's own inline blocks (derived
+ * at build time by `scripts/build-csp-hashes.ts`). Hashes are as strong as
+ * nonces for byte-identical content — which is exactly what a prerendered
+ * page is — and unlike a nonce they do not force dynamic rendering, so the
+ * page stays static and edge-cacheable.
+ *
+ * `strict-dynamic` is kept: the hashed bootstrap is the trust root and the
+ * chunks it loads inherit trust; legacy browsers fall back to `'self'`,
+ * which still covers the external `/_next/static` chunks.
+ */
+export function buildStaticContentSecurityPolicy(
+  scriptHashes: string[],
+  styleHashes: string[],
+  isDev: boolean,
+): string {
+  const csp = [
+    "default-src 'self'",
+    `script-src 'self'${scriptHashes.length > 0 ? ` ${scriptHashes.join(" ")}` : ""} 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
+    `style-src 'self'${styleHashes.length > 0 ? ` ${styleHashes.join(" ")}` : ""}`,
+    "img-src 'self' blob: data:",
+    "font-src 'self'",
+    "connect-src 'self' https://*.sentry.io",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "upgrade-insecure-requests",
+  ].join("; ");
+  return csp;
+}
+
 export function buildSecurityHeaders(
   options: SecurityHeaderOptions,
 ): Record<string, string> {
-  const { nonce, isDev, isProd } = options;
+  const { nonce, isDev, isProd, staticHashes } = options;
+  const csp =
+    staticHashes && staticHashes.scripts.length > 0
+      ? buildStaticContentSecurityPolicy(
+          staticHashes.scripts,
+          staticHashes.styles,
+          isDev,
+        )
+      : buildContentSecurityPolicy(nonce, isDev);
   const headers: Record<string, string> = {
-    "Content-Security-Policy": buildContentSecurityPolicy(nonce, isDev),
+    "Content-Security-Policy": csp,
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "strict-origin-when-cross-origin",
     // Belt-and-suspenders with `frame-ancestors 'none'` for legacy agents.

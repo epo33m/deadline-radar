@@ -1,17 +1,8 @@
 import { TasksCollection } from "@/components/tasks/tasks-collection";
+import { requireBootstrap } from "@/lib/api/bootstrap";
 import { apiJson } from "@/lib/api/server";
-import { requireSession } from "@/lib/api/session";
 import type { Course } from "@/types/course";
 import type { TaskListItem } from "@/types/task";
-
-type ApiCourse = {
-  id: string;
-  name: string;
-  code: string | null;
-  color: string | null;
-  icon?: string | null;
-  description: string | null;
-};
 
 type ApiTask = {
   id: string;
@@ -25,19 +16,16 @@ type ApiTask = {
 };
 
 export default async function TasksPage() {
-  // Fire session + data together: the session is React-cache() deduped and
-  // only its resolved user is needed for render. Awaiting it after the data
-  // settles preserves redirect priority while overlapping the session RTT.
-  const sessionPromise = requireSession();
+  // One bootstrap call (React-cached with the layout) covers user +
+  // courses; only the task list needs its own request. The redirect still
+  // wins for unauthenticated viewers because bootstrap is awaited first.
+  const bootstrapPromise = requireBootstrap();
 
-  const [coursesResult, tasksResult] = await Promise.all([
-    apiJson<{ courses?: ApiCourse[] }>("/api/v1/courses"),
-    apiJson<{ tasks?: ApiTask[] }>("/api/v1/tasks"),
-  ]);
+  const tasksResult = await apiJson<{ tasks?: ApiTask[] }>("/api/v1/tasks");
 
-  const user = await sessionPromise;
+  const { user, courses: bootstrapCourses } = await bootstrapPromise;
 
-  if (coursesResult.error || tasksResult.error) {
+  if (tasksResult.error) {
     return (
       <section className="space-y-2">
         <h1 className="font-display text-[32px] font-semibold leading-[1.07] tracking-[-0.28px] text-ink sm:text-[36px] lg:text-[44px]">Tasks</h1>
@@ -50,7 +38,7 @@ export default async function TasksPage() {
   }
 
   const courses: Pick<Course, "id" | "name" | "code" | "color" | "icon" | "description">[] =
-    (coursesResult.courses ?? []).map((c) => ({
+    bootstrapCourses.map((c) => ({
       id: c.id,
       name: c.name,
       code: c.code,

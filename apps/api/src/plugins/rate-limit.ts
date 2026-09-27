@@ -7,7 +7,7 @@ import {
   extractClientRequestId,
   requestIdPlugin,
 } from "../lib/api";
-import { getRedis } from "../lib/redis";
+import { getRedis, withRedisTimeout } from "../lib/redis";
 import { peerAddressOf, resolveClientIp } from "../lib/proxy-trust";
 
 type Bucket = { count: number; resetAt: number };
@@ -87,9 +87,33 @@ export const redisRateLimitStore: RateLimitStore = {
     }
     const now = Date.now();
     const redisKey = `rl:${key}`;
-    const count = await redis.incr(redisKey);
+    let count: number | null;
+    try {
+      count = await withRedisTimeout(redis.incr(redisKey));
+    } catch (error) {
+      console.warn(
+        "[redis] incr failed, using memory bucket",
+        error instanceof Error ? error.message : "unknown",
+      );
+      return memoryRateLimitStore.consume(key, max, windowMs);
+    }
+    if (count === null) {
+      // Slow Redis (wrong region / incident): fail open to the memory
+      // bucket instead of taxing every request. Same posture as Redis
+      // being down (Finding #9: process-local, single-replica budget).
+      console.warn("[redis] incr timeout, using memory bucket");
+      return memoryRateLimitStore.consume(key, max, windowMs);
+    }
     if (count === 1) {
-      await redis.pexpire(redisKey, windowMs);
+      // Best-effort expiry: a failed pexpire must not 500 the request.
+      try {
+        await withRedisTimeout(redis.pexpire(redisKey, windowMs));
+      } catch (error) {
+        console.warn(
+          "[redis] pexpire failed",
+          error instanceof Error ? error.message : "unknown",
+        );
+      }
     }
     return {
       remaining: Math.max(0, max - count),

@@ -1,8 +1,36 @@
+import { execSync } from "node:child_process";
+
 import type { NextConfig } from "next";
+import withBundleAnalyzer from "@next/bundle-analyzer";
 
 const API_ORIGIN = process.env.API_ORIGIN ?? "http://127.0.0.1:4025";
 
+/**
+ * Deterministic build ID (perf plan, Fase C).
+ *
+ * The static-page CSP hashes (`scripts/build-csp-hashes.ts`) are derived
+ * from prerendered HTML that embeds the build ID — so the double-build
+ * (build → hash → build → verify) only produces identical output when the
+ * ID is stable across both builds in the same run. Random default IDs
+ * would invalidate the hashes on every build.
+ */
+function resolveBuildId(): string {
+  const fromVercel = process.env.VERCEL_GIT_COMMIT_SHA;
+  if (fromVercel && fromVercel.length > 0) return fromVercel;
+  try {
+    const sha = execSync("git rev-parse HEAD", {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    if (sha.length > 0) return sha;
+  } catch {
+    // No git available (e.g. minimal CI checkout) — fall through.
+  }
+  return "local-dev";
+}
+
 const nextConfig: NextConfig = {
+  generateBuildId: async () => resolveBuildId(),
   async redirects() {
     return [
       {
@@ -39,4 +67,6 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withBundleAnalyzer({ enabled: process.env.ANALYZE === "true" })(
+  nextConfig,
+);

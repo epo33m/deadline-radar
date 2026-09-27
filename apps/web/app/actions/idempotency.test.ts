@@ -18,6 +18,9 @@ mock.module("next/navigation", () => ({
 }));
 
 mock.module("@/lib/api/server", () => ({
+  // Keep complete: lib/api/bootstrap.ts imports clearLocalAuthCookies from
+  // this module, and bun shares one module registry across test files.
+  clearLocalAuthCookies: async () => undefined,
   apiJson: async (path: string, init: RequestInit = {}) => {
     const headersObj: Record<string, string> = {};
     if (init.headers) {

@@ -12,6 +12,7 @@ import {
   type AuthTokenBody,
 } from "@/lib/auth/cookies";
 import { resolveSessionGate } from "@/lib/auth/session-gate";
+import { STATIC_CSP_HASHES } from "@/lib/csp-hashes";
 import { buildSecurityHeaders } from "@/lib/security-headers";
 
 function supabaseUrl(): string {
@@ -165,13 +166,33 @@ async function resolveHasSession(request: NextRequest): Promise<{
 }
 
 export async function proxy(request: NextRequest) {
+  // Static-page fast path (perf plan, Fase C): prerendered pages listed in
+  // STATIC_CSP_HASHES are served with a hash-based CSP — no per-request
+  // nonce, no `x-nonce` request header. The hashes authorize the exact
+  // inline blocks baked at build time, so the page stays static and
+  // edge-cacheable with no policy weakening. Any pathname without an entry
+  // (including an empty map, e.g. plain `next build` without the hash step)
+  // falls through to the nonce path below.
+  const staticHashes = STATIC_CSP_HASHES[request.nextUrl.pathname];
+  const useStaticCsp =
+    staticHashes !== undefined && staticHashes.scripts.length > 0;
+
   // SEC-002: fresh nonce per request (strict CSP). `x-nonce` is consumed by
   // Next.js for its own inline scripts; the CSP response header below
   // enforces it. Must run before any early return so redirects are covered.
-  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  // Skipped on the static path: a nonce would both force dynamic rendering
+  // and go stale in the edge cache.
+  const nonce = useStaticCsp
+    ? ""
+    : Buffer.from(crypto.randomUUID()).toString("base64");
   const isDev = process.env.NODE_ENV === "development";
   const isProd = process.env.NODE_ENV === "production";
-  const securityHeaders = buildSecurityHeaders({ nonce, isDev, isProd });
+  const securityHeaders = buildSecurityHeaders({
+    nonce,
+    isDev,
+    isProd,
+    staticHashes: useStaticCsp ? staticHashes : undefined,
+  });
 
   const applySecurityHeaders = (response: NextResponse) => {
     for (const [name, value] of Object.entries(securityHeaders)) {
@@ -197,7 +218,9 @@ export async function proxy(request: NextRequest) {
   }
 
   const requestHeaders = new Headers(request.headers);
-  requestHeaders.set("x-nonce", nonce);
+  if (!useStaticCsp) {
+    requestHeaders.set("x-nonce", nonce);
+  }
   const response = NextResponse.next({
     request: { headers: requestHeaders },
   });

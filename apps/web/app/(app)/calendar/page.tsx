@@ -2,7 +2,7 @@ import { CalendarMonthView } from "@/components/calendar/calendar-month-view";
 import { LearnSecondaryNav } from "@/components/learn/learn-secondary-nav";
 import { PageHeader } from "@/components/ui/page-header";
 import { apiJson } from "@/lib/api/server";
-import { requireSession } from "@/lib/api/session";
+import { requireBootstrap } from "@/lib/api/bootstrap";
 import {
   buildMonthGrid,
   getZonedDayKey,
@@ -67,11 +67,11 @@ async function fetchMonthTasks(
 }
 
 export default async function CalendarPage({ searchParams }: CalendarPageProps) {
-  // searchParams + session are independent — resolve together. The month
+  // searchParams + bootstrap are independent — resolve together. The month
   // range fetch below still needs the timezone, so it follows.
-  const [{ month: monthParam }, user] = await Promise.all([
+  const [{ month: monthParam }, { user }] = await Promise.all([
     searchParams,
-    requireSession(),
+    requireBootstrap(),
   ]);
   const timeZone = user.timezone;
   const month = parseMonthParam(monthParam, timeZone);

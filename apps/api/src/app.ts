@@ -6,11 +6,12 @@ import { env } from "./env";
 import { requestIdPlugin } from "./lib/api/request-id";
 import { apiSchemas, apiSecuritySchemes } from "./lib/api/openapi-docs";
 import { perfTimingPlugin } from "./plugins/perf-timing";
-import { errorHandlerPlugin } from "./plugins/error-handler";
+import { bootstrapCachePlugin } from "./plugins/bootstrap-cache";import { errorHandlerPlugin } from "./plugins/error-handler";
 import { rateLimitPlugin } from "./plugins/rate-limit";
 import { httpPolicyPlugin } from "./plugins/http-policy";
 import { bodyLimitPlugin } from "./plugins/body-limit";
 import { authRoutes } from "./routes/auth";
+import { bootstrapRoutes } from "./routes/bootstrap";
 import { courseRoutes } from "./routes/courses";
 import { taskRoutes } from "./routes/tasks";
 import { summaryRoutes } from "./routes/summary";
@@ -23,6 +24,7 @@ import { healthCronRoutes } from "./routes/health-cron";
 export const app = new Elysia()
   // First: bracket every other plugin/handler in the [perf] wall time.
   .use(perfTimingPlugin)
+  .use(bootstrapCachePlugin)
   .use(requestIdPlugin)
   .use(errorHandlerPlugin)
   .use(
@@ -46,6 +48,7 @@ export const app = new Elysia()
         tags: [
           { name: "Health" },
           { name: "Auth" },
+          { name: "Bootstrap" },
           { name: "Courses" },
           { name: "Tasks" },
           { name: "Summary" },
@@ -86,6 +89,7 @@ export const app = new Elysia()
     },
   })
   .use(authRoutes)
+  .use(bootstrapRoutes)
   .use(courseRoutes)
   .use(taskRoutes)
   .use(summaryRoutes)

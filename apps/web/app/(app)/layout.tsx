@@ -1,12 +1,13 @@
 import { AppShell } from "@/components/shell/app-shell";
-import { requireSession } from "@/lib/api/session";
+import { requireBootstrap } from "@/lib/api/bootstrap";
 
 export default async function AppLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const user = await requireSession();
+  // Bootstrap is React-cached: pages awaiting it below share this request.
+  const { user } = await requireBootstrap();
   const accountLabel = user.email?.split("@")[0] ?? "Account";
 
   return (

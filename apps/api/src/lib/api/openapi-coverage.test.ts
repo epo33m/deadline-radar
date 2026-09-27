@@ -73,6 +73,7 @@ const PUBLIC_ROUTES: Array<[string, string]> = [
   ["post", "/api/v1/auth/change-email"],
   ["get", "/api/v1/auth/confirm"],
   ["get", "/api/v1/auth/session"],
+  ["get", "/api/v1/bootstrap/"],
   ["patch", "/api/v1/auth/timezone"],
   ["patch", "/api/v1/auth/time-format"],
   ["get", "/api/v1/courses/"],

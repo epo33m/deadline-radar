@@ -4,6 +4,10 @@
 > memicu CI (`.github/workflows/ci.yml`). Deploy terjadi dari dashboard Railway
 > (API) dan Vercel (Web) memakai branch `main`.
 > Checklist env + verifikasi tetap di `docs/PROD_ENV_CHECKLIST.md`.
+> Arsitektur region (perf plan 2026-09-26, `docs/performance-audit-2026-09-26.md`):
+> Web `iad1` (Vercel Hobby, terkunci) + API **US East** (Railway) + DB
+> **`us-east-1`** (Supabase) + Redis **US East** (Upstash). Semua server-side
+> satu region; hop `sin1`↔`iad1` (~400–500ms) adalah plafon Hobby.
 
 ## 0. Prasyarat (sudah diverifikasi 2026-09-26, read-only)
 
@@ -45,20 +49,25 @@ Langkah dashboard:
 2. Service API: **Root Directory = `/`** (default; JANGAN `apps/api`, karena
    `bun.lock` + `packages/*` di root), builder **Dockerfile** (dari
    `railway.json`).
-3. Isi env di **ENV-API** (tab Variables). Start command dan port sudah di-set
+3. **Region = US East** (Virginia — satu region dengan Vercel `iad1`,
+   Supabase `us-east-1`, Upstash US East; perf plan 2026-09-26 §R1).
+   CLI: `railway service scale us-east=1` lalu `railway service scale sfo=0`
+   (tetap 1 replika — keputusan single replica).
+4. Isi env di **ENV-API** (tab Variables). Start command dan port sudah di-set
    di `Dockerfile` (`API_PORT=${PORT:-$API_PORT}`) — biarkan kosong.
-4. Deploy. Rewrite tidak perlu; domain publik dari service → dipakai
+5. Deploy. Rewrite tidak perlu; domain publik dari service → dipakai
    sebagai `API_ORIGIN` di Vercel dan `PROD_API_URL` di GitHub secret.
 
 | Var | Catatan |
 |---|---|
 | `NODE_ENV` | `production` (sudah di-set sebagai `ENV` di image) |
 | `REMINDER_CUTOFF_ISO` | **wajib** (RF-11). Nilai aktivasi scheduler yang disepakati; boleh maju, jangan mundur |
-| `DATABASE_URL` | Pooler Supabase, `prepare:false` sudah di kode |
+| `DATABASE_URL` | Pooler Supabase, `prepare:false` sudah di kode. **Region `us-east-1`** (project baru pasca-2026-09-26; perf plan §R1). Pindah region = project baru: `bun run db:migrate` + `db:verify` + `supabase/verify-prod.sql` §1–§5 + buat ulang bucket `attachments` + user daftar ulang |
 | `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | service_role **tidak boleh** masuk Vercel |
 | `CRON_SECRET` | acak panjang; sama dengan `CRON_SECRET` GitHub secret |
 | `AUTH_BRIDGE_SECRET` | **harus identik** dengan nilai di Vercel |
-| `REDIS_URL` | wajib (SEC-007) |
+| `REDIS_URL` | wajib (SEC-007). **Region US East** (satu region dengan API; perf plan §R4 — INCR jauh = ~180ms per request) |
+| `REDIS_TIMEOUT_MS` | opsional, default **250** (fallback memory + warn bila Redis lebih lambat) |
 | `RESEND_API_KEY` / `RESEND_FROM_EMAIL` | domain terverifikasi di Resend |
 | `WEB_ORIGIN` | origin publik Vercel (cookie/CORS) |
 | `AUTH_AUDIT_RETENTION_DAYS` | `90` (keputusan audit ROUND 1) |
@@ -77,8 +86,9 @@ otomatis. Setting yang perlu diisi manual:
 |---|---|
 | Root Directory | `apps/web` |
 | Install Command | `bun install` (default; Vercel mencari `bun.lock` ke parent) |
-| Build Command | `next build` (default) |
+| Build Command | `next build && bun scripts/build-csp-hashes.ts && next build && bun scripts/build-csp-hashes.ts --verify` (double-build hash-CSP, Fase C; SAMA dengan `bun run build`) |
 | Output Directory | `.next` (default) |
+| Function Region | `iad1` default (Hobby terkunci; plafon latensi, lihat perf audit §R2) |
 
 Env di **ENV-WEB** (Project Settings → Environment Variables, environment
 production — hanya production, jangan preview/dev):
