@@ -65,7 +65,7 @@ export const app = new Elysia()
       path: "/openapi",
     }),
   )
-  .get("/health", () => ({ ok: true, service: "deadline-radar-api" }), {
+  .get("/health", () => ({ ok: true, service: "deadline-radar-api", commit: process.env.RAILWAY_GIT_COMMIT_SHA ?? "dev" }), {
     detail: {
       tags: ["Health"],
       summary: "Health check",
@@ -80,6 +80,12 @@ export const app = new Elysia()
                 properties: {
                   ok: { type: "boolean" },
                   service: { type: "string" },
+                  commit: {
+                    type: "string",
+                    description:
+                      "Deployed git SHA (Railway-provided; 'dev' locally). " +
+                      "Lets verify-deploy assert the live code matches main.",
+                  },
                 },
               },
             },

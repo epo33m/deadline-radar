@@ -195,6 +195,10 @@ export function LoginForm() {
   const searchParams = useSearchParams();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  // Correlation id for bug reports ("gak jelas" class): the API echoes
+  // requestId on every error envelope; surfacing it lets a report pin the
+  // exact server log line instead of a vague description.
+  const [errorRef, setErrorRef] = useState<string | undefined>();
   const [fieldErrors, setFieldErrors] = useState<
     Partial<Record<string, string[]>>
   >({});
@@ -228,6 +232,7 @@ export function LoginForm() {
 
     setClientErrors({});
     setError(undefined);
+    setErrorRef(undefined);
     setFieldErrors({});
     setPending(true);
 
@@ -236,6 +241,7 @@ export function LoginForm() {
       redirectTo?: string;
       error?: string;
       fieldErrors?: Partial<Record<string, string[]>>;
+      requestId?: string;
     }>("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({
@@ -248,6 +254,7 @@ export function LoginForm() {
 
     if (result.error) {
       setError(result.error);
+      setErrorRef(result.requestId);
       setFieldErrors(result.fieldErrors ?? {});
       return;
     }
@@ -296,6 +303,11 @@ export function LoginForm() {
       {error ? (
         <p className={`${authErrorClassName} mt-4`} role="alert">
           {error}
+          {errorRef ? (
+            <span className="mt-1 block text-xs opacity-80">
+              ref: {errorRef}
+            </span>
+          ) : null}
         </p>
       ) : null}
       <AuthFormActions
@@ -311,6 +323,10 @@ export function RegisterForm() {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  const [errorRef, setErrorRef] = useState<string | undefined>();
+  // 202 confirmation message is NOT an error: neutral success styling with
+  // role=status (was: red error styling, which read as "register gagal").
+  const [notice, setNotice] = useState<string | undefined>();
   const [fieldErrors, setFieldErrors] = useState<
     Partial<Record<string, string[]>>
   >({});
@@ -342,6 +358,8 @@ export function RegisterForm() {
 
     setClientErrors({});
     setError(undefined);
+    setErrorRef(undefined);
+    setNotice(undefined);
     setFieldErrors({});
     setPending(true);
 
@@ -350,6 +368,7 @@ export function RegisterForm() {
       message?: string;
       error?: string;
       fieldErrors?: Partial<Record<string, string[]>>;
+      requestId?: string;
     }>("/api/auth/register", {
       method: "POST",
       body: JSON.stringify({
@@ -363,6 +382,7 @@ export function RegisterForm() {
 
     if (result.error) {
       setError(result.error);
+      setErrorRef(result.requestId);
       setFieldErrors(result.fieldErrors ?? {});
       return;
     }
@@ -378,7 +398,7 @@ export function RegisterForm() {
       }
     }
 
-    setError(
+    setNotice(
       result.message ??
         "Check your email to confirm your account before signing in.",
     );
@@ -408,6 +428,16 @@ export function RegisterForm() {
       {error ? (
         <p className={`${authErrorClassName} mt-4`} role="alert">
           {error}
+          {errorRef ? (
+            <span className="mt-1 block text-xs opacity-80">
+              ref: {errorRef}
+            </span>
+          ) : null}
+        </p>
+      ) : null}
+      {notice ? (
+        <p className={`${authSuccessClassName} mt-4`} role="status">
+          {notice}
         </p>
       ) : null}
       <AuthFormActions

@@ -200,3 +200,29 @@ Estimasi TTFB `/tasks`: ~1.2–1.5s → ~350–450ms. Sisa dominan = hop `iad1` 
 4. Re-probe (`sh scripts/perf-probe.sh`) + catat di tabel §2 sebagai kolom "sesudah".
 
 *Catatan mode: semua perubahan kode di atas sudah diuji (API 553 pass excl. 9 real-DB yang gagal juga di tree bersih; web 177 pass; typecheck+lint+build hijau) tetapi BELUM di-push — deploy menunggu gates §7 + keputusan rilis pemilik.*
+
+## 8. Batch 1 anti-kegagalan-diam (2026-09-27, plan mode → build)
+
+Pemicu: outage form-login hilang yang lolos SEMUA gate (R3b). Peta ke workstream:
+
+- **W1 — `apps/web/scripts/verify-routes.ts`**: baca `.next/prerender-manifest.json`,
+  assert `/` static + 10 route interaktif dynamic. Ter-wire di `bun run build`
+  (build → verify-routes → hashes → build → verify) + Vercel Build Command.
+  Mencabut `force-dynamic` dari halaman auth kini = build merah, bukan outage.
+- **W3 — `scripts/auth-smoke.ts`**: admin.createUser (auto-confirm, tanpa email)
+  → login API → assert JWT `iss` = project ref → bootstrap shape → deleteUser.
+  Hijau vs prod 2026-09-27. Batasan jujur: path signUp-email tak diuji rutin
+  (bakar kuota SMTP); tetap checklist manual DASH-SB.
+- **W4 — deploy gate**: `/health` expose `commit` (`RAILWAY_GIT_COMMIT_SHA`);
+  `scripts/verify-deploy.ts` menegaskan commit + `<form` di `/login` + varian
+  CSP per route + envelope bootstrap + cron bukan 500. 11/12 hijau vs prod
+  sebelum deploy (gagal hanya commit — ekspektasi, field-nya baru).
+- **W6 — error jelas**: `ref: <requestId>` di form login/register; pesan 202
+  register pindah ke styling sukses `role=status` (bukan merah); boundary
+  `app/global-error.tsx` + `app/(app)/error.tsx` (retry + digest).
+- **Sentry**: `SENTRY_DSN` masuk sync `WEB_KEYS` (sebelumnya tak tersinkron —
+  server/edge web takkan pernah aktif). DSN + alert + drill menunggu pemilik.
+- **Otomasi**: `.github/workflows/smoke-prod.yml` (push main + 6-jam-an):
+  auth-smoke + verify-deploy. Secrets baru: `SUPABASE_URL`,
+  `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `AUTH_BRIDGE_SECRET`,
+  `PROD_WEB_URL` (`PROD_API_URL` sudah ada).

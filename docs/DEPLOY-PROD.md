@@ -86,7 +86,7 @@ otomatis. Setting yang perlu diisi manual:
 |---|---|
 | Root Directory | `apps/web` |
 | Install Command | `bun install` (default; Vercel mencari `bun.lock` ke parent) |
-| Build Command | `next build && bun scripts/build-csp-hashes.ts && next build && bun scripts/build-csp-hashes.ts --verify` (double-build hash-CSP, Fase C; SAMA dengan `bun run build`) |
+| Build Command | `next build && bun scripts/verify-routes.ts && bun scripts/build-csp-hashes.ts && next build && bun scripts/build-csp-hashes.ts --verify` (route gate + double-build hash-CSP, Fase C/W1; SAMA dengan `bun run build`) |
 | Output Directory | `.next` (default) |
 | Function Region | `iad1` default (Hobby terkunci; plafon latensi, lihat perf audit §R2) |
 

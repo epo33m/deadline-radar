@@ -62,6 +62,7 @@ const WEB_KEYS = [
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "AUTH_BRIDGE_SECRET",
   "SUPABASE_JWT_SECRET",
+  "SENTRY_DSN",
   "NEXT_PUBLIC_SENTRY_DSN",
 ] as const;
 
@@ -73,7 +74,7 @@ const WEB_PUBLIC = new Set<string>([
 ]);
 
 /** Documented as optional: legacy HS256 fallback and Sentry (off while unset). */
-const OPTIONAL = new Set<string>(["SUPABASE_JWT_SECRET", "NEXT_PUBLIC_SENTRY_DSN"]);
+const OPTIONAL = new Set<string>(["SUPABASE_JWT_SECRET", "SENTRY_DSN", "NEXT_PUBLIC_SENTRY_DSN"]);
 
 /**
  * Origin vars cannot exist before the counterpart app has a domain: the API

@@ -1,0 +1,48 @@
+name: Prod Smoke (auth + deploy gate)
+
+# Post-deploy + scheduled verification (W3/W4): exercises the live production
+# stack the way users hit it. Creates and DELETES one throwaway auth user per
+# run (zero residue by construction); fails loudly on wiring/config drift.
+#
+# Required repository secrets:
+#   SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY,
+#   AUTH_BRIDGE_SECRET, PROD_API_URL, PROD_WEB_URL
+#
+# Runs: manually, on every push to main (post-deploy), and every 6 hours.
+
+on:
+  push:
+    branches: ["main", "master"]
+  workflow_dispatch:
+  schedule:
+    - cron: "17 */6 * * *"
+
+jobs:
+  prod-smoke:
+    name: Auth smoke + deploy gate vs production
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      AUTH_BRIDGE_SECRET: ${{ secrets.AUTH_BRIDGE_SECRET }}
+      API_ORIGIN: ${{ secrets.PROD_API_URL }}
+      WEB_ORIGIN: ${{ secrets.PROD_WEB_URL }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Auth smoke (register→login→bootstrap→cleanup)
+        run: bun run scripts/auth-smoke.ts
+
+      - name: Deploy gate (commit, forms, CSP, envelopes, DB)
+        run: bun run scripts/verify-deploy.ts --commit ${{ github.sha }}
