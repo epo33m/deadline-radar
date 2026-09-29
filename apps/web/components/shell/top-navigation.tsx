@@ -124,10 +124,10 @@ export function TopNavigation({
                 <Link
                   href={item.href}
                   aria-current={
-                    isNavItemActive(pathname, item.href) ? "page" : undefined
+                    isNavItemActive(pathname, item) ? "page" : undefined
                   }
                   className={navLinkClassName(
-                    isNavItemActive(pathname, item.href),
+                    isNavItemActive(pathname, item),
                   )}
                 >
                   {item.label}
@@ -196,7 +196,7 @@ export function TopNavigation({
               <li key={item.href}>
                 <MenuItemLink
                   item={item}
-                  active={isNavItemActive(pathname, item.href)}
+                  active={isNavItemActive(pathname, item)}
                   onNavigate={handleMenuNavigate}
                 />
               </li>
