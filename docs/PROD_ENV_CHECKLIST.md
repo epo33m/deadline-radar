@@ -76,6 +76,7 @@ Legenda lokasi:
 | Item | Status |
 |---|---|
 | `.env.local` / `.env*` tidak ter-commit (`git status` bersih dari secret) | ☐ |
+| Tidak ada file `.env*` di `apps/web/` (Next auto-load-nya di dev/build/start, jadi isinya masuk `process.env` web tanpa diminta — #71) | ☑ (2026-09-30: `apps/web/.env.local` yang berisi `VERCEL_OIDC_TOKEN` dihapus; `apps/e2e/app-env.ts` menolak jalan kalau muncul lagi) |
 | Rilis dari PR/diff bersih berisi HANYA fix audit | ☐ | Sign-off: pohon kerja saat ini bercampur feature work paralel (UI, account security) — rilis dari diff yang hanya memuat perbaikan terverifikasi, bukan seluruh working tree |
 | Tidak ada SQL dump / backup di repo atau hosting statis | ☐ |
 | Source-map prod tidak terekspos sembarang (atau nonaktifkan bila perlu) | ☐ |
