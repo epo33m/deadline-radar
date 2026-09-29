@@ -47,7 +47,7 @@ production dari `main`.
 | Aspek | dev / feature | main / production |
 |---|---|---|
 | CI | `ci-dev.yml` (ringan) | `ci-main.yml` (gate penuh, required check) |
-| Vercel | tidak ada deployment (`git.deploymentEnabled` = false) | Production deployment dari `deadline-radar-web` saja (`productionBranch: main`) |
+| Vercel | tidak ada deployment (`git.deploymentEnabled` = false) | Production deployment dari `deadline-radar-web` saja |
 | DB deploy | staging otomatis tiap push `dev` | production hanya dari `main` + approval |
 | Secrets | staging (`STAGING_DATABASE_URL`) | production (`PRODUCTION_DATABASE_URL`, hanya dibaca `deploy-production.yml`) |
 | E2E Playwright | manual vs staging | manual pre-release |
@@ -77,6 +77,13 @@ Hanya satu project Vercel yang dipakai:
   mematikan komentar bot per-branch, jadi deployment non-`main` dimatikan di
   sumbernya. Kalau `main` terhapus dari sini, merge tetap hijau tetapi
   production tidak pernah ter-deploy — itu sebabnya ada `vercel.test.ts`.
+
+  Catatan: `productionBranch` di project ini sebenarnya **tidak diset** (API
+  mengembalikan kosong), meski `docs/BRANCHING.md` pernah menyebut `main`.
+  Yang berlaku faktanya: deployment dari `main` ditandai `target=production`
+  (terverifikasi — build sukses terakhir `2a9da2f` adalah tip `main`), jadi
+  perilaku produksi tidak bergantung pada setelan itu dan tidak diubah di PR
+  ini.
 
 `deadline-radar` (root `.`) membangun monorepo dari root dan selalu gagal
 `No Output Directory named "public"`; 20 deployment terakhir semuanya error.
