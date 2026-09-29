@@ -8,16 +8,15 @@ import { shellContainerClassName } from "@/components/ui/shell-layout";
 import { cn } from "@/lib/utils";
 
 const LEARN_LINKS: { id: string; label: string; href: string }[] = [
-  { id: "get-started", label: "Get Started", href: "/learn" },
   { id: "course", label: "Course", href: "/courses" },
   { id: "task", label: "Task", href: "/tasks" },
   { id: "calendar", label: "Calendar", href: "/calendar" },
 ];
 
 /**
- * Secondary navigation shared by the Learn group (Learn, Courses, Tasks,
- * Calendar). Sits directly below the global nav; the active tab follows the
- * current route so the context stays visible on every page.
+ * Secondary navigation shared by the Learn group (Courses, Tasks, Calendar).
+ * Sits directly below the global nav; the active tab follows the current route
+ * so the context stays visible on every page.
  */
 export function LearnSecondaryNav({
   onOpenSidebar,
