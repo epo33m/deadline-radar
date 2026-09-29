@@ -51,6 +51,15 @@ bun install
 cp .env.example .env.local   # fill DATABASE_URL, Supabase, JWT secret, Resend, CRON_SECRET
 ```
 
+**One env file, at the root.** `apps/web/` must not contain a `.env*` file.
+Next auto-loads `.env.local`, `.env.production`, and friends from the app
+directory in `next dev`, `next build`, and `next start`, so a file placed there
+is merged into the web process's environment whether or not anything asked for
+it — which is how a Vercel production token ended up in the e2e web process
+(#71). The e2e suite refuses to start if it finds one; `apps/e2e/README.md`
+has the detail. Local values go in the root `.env.local`; Vercel credentials go
+in `vercel login` or the project's dashboard, never in this repo.
+
 Apply migrations in the Supabase SQL Editor (in order):
 
 1. `supabase/migrations/20260901000000_profiles.sql`

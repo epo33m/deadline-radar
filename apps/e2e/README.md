@@ -127,6 +127,38 @@ Every worker process re-imports the Playwright config and resolves the target
 again, so a worker cannot silently run against a different target than the one
 the runner picked.
 
+### The app directory is not an env source
+
+Narrowing the runner environment is necessary but **not sufficient**, and the
+reason is specific to Next:
+
+- `next dev`, `next build`, and `next start` all call `loadEnvConfig(appDir)`,
+  which merges `.env.production.local`, `.env.development.local`, `.env.local`,
+  `.env.production`, `.env.development`, and `.env` into `process.env` —
+  regardless of the environment the process was spawned with.
+- Bun loads the same filenames from its **cwd**, so even a non-Next child run
+  inside `apps/web` inherits them.
+
+`apps/web/.env.local` was created by `vercel dev` and held `VERCEL_OIDC_TOKEN`,
+a production deployment credential, so it reached the web process no matter how
+carefully the runner env was sanitised (#71). The file is gone; `app-env.ts` now
+refuses to start if it comes back, checking every auto-loaded filename for a
+Vercel credential key or a production identifier from the same deny list
+`target.ts` uses. `VERCEL_PROJECT_ID` / `VERCEL_ORG_ID` are allowed — they grant
+nothing and Vercel injects them into every build.
+
+The guard runs in both process-launching entry points, before any child exists:
+`with-target-env.ts` (build) and `playwright.config.ts` (run). Refusals print
+the file, the key, and where the value belongs — never the value, which would
+put the secret in CI logs and scrollback.
+
+Values that must not appear there, and where they belong instead:
+
+| Value | Belongs in |
+|---|---|
+| Vercel deployment credentials | `vercel login` (the CLI's own store), or the project's Environment Variables in the Vercel dashboard. The local `vercel dev` flow is not used. |
+| Local development values | the root `.env.local`, which this suite never reads |
+
 ## Run
 
 ```sh
@@ -162,10 +194,22 @@ Do not use `bun --cwd apps/e2e run <script>`: bun resolves the path as a
 
 ## Target resolution tests
 
-`bun run test` (repo root) includes `e2e:test`, which runs `target.test.ts`:
-it proves each refusal (no `E2E_TARGET`, unknown `E2E_TARGET`, missing env
-file, and a target resolving to production) and that the root `.env.local` is
-never a source. It needs no database and no secrets.
+`bun run test` (repo root) includes `e2e:test`, which runs `target.test.ts` and
+`app-env.test.ts`: it proves each refusal (no `E2E_TARGET`, unknown
+`E2E_TARGET`, missing env file, a target resolving to production, a credential
+in the app directory) and that the root `.env.local` is never a source. It
+needs no database and no secrets.
+
+`app-env.test.ts` ends with two tests against the **real** repository, and they
+are the ones that matter: the real `apps/web` must contain no violation, and a
+real process spawned with the real child environment in the real app directory
+must not inherit a production credential. The first fails if
+`apps/web/.env.local` ever comes back.
+
+`tests/web-process-env.spec.ts` repeats that check against the live `next start`
+during a real run (via `lsof` + `ps eww`), so a leak introduced by any other
+route is caught at runtime rather than only in review. It fails rather than
+skips when the process cannot be found.
 
 ```sh
 bunx nx run e2e:test
