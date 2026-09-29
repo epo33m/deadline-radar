@@ -36,6 +36,10 @@ jobs:
         run: bun run typecheck
 
       - name: Run Workspace Tests
+        # NOTE (#69): this job has no database, so it runs DB-free unit tests
+        # only. packages/db splits its suite: `test` (unit, incl. a meta-test
+        # locking the split) runs here; `test:db` (live-database guards:
+        # SEC-003, RLS matrix, drift, …) runs in ci-main.yml after migrations.
         run: bun run test
 
       # NOTE: Playwright E2E (apps/e2e) is deliberately NOT run here.
