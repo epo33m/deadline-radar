@@ -57,3 +57,6 @@ skills-lock.json
 test-results/
 playwright-report/
 playwright/.cache/
+
+# perf probe output (local only) — transient measurement logs, regenerated per run
+scripts/perf-logs/

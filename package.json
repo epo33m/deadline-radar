@@ -5,9 +5,11 @@
   "packageManager": "bun@1.4.0",
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
-    "dev": "bun --env-file=.env.local run scripts/dev.ts",
+    "dev": "bun --env-file=.env.local run scripts/dev.ts .env.local",
     "dev:web": "bun --env-file=.env.local --cwd apps/web run next dev --port 3025",
     "dev:api": "bun --env-file=.env.local --cwd apps/api run --watch src/index.ts",
+    "dev:staging": "bun --env-file=.env.staging run scripts/dev.ts .env.staging",
+    "seed:staging": "bun --env-file=.env.staging run scripts/seed-staging.ts",
     "build": "bunx nx run-many -t build --projects=web,api",
     "lint": "bunx nx run-many -t lint",
     "typecheck": "bunx nx run-many -t typecheck --projects=web,api,db,domain,validation,e2e",
@@ -18,7 +20,11 @@
     "db:migrate": "bun --env-file=.env.local run scripts/migrate.ts up",
     "db:status": "bun --env-file=.env.local run scripts/migrate.ts status",
     "db:verify": "bun --env-file=.env.local run scripts/migrate.ts verify",
-    "db:drift": "bun --env-file=.env.local run scripts/verify-schema-drift.ts"
+    "db:drift": "bun --env-file=.env.local run scripts/verify-schema-drift.ts",
+    "db:migrate:staging": "bun --env-file=.env.staging run scripts/migrate.ts up",
+    "db:status:staging": "bun --env-file=.env.staging run scripts/migrate.ts status",
+    "db:verify:staging": "bun --env-file=.env.staging run scripts/migrate.ts verify",
+    "db:drift:staging": "bun --env-file=.env.staging run scripts/verify-schema-drift.ts"
   },
   "devDependencies": {
     "@nx/js": "21.5.2",
