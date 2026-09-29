@@ -209,6 +209,17 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|api/|openapi|health|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // `_next/hmr` is the dev HMR WebSocket endpoint. It was `_next/webpack-hmr`
+    // until Next.js 16 renamed it (see the version-12 upgrade note in
+    // next/dist/docs), so an exclusion written for the old name is silently
+    // inert today.
+    //
+    // This guard is defensive, not the fix: Next's dev `upgradeHandler`
+    // short-circuits `_next/hmr` before it ever reaches the route resolver, so
+    // the proxy does not run on that socket today. Keeping it means a future
+    // dev-server change that *does* route upgrades through the matcher cannot
+    // silently break hot reload. If you ever remove this line expecting no
+    // behaviour change, that assumption is what the line exists to protect.
+    "/((?!_next/static|_next/image|_next/hmr|favicon.ico|api/|openapi|health|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

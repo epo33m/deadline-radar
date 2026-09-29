@@ -6,8 +6,8 @@
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "dev": "bun --env-file=.env.local run scripts/dev.ts .env.local",
-    "dev:web": "bun --env-file=.env.local --cwd apps/web run next dev --port 3025",
-    "dev:api": "bun --env-file=.env.local --cwd apps/api run --watch src/index.ts",
+    "dev:web": "bun --env-file=$PWD/.env.local run --cwd apps/web dev",
+    "dev:api": "bun --env-file=$PWD/.env.local run --cwd apps/api --watch src/index.ts",
     "dev:staging": "bun --env-file=.env.staging run scripts/dev.ts .env.staging",
     "seed:staging": "bun --env-file=.env.staging run scripts/seed-staging.ts",
     "build": "bunx nx run-many -t build --projects=web,api",
