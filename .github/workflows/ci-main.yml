@@ -90,6 +90,14 @@ jobs:
         run: |
           bun run scripts/verify-schema-drift.ts
 
+      - name: Run DB-guard bun tests (packages/db test:db)
+        run: |
+          bun run --filter @deadline-radar/db test:db
+
+      - name: Run real-DB bun tests (api test:db)
+        run: |
+          bun run --filter api test:db
+
       - name: Run Lint
         run: bun run lint
 

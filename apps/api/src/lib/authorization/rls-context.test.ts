@@ -27,7 +27,8 @@ import { withUserRls } from "./rls-context";
  *   auth.uid() — the value RLS policies read;
  * - claims are transaction-local (is_local=true): a fresh tx sees nothing,
  *   so user A context cannot leak to user B on pooled-connection reuse;
- * - empty userId throws instead of stamping an anonymous context;
+ * - empty userId throws instead of stamping an anonymous context — covered
+ *   DB-free in rls-context-validation.test.ts (dev gate), not here;
  * - end-to-end: claims + SET LOCAL ROLE authenticated isolates tenants.
  * - NOT proven here: row invisibility on the withUserRls connection alone.
  *   The test DATABASE_URL role bypasses RLS (superuser/service_role), and
@@ -114,12 +115,6 @@ describe("withUserRls — transaction-local JWT claims (real DB)", () => {
       );
     }
     expect(seen).toEqual([USER_A, USER_B]);
-  });
-
-  test("empty userId throws instead of stamping an anonymous context", async () => {
-    await expect(withUserRls("", async () => {}, { db })).rejects.toThrow(
-      "withUserRls requires a user id",
-    );
   });
 
   test("end-to-end: claims + authenticated role isolate tenants", async () => {

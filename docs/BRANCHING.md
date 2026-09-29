@@ -27,6 +27,9 @@ feature/* ──PR──▶ dev ──PR──▶ main ──▶ production
 
 1. Kerja di branch fitur, buka PR ke `dev`. `ci-dev` (lint, typecheck,
    test, build — tanpa database, tanpa secrets) harus hijau.
+   `packages/db` memisah suitnya: `test` (unit bebas-DB, termasuk
+   meta-test pengunci split) jalan di ci-dev; `test:db` (guard
+   live-database) hanya jalan di ci-main setelah migrasi (#69).
 2. Merge ke `dev` → otomatis: Vercel **Preview** deployment + migrasi
    database **staging** (`deploy-staging.yml`). Verifikasi di staging.
 3. Buka PR `dev` → `main`. `ci-main` (gate penuh: fresh-DB migration,
