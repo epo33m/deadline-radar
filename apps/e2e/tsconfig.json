@@ -4,8 +4,18 @@
     "noEmit": true,
     "declaration": false,
     "declarationMap": false,
-    "types": ["bun"]
+    "types": [
+      "bun"
+    ]
   },
   "//": "Scoped to the target-resolution surface on purpose. tests/ and fixtures.ts are excluded: they are Playwright specs, not the code this repo gates on typecheck, and widening the include would drag them into a gate they never met.",
-  "include": ["target.ts", "target.test.ts", "playwright.config.ts", "scripts/**/*.ts"]
+  "include": [
+    "target.ts",
+    "target.test.ts",
+    "app-env.ts",
+    "app-env.test.ts",
+    "servers.ts",
+    "playwright.config.ts",
+    "scripts/**/*.ts"
+  ]
 }

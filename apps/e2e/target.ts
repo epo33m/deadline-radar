@@ -46,8 +46,11 @@ export type E2ETargetName = keyof typeof TARGETS;
  * (DATABASE_URL / SUPABASE_URL at lines 23-24, WEB_ORIGIN / API_ORIGIN at
  * lines 40-41). Matched as substrings: a deny list that over-matches is safe,
  * one that under-matches reaches production.
+ *
+ * Exported so `app-env.ts` matches the Next app directory against the *same*
+ * list. Two copies of a security deny list drift.
  */
-const PRODUCTION_MARKERS = [
+export const PRODUCTION_MARKERS = [
   "bhtfkuzsdxrdmvvcczse", // production Supabase project ref
   "bhtfkuzsdxrdmvvcczse.supabase.co",
   "deadline-radar-web.vercel.app",

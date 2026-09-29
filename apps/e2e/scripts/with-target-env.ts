@@ -7,15 +7,20 @@
  * `next start` later does not change those rewrites.
  *
  * Refuses exactly as `playwright.config.ts` does: no E2E_TARGET, an unknown
- * E2E_TARGET, a missing env file, or a target that resolves to production.
+ * E2E_TARGET, a missing env file, a target that resolves to production, or a
+ * production credential sitting in the Next app directory.
  */
 import path from "node:path";
 
+import { assertNoProductionAppEnv } from "../app-env";
 import { E2ETargetError, repoRoot, resolveTarget, targetEnv } from "../target";
 
 let target;
 try {
   target = resolveTarget();
+  // Before any process exists: `next build` loads the app dir's own env files,
+  // so a sanitised environment alone cannot keep a credential out of it.
+  assertNoProductionAppEnv();
 } catch (error) {
   if (error instanceof E2ETargetError) {
     console.error(`\n✗ ${error.message}\n`);
