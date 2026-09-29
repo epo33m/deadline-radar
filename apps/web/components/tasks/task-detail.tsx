@@ -504,6 +504,7 @@ export function TaskDetailPanel({
               <TaskForm
                 task={task}
                 courses={courses}
+                timeZone={timeZone}
                 submitLabel="Save changes"
                 onSuccess={() => setEditOpen(false)}
                 onCancel={() => setEditOpen(false)}

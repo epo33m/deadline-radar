@@ -1092,6 +1092,7 @@ export function CourseDetail({ course, tasks, timeZone, timeFormat, taskView, no
         <div className="w-full text-left">
           <AddTaskForm
             courses={[course]}
+            timeZone={timeZone}
             lockedCourseId={course.id}
             returnTo={
               taskView === "all" ? coursePath : `${coursePath}?view=${taskView}`

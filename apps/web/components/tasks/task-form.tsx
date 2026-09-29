@@ -24,7 +24,7 @@ import { Input } from "@/components/ui/input";
 import { SelectMenu } from "@/components/ui/select-menu";
 import { StatusPicker } from "@/components/tasks/status-picker";
 import { generateIdempotencyKey } from "@/lib/api/idempotency";
-import { toDatetimeLocalValue } from "@/lib/datetime";
+import { toDatetimeLocalValue, zonedWallToIso } from "@/lib/datetime";
 import { cn } from "@/lib/utils";
 import type { TaskStatus } from "@/lib/validation/task";
 import type { CourseListItem } from "@/types/course";
@@ -80,6 +80,8 @@ type TaskFormProps = {
   lockedCourseId?: string;
   /** After create, redirect here instead of the new task detail page. */
   returnTo?: string;
+  /** Profile timezone (IANA) — authority for the deadline wall-clock (#66). */
+  timeZone?: string;
 };
 
 export function TaskForm({
@@ -91,6 +93,7 @@ export function TaskForm({
   defaultStatus = "todo",
   lockedCourseId,
   returnTo,
+  timeZone = "UTC",
 }: TaskFormProps) {
   const action = task ? updateTask : createTask;
   const [idempotencyKey] = useState(() => generateIdempotencyKey());
@@ -101,12 +104,14 @@ export function TaskForm({
   );
   const [deadlineDate, setDeadlineDate] = useState(
     task
-      ? splitDateTime(task.deadline ? toDatetimeLocalValue(task.deadline) : "").date
+      ? splitDateTime(task.deadline ? toDatetimeLocalValue(task.deadline, timeZone) : "")
+          .date
       : todayLocalISO(),
   );
   const [deadlineTime, setDeadlineTime] = useState(
     task
-      ? splitDateTime(task.deadline ? toDatetimeLocalValue(task.deadline) : "").time
+      ? splitDateTime(task.deadline ? toDatetimeLocalValue(task.deadline, timeZone) : "")
+          .time
       : currentTime(),
   );
   const [status, setStatus] = useState<TaskStatus>(task?.status ?? defaultStatus);
@@ -130,7 +135,13 @@ export function TaskForm({
 
   const fieldId = (name: string) => (task ? `${name}-${task.id}` : name);
 
-  const deadline = deadlineDate ? `${deadlineDate}T${deadlineTime || defaultTime()}` : "";
+  // Write contract (#66): the API only accepts offset-aware instants, so the
+  // wall-clock is converted in the *profile* timezone before sending. Never
+  // send the offset-naive `YYYY-MM-DDTHH:mm` string — `new Date(wall)` would
+  // parse it in the server TZ and corrupt the stored instant.
+  const deadline = deadlineDate
+    ? zonedWallToIso(deadlineDate, deadlineTime || defaultTime(), timeZone)
+    : "";
 
   function setDate(nextDate: string) {
     setDeadlineDate(nextDate);
@@ -282,11 +293,13 @@ export function AddTaskForm({
   lockedCourseId,
   returnTo,
   onCancel,
+  timeZone = "UTC",
 }: {
   courses: CourseListItem[];
   lockedCourseId?: string;
   returnTo?: string;
   onCancel?: () => void;
+  timeZone?: string;
 }) {
   const [formKey, setFormKey] = useState(0);
   return (
@@ -295,6 +308,7 @@ export function AddTaskForm({
       courses={courses}
       lockedCourseId={lockedCourseId}
       returnTo={returnTo}
+      timeZone={timeZone}
       submitLabel="Add task"
       onCancel={onCancel}
       onSuccess={() => setFormKey((current) => current + 1)}

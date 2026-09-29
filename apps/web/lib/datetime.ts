@@ -2,12 +2,133 @@ import type { TimeFormat } from "@deadline-radar/validation";
 
 export type { TimeFormat } from "@deadline-radar/validation";
 
-/** Format a timestamptz ISO string for `<input type="datetime-local" />`. */
-export function toDatetimeLocalValue(iso: string): string {
+/** Wall-clock parts of an instant in a given IANA timezone. */
+function getZonedDateTimeParts(date: Date, timeZone: string) {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+  const parts = Object.fromEntries(
+    formatter
+      .formatToParts(date)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+  return {
+    year: Number(parts.year),
+    month: Number(parts.month),
+    day: Number(parts.day),
+    hour: Number(parts.hour),
+    minute: Number(parts.minute),
+    second: Number(parts.second),
+  };
+}
+
+/** Interpret the zoned wall-clock of `date` as if those digits were UTC. */
+function zonedPartsAsUtcMs(date: Date, timeZone: string): number {
+  const p = getZonedDateTimeParts(date, timeZone);
+  return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+}
+
+/**
+ * Convert a wall-clock datetime in `timeZone` to a UTC Date.
+ * Iterates to settle DST / offset around the target instant (same algorithm
+ * as `thresholdTriggerAt` in `@deadline-radar/domain` and `fromZonedTime`
+ * in `lib/calendar/month.ts`).
+ */
+function fromZonedTime(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  second: number,
+  timeZone: string,
+): Date {
+  const desiredAsUtc = Date.UTC(year, month - 1, day, hour, minute, second);
+  let guess = desiredAsUtc;
+  for (let i = 0; i < 3; i += 1) {
+    const offset = zonedPartsAsUtcMs(new Date(guess), timeZone) - guess;
+    guess = desiredAsUtc - offset;
+  }
+  return new Date(guess);
+}
+
+/**
+ * Format a timestamptz ISO string for `<input type="datetime-local" />`,
+ * interpreting the instant in `timeZone` (the profile timezone). Previously
+ * this used browser-local `getHours()`, which diverged from every display
+ * call site (they all render in the profile TZ) whenever the two differed
+ * (#66).
+ */
+export function toDatetimeLocalValue(iso: string, timeZone = "UTC"): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  try {
+    const p = getZonedDateTimeParts(date, timeZone);
+    if (
+      !Number.isFinite(p.year) ||
+      !Number.isFinite(p.month) ||
+      !Number.isFinite(p.day)
+    ) {
+      return "";
+    }
+    const pad = (value: number) => String(value).padStart(2, "0");
+    return `${p.year}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(p.minute)}`;
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Convert a `YYYY-MM-DD` date + `HH:mm` wall-clock in `timeZone` (the
+ * profile timezone) to a UTC ISO instant for the API write contract. The
+ * API only accepts offset-aware instants (#66), so the client must do this
+ * conversion — never send the offset-naive `YYYY-MM-DDTHH:mm` string.
+ * Returns `""` for invalid input (callers should surface a validation
+ * error rather than send a corrupt instant).
+ */
+export function zonedWallToIso(
+  dateStr: string,
+  timeStr: string,
+  timeZone: string,
+): string {
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr?.trim() ?? "");
+  const timeMatch = /^(\d{2}):(\d{2})$/.exec(timeStr?.trim() ?? "");
+  if (!dateMatch || !timeMatch) return "";
+  const year = Number(dateMatch[1]);
+  const month = Number(dateMatch[2]);
+  const day = Number(dateMatch[3]);
+  const hour = Number(timeMatch[1]);
+  const minute = Number(timeMatch[2]);
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    month < 1 ||
+    month > 12 ||
+    !Number.isInteger(day) ||
+    day < 1 ||
+    day > 31 ||
+    !Number.isInteger(hour) ||
+    hour > 23 ||
+    !Number.isInteger(minute) ||
+    minute > 59
+  ) {
+    return "";
+  }
+  try {
+    const instant = fromZonedTime(year, month, day, hour, minute, 0, timeZone);
+    if (Number.isNaN(instant.getTime())) return "";
+    return instant.toISOString();
+  } catch {
+    return "";
+  }
 }
 
 const DEADLINE_DISPLAY_LOCALE = "en-US";
