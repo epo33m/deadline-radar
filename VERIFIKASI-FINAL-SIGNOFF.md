@@ -65,6 +65,7 @@ Status seluruh 66 baris AUDIT-FINAL: **0 Critical/High open**, semua Closed memi
 4. **Suite test fresh** — lihat §7 (semua hijau, tanpa cache Nx untuk key suite).
 5. **Suite SQL (11 file)** — **11/11 PASS** pada `test_verify_all` via `psql -v ON_ERROR_STOP=1` (lihat §7). Catatan: eksekusi SQL ini terhadap DB **lokal** (`test_verify_all`), bukan pooler remote (tipe schema `auth.users` berbeda; dokumentasi mengarahkan ke fresh-DB).
 6. **E2E smoke** — `bun run test:e2e smoke.spec.ts`: **25 passed (4.4m), exit 0** terhadap stack hidup (API+Web+Supabase, tanpa mock).
+   > Perintah tersebut sudah tidak berlaku setelah #56 — `.env.local` menunjuk production dan e2e kini wajib menyebut target. Sekarang: `E2E_TARGET=staging bun run test:e2e -- smoke.spec.ts`. Angka 25/25 di atas tetap berlaku sebagai hasil run tersebut.
 7. **Batas entitas** — secret-only `.env.example` tracked, `.env*` ignored; hanya nama variabel yang dicetak, bukan nilai.
 
 ---

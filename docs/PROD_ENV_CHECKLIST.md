@@ -156,7 +156,7 @@ daftar ini, tidak ada risiko yang diterima — sisanya harus ditutup.
 
 | ID | Risiko | Pemilik | Rasional | Review | Kontrol kompensasi |
 |---|---|---|---|---|---|
-| F-7 | 3 journey E2E tidak dikunci di CI (advisory) | epo33m | CI `verify` hanya sedia vanilla PostgreSQL; E2E butuh Chromium + build prod + project Supabase live | 2026-12-20 | `bun run test:e2e` manual pra-rilis vs staging (`apps/e2e/README.md`); drill sampai hijau sekali |
+| F-7 | 3 journey E2E tidak dikunci di CI (advisory) | epo33m | CI `verify` hanya sedia vanilla PostgreSQL; E2E butuh Chromium + build prod + project Supabase live | 2026-12-20 | `E2E_TARGET=staging bun run test:e2e` manual pra-rilis (`apps/e2e/README.md`); suite menolak jalan tanpa target bernama dan menolak host production (#56); drill sampai hijau sekali |
 | Quota-race | Dua txn bersamaan di 199/200 bisa lolos dua-duanya | epo33m | Diterima di komentar migrasi; API tetap enforcement utama, trigger adalah backstop | 2026-12-20 | Alarm biaya/kuota Resend (§4); hitung aktif = `deleted_at IS NULL` |
 | S-02…S-18 | Skenario staging §8 belum tereksekusi | epo33m | Tidak ada staging; S-11 tercakup sebagian oleh vektor DST unit (6 test `America/New_York`) | 2026-12-20 | Eksekusi atau terima tertulis sebelum rilis publik (C6) |
 | P2-cache | Snapshot authz tetap Map in-memory TTL 30 dtk, single replika | epo33m | MVP satu replika (keputusan di atas); refetch penuh per nav dapat diterima pada skala ini | 2026-12-20 | §11: pindah ke Redis (`REDIS_URL`) atau buang map lokal SEBELUM scale horizontal |
