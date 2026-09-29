@@ -11,6 +11,10 @@ import {
   parseMonthParam,
   type CalendarTask,
 } from "@/lib/calendar/month";
+import {
+  CALENDAR_MAX_PAGES,
+  CALENDAR_PAGE_LIMIT,
+} from "@/lib/calendar/paging";
 
 type ApiTask = {
   id: string;
@@ -34,13 +38,19 @@ async function fetchMonthTasks(
   const { dueFrom, dueTo } = monthVisibleRange(year, month, timeZone);
   const tasks: ApiTask[] = [];
   let cursor: string | null = null;
-  // Safety cap: 10 pages × 200 rows far exceeds any renderable month.
+  // Safety cap: MAX_PAGES × page size far exceeds any renderable month.
   // Hitting it means SILENT TRUNCATION (partial month renders as complete),
   // so it must be observable: counts-only warn, no PII, wired to the
   // Sentry/log pipeline like the cron outcome line.
-  const MAX_PAGES = 10;
-  for (let page = 0; page < MAX_PAGES; page += 1) {
-    const qs = new URLSearchParams({ limit: "200", dueFrom, dueTo });
+  for (let page = 0; page < CALENDAR_MAX_PAGES; page += 1) {
+    // The API caps `limit` at 100 and rejects anything above it. Both numbers
+    // live in `@/lib/calendar/paging`, which `paging.test.ts` pins to the API
+    // contract — see #74.
+    const qs = new URLSearchParams({
+      limit: String(CALENDAR_PAGE_LIMIT),
+      dueFrom,
+      dueTo,
+    });
     if (cursor) qs.set("cursor", cursor);
     const result = await apiJson<{
       tasks?: ApiTask[];
@@ -57,8 +67,8 @@ async function fetchMonthTasks(
       JSON.stringify({
         year,
         month,
-        maxPages: MAX_PAGES,
-        pageSize: 200,
+        maxPages: CALENDAR_MAX_PAGES,
+        pageSize: CALENDAR_PAGE_LIMIT,
         tasksCollected: tasks.length,
       }),
     );
