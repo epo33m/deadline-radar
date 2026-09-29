@@ -1,6 +1,13 @@
 name: Staging Migration & Deploy
 
+# Staging follows dev automatically: every push to dev applies pending
+# migrations to the staging database so fixes/improvements are verifiable
+# immediately. Manual dry-runs remain available via workflow_dispatch.
+# Reads ONLY staging secrets — never production.
+
 on:
+  push:
+    branches: ["dev"]
   workflow_dispatch:
     inputs:
       dry_run:
@@ -13,6 +20,7 @@ jobs:
   migrate_staging:
     name: Apply Staging Migrations
     runs-on: ubuntu-latest
+    # Runs under the `staging` GitHub environment (secrets scoped to staging).
     environment: staging
 
     steps:
