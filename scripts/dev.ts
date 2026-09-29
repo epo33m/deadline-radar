@@ -1,9 +1,15 @@
 /**
  * Start API (:4025) and web (:3025) together.
  * Frees those ports first so re-runs don't hit EADDRINUSE.
- * Loads root `.env.local` via: bun --env-file=.env.local run scripts/dev.ts
+ *
+ * The env file is passed as argv[2] (default `.env.local`, i.e. production)
+ * so the API child can be pinned to a different one — `dev:staging` runs the
+ * whole stack against `.env.staging`. The parent process must be launched
+ * with the matching `bun --env-file=<same file>` so the web env below is
+ * sanitized from the right source.
  */
 const root = import.meta.dir.replace(/\/scripts$/, "");
+const envFile = process.argv[2] ?? ".env.local";
 const ports = [3025, 4025] as const;
 
 async function freePort(port: number) {
@@ -43,6 +49,35 @@ async function freePort(port: number) {
   }
 }
 
+// Guard: the Supabase project ref in DATABASE_URL must match the one in
+// SUPABASE_URL. A mixed env file (staging keys + production pooler, or the
+// reverse) writes to the wrong database and is otherwise invisible.
+//
+// This runs BEFORE the port cleanup below. Killing a developer's running API
+// and web server is a side effect; validating the env file is not, so a bad env
+// file should cost nothing rather than taking the working stack down first.
+const projectRef = (value: string): string | null =>
+  value.match(/postgres\.([a-z]{20})[:@]/)?.[1] ??
+  value.match(/@db\.([a-z]{20})\.supabase\.co/)?.[1] ??
+  value.match(/^https?:\/\/([a-z]{20})\.supabase\.co/)?.[1] ??
+  null;
+const dbRef = projectRef(process.env.DATABASE_URL ?? "");
+const urlRef = projectRef(process.env.SUPABASE_URL ?? "");
+
+if (dbRef && urlRef && dbRef !== urlRef) {
+  console.error("\n✗ Refusing to start: DATABASE_URL and SUPABASE_URL point at different");
+  console.error(`  Supabase projects (${dbRef} vs ${urlRef}) in ${envFile}.`);
+  console.error("  Pick one project per env file.");
+  process.exit(1);
+}
+
+if (dbRef) {
+  const isStagingRun = envFile.includes("staging");
+  console.log(
+    `\n  ${isStagingRun ? "staging" : "⚠️  NOT staging"} → Supabase project ${dbRef}\n`,
+  );
+}
+
 console.log("Freeing ports 3025 (web) and 4025 (api)…");
 await Promise.all(ports.map((port) => freePort(port)));
 
@@ -57,7 +92,7 @@ delete webEnv.CRON_SECRET;
 
 const children = [
   Bun.spawn({
-    cmd: ["bun", "--env-file=.env.local", "run", "--watch", "src/index.ts"],
+    cmd: ["bun", `--env-file=${envFile}`, "run", "--watch", "src/index.ts"],
     cwd: `${root}/apps/api`,
     stdout: "inherit",
     stderr: "inherit",
