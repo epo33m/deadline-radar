@@ -11,8 +11,10 @@
  * Why strict (no `unsafe-inline`): with a valid nonce present, modern
  * browsers ignore `unsafe-inline` anyway, so omitting it only weakens
  * legacy-browser fallback — while guaranteeing a single enforcement mode.
- * `unsafe-eval` is required in development (React dev overlays) and is
- * never emitted in production.
+ * The one exception is `style-src-attr`, which is separate by design: a
+ * nonce cannot authorise an inline `style` attribute, and the app ships
+ * runtime-computed `style={{...}}` props. `unsafe-eval` is required in
+ * development (React dev overlays) and is never emitted in production.
  */
 
 export const HSTS_VALUE =
@@ -35,6 +37,13 @@ export function buildContentSecurityPolicy(
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
     `style-src 'self' 'nonce-${nonce}'`,
+    // A nonce never matches an inline `style="..."` attribute — it only
+    // authorises `<style>` blocks and nonced `<link>` tags. Components that
+    // compute geometry or colour at runtime (calendar event placement,
+    // progress-bar width, chart slices, menu offsets) pass `style={{...}}`,
+    // so without this directive every one of them renders unstyled.
+    // Scoped to attributes: `<style>` elements still require the nonce.
+    "style-src-attr 'unsafe-inline'",
     "img-src 'self' blob: data:",
     "font-src 'self'",
     // Sentry error ingress (audit item 7). The SDK is disabled without
@@ -44,7 +53,12 @@ export function buildContentSecurityPolicy(
     "base-uri 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",
-    "upgrade-insecure-requests",
+    // Development serves plain HTTP on 127.0.0.1. Chromium exempts loopback
+    // from this directive, WebKit/Safari does not: it upgrades every
+    // stylesheet and script to https://, the TLS handshake fails against the
+    // dev server, and the page renders as unstyled HTML. Same class of
+    // problem as HSTS on localhost above, so it is gated the same way.
+    ...(isDev ? [] : ["upgrade-insecure-requests"]),
   ].join("; ");
   return csp;
 }

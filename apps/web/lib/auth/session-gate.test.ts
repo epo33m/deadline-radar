@@ -15,6 +15,11 @@ describe("resolveSessionGate", () => {
     expect(
       resolveSessionGate({ hasSession: false, pathname: "/secret-page" }),
     ).toEqual({ action: "redirect", to: "/login" });
+    // The "How it works" section moved onto `/`, so this route no longer exists
+    // and must not stay public — that would let a dead URL past the gate.
+    expect(
+      resolveSessionGate({ hasSession: false, pathname: "/get-started" }),
+    ).toEqual({ action: "redirect", to: "/login" });
   });
 
   test("allows unauthenticated users on public and auth routes", () => {
@@ -36,6 +41,20 @@ describe("resolveSessionGate", () => {
     expect(
       resolveSessionGate({ hasSession: false, pathname: "/auth/confirm" }),
     ).toEqual({ action: "allow" });
+  });
+
+  test("allows unauthenticated users on the legal pages", () => {
+    // The footer links to both, so they must not be gated behind a session.
+    expect(
+      resolveSessionGate({ hasSession: false, pathname: "/privacy" }),
+    ).toEqual({
+      action: "allow",
+    });
+    expect(
+      resolveSessionGate({ hasSession: false, pathname: "/terms" }),
+    ).toEqual({
+      action: "allow",
+    });
   });
 
   test("redirects authenticated users away from auth pages to /summary", () => {
