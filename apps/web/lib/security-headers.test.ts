@@ -9,11 +9,26 @@ import {
 const NONCE = "dGVzdC1ub25jZQ==";
 
 describe("buildContentSecurityPolicy (SEC-002)", () => {
-  test("binds the per-request nonce with strict-dynamic, no unsafe-inline", () => {
+  test("binds the per-request nonce with strict-dynamic, and confines unsafe-inline to style attributes", () => {
     const csp = buildContentSecurityPolicy(NONCE, false);
     expect(csp).toContain(`'nonce-${NONCE}'`);
     expect(csp).toContain("'strict-dynamic'");
-    expect(csp).not.toContain("unsafe-inline");
+    // `unsafe-inline` may appear only in `style-src-attr`; every other
+    // directive (script-src, style-src) must stay nonce-gated.
+    expect(csp.replace(/style-src-attr 'unsafe-inline'/g, "")).not.toContain(
+      "unsafe-inline",
+    );
+  });
+
+  test("permits inline style attributes without loosening style-src", () => {
+    // `style={{...}}` props are unnonceable; the attribute scope keeps
+    // <style> elements behind the nonce.
+    for (const isDev of [false, true]) {
+      const csp = buildContentSecurityPolicy(NONCE, isDev);
+      expect(csp).toContain("style-src-attr 'unsafe-inline'");
+      expect(csp).toMatch(/style-src 'self' 'nonce-[^']+'/);
+      expect(csp).not.toMatch(/style-src 'self'[^;]*unsafe-inline/);
+    }
   });
 
   test("allows unsafe-eval in dev only, never in prod", () => {
@@ -30,6 +45,17 @@ describe("buildContentSecurityPolicy (SEC-002)", () => {
     expect(csp).toContain("base-uri 'self'");
     expect(csp).toContain("form-action 'self'");
     expect(csp).toContain("connect-src 'self' https://*.sentry.io");
+  });
+
+  test("emits upgrade-insecure-requests in prod only, never in dev", () => {
+    // WebKit does not exempt loopback from this directive, so emitting it in
+    // dev upgrades every asset to https:// and breaks the dev server.
+    expect(buildContentSecurityPolicy(NONCE, false)).toContain(
+      "upgrade-insecure-requests",
+    );
+    expect(buildContentSecurityPolicy(NONCE, true)).not.toContain(
+      "upgrade-insecure-requests",
+    );
   });
 });
 
