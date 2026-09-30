@@ -238,17 +238,30 @@ export function LoginForm() {
     setPending(true);
 
     // Same-origin /api rewrite → Elysia so the browser stores httpOnly cookies.
-    const result = await apiBrowser<{
+    // A network failure rejects instead of returning { error }: surface it
+    // through the same inline error rather than leaving the form pending.
+    let result: {
       redirectTo?: string;
       error?: string;
       fieldErrors?: Partial<Record<string, string[]>>;
-    }>("/api/auth/login", {
-      method: "POST",
-      body: JSON.stringify({
-        email: values.email,
-        password: values.password,
-      }),
-    });
+    };
+    try {
+      result = await apiBrowser<{
+        redirectTo?: string;
+        error?: string;
+        fieldErrors?: Partial<Record<string, string[]>>;
+      }>("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({
+          email: values.email,
+          password: values.password,
+        }),
+      });
+    } catch {
+      setPending(false);
+      setError("Something went wrong. Please try again.");
+      return;
+    }
 
     setPending(false);
 
@@ -259,12 +272,20 @@ export function LoginForm() {
     }
 
     // SEC-005: never trust redirectTo blindly — validate, fall back internal.
+    // No router.refresh() after the replace: it revalidates the outgoing
+    // route and can abort the in-flight replace stream ("destination stream
+    // closed early"), stranding the user on /login after a successful login.
+    // replace() already fetches a fresh RSC payload for the new route.
     router.replace(resolveSafeReturnTo(result.redirectTo, "/summary"));
-    router.refresh();
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex w-full flex-col" noValidate>
+    <form
+      onSubmit={handleSubmit}
+      method="post"
+      className="flex w-full flex-col"
+      noValidate
+    >
       {confirmError ? (
         <p
           className="mb-4 rounded-[11px] border border-hairline bg-canvas px-4 py-3 text-sm leading-[1.43] tracking-[-0.224px] text-ink-muted-80"
@@ -378,8 +399,9 @@ export function RegisterForm() {
       // confirmation message below) instead of navigating.
       const safe = resolveSafeReturnTo(result.redirectTo, "");
       if (safe !== "") {
+        // Same as login above: no refresh() after replace — it can abort the
+        // navigation stream and strand the user on a stale route.
         router.replace(safe);
-        router.refresh();
         return;
       }
     }
@@ -391,7 +413,12 @@ export function RegisterForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex w-full flex-col" noValidate>
+    <form
+      onSubmit={handleSubmit}
+      method="post"
+      className="flex w-full flex-col"
+      noValidate
+    >
       <ul className={dialogFormListClassName}>
         <AuthEmailField
           idPrefix="register"
@@ -518,7 +545,12 @@ export function ResetPasswordForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex w-full flex-col" noValidate>
+    <form
+      onSubmit={handleSubmit}
+      method="post"
+      className="flex w-full flex-col"
+      noValidate
+    >
       <ul className={dialogFormListClassName}>
         <AuthPasswordField
           idPrefix="reset"
