@@ -16,7 +16,13 @@
  * Serial by design (playwright.config.ts: workers: 1). Self-sufficient:
  * registers its own user via the real API and deletes it afterwards.
  */
-import { expect, test, type Page } from "@playwright/test";
+import {
+  assertPageHealthy,
+  collectPageHealth,
+  expect,
+  test,
+  type Page,
+} from "./guardrails";
 
 import { cleanupUser, registerUser, runTag, type TestUser } from "../fixtures";
 
@@ -60,6 +66,8 @@ test.describe("Login hydration (#60)", () => {
   }) => {
     const context = await browser.newContext({ javaScriptEnabled: false });
     const page = await context.newPage();
+    // Own context ⇒ outside the guarded `context` fixture: attach explicitly.
+    const report = collectPageHealth(page);
     try {
       await page.goto("/login");
       await page.fill('input[name="email"]', user!.email);
@@ -75,6 +83,12 @@ test.describe("Login hydration (#60)", () => {
         .first()
         .getAttribute("method");
       expect(method?.toLowerCase()).toBe("post");
+      // With JS disabled the lone entry-chunk `<link rel="preload">` has no
+      // executing consumer, and Chromium fails it with a CSP-attributed error
+      // (verified: same nonce, same header, coalesces and succeeds with JS
+      // enabled — the script could never execute here anyway). Tolerate exactly
+      // that artifact; everything else in the report still fails the test.
+      assertPageHealthy(report, (line) => line.endsWith(":: csp"));
     } finally {
       await context.close();
     }
