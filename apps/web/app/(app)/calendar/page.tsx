@@ -1,80 +1,20 @@
 import { CalendarMonthView } from "@/components/calendar/calendar-month-view";
 import { LearnSecondaryNav } from "@/components/learn/learn-secondary-nav";
 import { PageHeader } from "@/components/ui/page-header";
-import { apiJson } from "@/lib/api/server";
+import { apiFetch } from "@/lib/api/server";
 import { requireSession } from "@/lib/api/session";
 import {
   buildMonthGrid,
   getZonedDayKey,
   groupTasksByDay,
-  monthVisibleRange,
   parseMonthParam,
   type CalendarTask,
 } from "@/lib/calendar/month";
-import {
-  CALENDAR_MAX_PAGES,
-  CALENDAR_PAGE_LIMIT,
-} from "@/lib/calendar/paging";
-
-type ApiTask = {
-  id: string;
-  title: string;
-  deadline: string | Date;
-  status: CalendarTask["status"];
-  courseName: string | null;
-  courseColor: string | null;
-};
+import { loadCalendarMonth } from "@/lib/calendar/load";
 
 type CalendarPageProps = {
   searchParams: Promise<{ month?: string }>;
 };
-
-/** Month-scoped task fetch: visible range only, cursors followed to exhaustion. */
-async function fetchMonthTasks(
-  timeZone: string,
-  year: number,
-  month: number,
-): Promise<{ tasks?: ApiTask[]; error?: unknown }> {
-  const { dueFrom, dueTo } = monthVisibleRange(year, month, timeZone);
-  const tasks: ApiTask[] = [];
-  let cursor: string | null = null;
-  // Safety cap: MAX_PAGES × page size far exceeds any renderable month.
-  // Hitting it means SILENT TRUNCATION (partial month renders as complete),
-  // so it must be observable: counts-only warn, no PII, wired to the
-  // Sentry/log pipeline like the cron outcome line.
-  for (let page = 0; page < CALENDAR_MAX_PAGES; page += 1) {
-    // The API caps `limit` at 100 and rejects anything above it. Both numbers
-    // live in `@/lib/calendar/paging`, which `paging.test.ts` pins to the API
-    // contract — see #74.
-    const qs = new URLSearchParams({
-      limit: String(CALENDAR_PAGE_LIMIT),
-      dueFrom,
-      dueTo,
-    });
-    if (cursor) qs.set("cursor", cursor);
-    const result = await apiJson<{
-      tasks?: ApiTask[];
-      page?: { nextCursor: string | null };
-    }>(`/api/v1/tasks?${qs.toString()}`);
-    if (result.error || !result.tasks) return { error: result.error };
-    tasks.push(...result.tasks);
-    cursor = result.page?.nextCursor ?? null;
-    if (!cursor) return { tasks };
-  }
-  if (cursor) {
-    console.warn(
-      "[calendar] month fetch hit page cap",
-      JSON.stringify({
-        year,
-        month,
-        maxPages: CALENDAR_MAX_PAGES,
-        pageSize: CALENDAR_PAGE_LIMIT,
-        tasksCollected: tasks.length,
-      }),
-    );
-  }
-  return { tasks };
-}
 
 export default async function CalendarPage({ searchParams }: CalendarPageProps) {
   // searchParams + session are independent — resolve together. The month
@@ -88,13 +28,18 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
   const nowIso = new Date().toISOString();
   const todayKey = getZonedDayKey(nowIso, timeZone) ?? "";
 
-  const result = await fetchMonthTasks(timeZone, month.year, month.month);
+  const result = await loadCalendarMonth(
+    (path) => apiFetch(path),
+    timeZone,
+    month.year,
+    month.month,
+  );
   if (result.error || !result.tasks) {
     return (
       <section className="space-y-2">
         <h1 className="font-display text-[32px] font-semibold leading-[1.07] tracking-[-0.28px] text-ink sm:text-[36px] lg:text-[44px]">Calendar</h1>
         <p className="text-sm text-destructive" role="alert">
-          Could not load calendar deadlines. Ensure the API is running.
+          {result.error ?? "Could not load calendar deadlines. Please try again later."}
         </p>
       </section>
     );

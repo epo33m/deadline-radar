@@ -6,11 +6,12 @@ import {
   normalizeApiErrorBody,
   type ApiErrorBody,
 } from "@/lib/api/errors";
+import { resolveApiOrigin } from "@/lib/api/origin";
 
 export type { ApiErrorBody, ApiErrorDetail, ApiErrorObject } from "@/lib/api/errors";
 export { normalizeApiErrorBody } from "@/lib/api/errors";
 
-const API_ORIGIN = process.env.API_ORIGIN ?? "http://127.0.0.1:4025";
+const API_ORIGIN = resolveApiOrigin();
 const ACCESS_COOKIE = "dr_access_token";
 const REFRESH_COOKIE = "dr_refresh_token";
 

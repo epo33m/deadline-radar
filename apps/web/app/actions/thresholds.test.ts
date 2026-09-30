@@ -21,6 +21,11 @@ mock.module("next/navigation", () => ({
 }));
 
 mock.module("@/lib/api/server", () => ({
+  // See idempotency.test.ts: keep the full export shape so mocked imports
+  // elsewhere (`lib/calendar/load`, `lib/summary/load`) keep resolving.
+  apiFetch: async () => {
+    throw new Error("apiFetch is stubbed in thresholds.test.ts");
+  },
   apiJson: async (path: string, init: RequestInit = {}) => {
     apiJsonCalls.push({ path, init });
     if (init.method === "PUT") {
