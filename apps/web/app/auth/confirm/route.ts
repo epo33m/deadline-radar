@@ -11,8 +11,9 @@ import {
   type AuthTokenBody,
 } from "@/lib/auth/cookies";
 import { resolveConfirmNextPath } from "@deadline-radar/validation";
+import { resolveApiOrigin } from "@/lib/api/origin";
 
-const API_ORIGIN = process.env.API_ORIGIN ?? "http://127.0.0.1:4025";
+const API_ORIGIN = resolveApiOrigin();
 
 /**
  * Supabase email links hit the web origin. Exchange via API with the auth

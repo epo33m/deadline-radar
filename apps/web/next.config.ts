@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
-const API_ORIGIN = process.env.API_ORIGIN ?? "http://127.0.0.1:4025";
+import { resolveApiOrigin } from "./lib/api/origin";
+
+const API_ORIGIN = resolveApiOrigin();
 
 const nextConfig: NextConfig = {
   // Development-only. Next.js blocks its own dev resources — including the HMR

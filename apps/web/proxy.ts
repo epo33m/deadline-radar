@@ -14,6 +14,7 @@ import {
 } from "@/lib/auth/cookies";
 import { resolveSessionGate } from "@/lib/auth/session-gate";
 import { buildSecurityHeaders } from "@/lib/security-headers";
+import { resolveApiOrigin } from "@/lib/api/origin";
 
 function supabaseUrl(): string {
   return (
@@ -28,7 +29,7 @@ function issuer(): string {
 }
 
 function apiOrigin(): string {
-  return process.env.API_ORIGIN ?? "http://127.0.0.1:4025";
+  return resolveApiOrigin();
 }
 
 let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;

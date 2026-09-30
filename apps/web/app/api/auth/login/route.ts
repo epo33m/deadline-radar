@@ -12,7 +12,9 @@ import {
   type AuthTokenBody,
 } from "@/lib/auth/cookies";
 
-const API_ORIGIN = process.env.API_ORIGIN ?? "http://127.0.0.1:4025";
+import { resolveApiOrigin } from "@/lib/api/origin";
+
+const API_ORIGIN = resolveApiOrigin();
 
 function applySessionCookies(
   response: NextResponse,
