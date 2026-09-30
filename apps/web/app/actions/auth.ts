@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { apiJson } from "@/lib/api/server";
@@ -9,6 +9,7 @@ import {
   ACCESS_COOKIE,
   REFRESH_COOKIE,
   clearedAuthCookieOptions,
+  isSecureRequest,
 } from "@/lib/auth/cookies";
 import { resolveSafeReturnTo } from "@deadline-radar/validation";
 
@@ -185,19 +186,32 @@ export async function changeEmail(
   };
 }
 
+/**
+ * Server Actions have no request URL: derive the origin from headers alone
+ * (loopback `Host` ⇒ direct plain-HTTP server, anything else fails closed).
+ * Deletion scope must match creation scope or `Secure` cookies survive
+ * logout, so this must agree with every `authCookieOptions` call site.
+ */
+async function clearSessionCookies(): Promise<void> {
+  const headerStore = await headers();
+  const isSecure = isSecureRequest({
+    forwardedProto: headerStore.get("x-forwarded-proto"),
+    host: headerStore.get("host"),
+  });
+  const store = await cookies();
+  store.set(ACCESS_COOKIE, "", clearedAuthCookieOptions(isSecure));
+  store.set(REFRESH_COOKIE, "", clearedAuthCookieOptions(isSecure));
+}
+
 export async function logout() {
   await apiJson("/api/v1/auth/logout", { method: "POST" });
-  const store = await cookies();
-  store.set(ACCESS_COOKIE, "", clearedAuthCookieOptions());
-  store.set(REFRESH_COOKIE, "", clearedAuthCookieOptions());
+  await clearSessionCookies();
   redirect("/login");
 }
 
 export async function logoutAll() {
   await apiJson("/api/v1/auth/logout-all", { method: "POST" });
-  const store = await cookies();
-  store.set(ACCESS_COOKIE, "", clearedAuthCookieOptions());
-  store.set(REFRESH_COOKIE, "", clearedAuthCookieOptions());
+  await clearSessionCookies();
   redirect("/login");
 }
 

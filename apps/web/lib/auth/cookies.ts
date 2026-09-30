@@ -14,10 +14,44 @@ export function authBridgeSecret(): string {
 
 export const REFRESH_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 
-export function authCookieOptions(maxAgeSeconds: number) {
+/**
+ * Whether the response is served over TLS. TLS-dependent cookie attributes
+ * (`Secure`) key on the request origin, never on `NODE_ENV` — same defect
+ * family as #58/#59, where an environment gate emitted TLS-only directives
+ * from `next start` on plain-HTTP loopback.
+ *
+ * Precedence: the platform's forwarded proto first (Vercel sets it; proxy
+ * chains append, so only the first entry is the client's), then the request
+ * URL. Server Actions have no URL: there a loopback `Host` means a direct
+ * plain-HTTP server and anything else fails closed to secure.
+ */
+export function isSecureRequest(input: {
+  forwardedProto?: string | null;
+  protocol?: string;
+  host?: string | null;
+}): boolean {
+  const forwarded = input.forwardedProto?.split(",")[0]?.trim();
+  if (forwarded) return forwarded.replace(/:$/, "") !== "http";
+  if (input.protocol) return input.protocol.replace(/:$/, "") !== "http";
+  const rawHost = (input.host ?? "").toLowerCase();
+  const hostname = rawHost.startsWith("[")
+    ? (rawHost.slice(1).split("]")[0] ?? "")
+    : (rawHost.split(":")[0] ?? "");
+  if (
+    hostname === "localhost" ||
+    hostname === "::1" ||
+    hostname === "127.0.0.1" ||
+    hostname.startsWith("127.")
+  ) {
+    return false;
+  }
+  return true;
+}
+
+export function authCookieOptions(maxAgeSeconds: number, isSecure: boolean) {
   return {
     httpOnly: true as const,
-    secure: process.env.NODE_ENV === "production",
+    secure: isSecure,
     sameSite: "lax" as const,
     path: "/",
     maxAge: maxAgeSeconds,
@@ -36,10 +70,10 @@ export function authCookieOptions(maxAgeSeconds: number) {
  * break the recovery flow. `Lax` still blocks cookies on cross-site
  * subresource/POST requests, which is the CSRF-relevant case.
  */
-export function clearedAuthCookieOptions() {
+export function clearedAuthCookieOptions(isSecure: boolean) {
   return {
     httpOnly: true as const,
-    secure: process.env.NODE_ENV === "production",
+    secure: isSecure,
     sameSite: "lax" as const,
     path: "/",
     maxAge: 0,
