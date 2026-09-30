@@ -7,6 +7,7 @@ import {
   REFRESH_COOKIE_MAX_AGE_SECONDS,
   authBridgeSecret,
   authCookieOptions,
+  isSecureRequest,
   stripAuthTokens,
   type AuthTokenBody,
 } from "@/lib/auth/cookies";
@@ -16,17 +17,18 @@ const API_ORIGIN = process.env.API_ORIGIN ?? "http://127.0.0.1:4025";
 function applySessionCookies(
   response: NextResponse,
   data: AuthTokenBody,
+  isSecure: boolean,
 ): void {
   if (!data.accessToken || !data.refreshToken) return;
   response.cookies.set(
     ACCESS_COOKIE,
     data.accessToken,
-    authCookieOptions(data.expiresIn ?? 60 * 60),
+    authCookieOptions(data.expiresIn ?? 60 * 60, isSecure),
   );
   response.cookies.set(
     REFRESH_COOKIE,
     data.refreshToken,
-    authCookieOptions(REFRESH_COOKIE_MAX_AGE_SECONDS),
+    authCookieOptions(REFRESH_COOKIE_MAX_AGE_SECONDS, isSecure),
   );
 }
 
@@ -54,6 +56,10 @@ export async function POST(request: NextRequest) {
 
   const safe = stripAuthTokens(data);
   const response = NextResponse.json(safe, { status: upstream.status });
-  applySessionCookies(response, data);
+  const isSecure = isSecureRequest({
+    forwardedProto: request.headers.get("x-forwarded-proto"),
+    protocol: request.nextUrl.protocol,
+  });
+  applySessionCookies(response, data, isSecure);
   return response;
 }

@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   authCookieOptions,
   clearedAuthCookieOptions,
+  isSecureRequest,
   stripAuthTokens,
   type AuthTokenBody,
 } from "./cookies";
@@ -32,22 +33,8 @@ describe("stripAuthTokens", () => {
 });
 
 describe("auth cookie attributes", () => {
-  // process.env.NODE_ENV is read-only in Next types; go through a record.
-  const env = process.env as unknown as Record<string, string | undefined>;
-  function withNodeEnv<T>(value: string | undefined, fn: () => T): T {
-    const saved = env["NODE_ENV"];
-    try {
-      if (value === undefined) delete env["NODE_ENV"];
-      else env["NODE_ENV"] = value;
-      return fn();
-    } finally {
-      if (saved === undefined) delete env["NODE_ENV"];
-      else env["NODE_ENV"] = saved;
-    }
-  }
-
   test("creation: HttpOnly, explicit Lax, Path=/, no Domain", () => {
-    const opts = authCookieOptions(3600);
+    const opts = authCookieOptions(3600, true);
     expect(opts.httpOnly).toBe(true);
     expect(opts.sameSite).toBe("lax");
     expect(opts.path).toBe("/");
@@ -55,31 +42,70 @@ describe("auth cookie attributes", () => {
     expect("domain" in opts).toBe(false);
   });
 
-  test("creation: Secure in production only", () => {
-    expect(withNodeEnv("development", () => authCookieOptions(60).secure)).toBe(
-      false,
-    );
-    expect(withNodeEnv("production", () => authCookieOptions(60).secure)).toBe(
-      true,
-    );
+  test("creation: Secure follows the request origin, never NODE_ENV", () => {
+    // Same defect family as #58/#59: gating a TLS-dependent attribute on the
+    // environment emitted Secure from `next start` on plain-HTTP loopback and
+    // would drop the session on any plain-HTTP non-loopback host.
+    expect(authCookieOptions(60, true).secure).toBe(true);
+    expect(authCookieOptions(60, false).secure).toBe(false);
   });
 
-  test("deletion scope matches creation scope in every environment", () => {
-    for (const nodeEnv of ["development", "test", "production"]) {
-      withNodeEnv(nodeEnv, () => {
-        const cleared = clearedAuthCookieOptions();
-        const created = authCookieOptions(3600);
-        expect(cleared.httpOnly).toBe(true);
-        expect(cleared.path).toBe(created.path);
-        expect(cleared.sameSite).toBe(created.sameSite);
-        expect(cleared.secure).toBe(created.secure);
-        expect(cleared.secure).toBe(nodeEnv === "production");
-        expect("domain" in cleared).toBe(false);
-      });
+  test("deletion scope matches creation scope on both origins", () => {
+    for (const isSecure of [true, false]) {
+      const cleared = clearedAuthCookieOptions(isSecure);
+      const created = authCookieOptions(3600, isSecure);
+      expect(cleared.httpOnly).toBe(true);
+      expect(cleared.path).toBe(created.path);
+      expect(cleared.sameSite).toBe(created.sameSite);
+      expect(cleared.secure).toBe(created.secure);
+      expect(cleared.secure).toBe(isSecure);
+      expect("domain" in cleared).toBe(false);
     }
   });
 
   test("deletion expires immediately", () => {
-    expect(clearedAuthCookieOptions().maxAge).toBe(0);
+    expect(clearedAuthCookieOptions(true).maxAge).toBe(0);
+    expect(clearedAuthCookieOptions(false).maxAge).toBe(0);
+  });
+});
+
+describe("isSecureRequest", () => {
+  test("trusts x-forwarded-proto first (proxy chains send lists)", () => {
+    expect(
+      isSecureRequest({ forwardedProto: "https", protocol: "http:" }),
+    ).toBe(true);
+    expect(
+      isSecureRequest({ forwardedProto: "http", protocol: "https:" }),
+    ).toBe(false);
+    expect(
+      isSecureRequest({
+        forwardedProto: "https, http",
+        protocol: "http:",
+      }),
+    ).toBe(true);
+    expect(
+      isSecureRequest({ forwardedProto: "https:", protocol: "http:" }),
+    ).toBe(true);
+  });
+
+  test("falls back to the request URL protocol", () => {
+    expect(isSecureRequest({ protocol: "https:" })).toBe(true);
+    expect(isSecureRequest({ protocol: "http:" })).toBe(false);
+  });
+
+  test("without a URL (Server Actions): loopback is plain HTTP, everything else fails closed", () => {
+    for (const host of [
+      "localhost:3025",
+      "127.0.0.1:3025",
+      "[::1]:3025",
+      "localhost",
+    ]) {
+      expect(isSecureRequest({ host })).toBe(false);
+    }
+    expect(isSecureRequest({ host: "deadline-radar-web.vercel.app" })).toBe(
+      true,
+    );
+    expect(isSecureRequest({ host: "192.168.18.135:3025" })).toBe(true);
+    expect(isSecureRequest({})).toBe(true);
   });
 });

@@ -9,6 +9,7 @@ import {
   REFRESH_COOKIE_MAX_AGE_SECONDS,
   authCookieOptions,
   clearedAuthCookieOptions,
+  isSecureRequest,
   type AuthTokenBody,
 } from "@/lib/auth/cookies";
 import { resolveSessionGate } from "@/lib/auth/session-gate";
@@ -41,25 +42,26 @@ function getJwks() {
   return jwks;
 }
 
-function clearAuthCookies(response: NextResponse) {
-  response.cookies.set(ACCESS_COOKIE, "", clearedAuthCookieOptions());
-  response.cookies.set(REFRESH_COOKIE, "", clearedAuthCookieOptions());
+function clearAuthCookies(response: NextResponse, isSecure: boolean) {
+  response.cookies.set(ACCESS_COOKIE, "", clearedAuthCookieOptions(isSecure));
+  response.cookies.set(REFRESH_COOKIE, "", clearedAuthCookieOptions(isSecure));
 }
 
 function applySessionCookies(
   response: NextResponse,
   data: AuthTokenBody,
+  isSecure: boolean,
 ): void {
   if (!data.accessToken || !data.refreshToken) return;
   response.cookies.set(
     ACCESS_COOKIE,
     data.accessToken,
-    authCookieOptions(data.expiresIn ?? 60 * 60),
+    authCookieOptions(data.expiresIn ?? 60 * 60, isSecure),
   );
   response.cookies.set(
     REFRESH_COOKIE,
     data.refreshToken,
-    authCookieOptions(REFRESH_COOKIE_MAX_AGE_SECONDS),
+    authCookieOptions(REFRESH_COOKIE_MAX_AGE_SECONDS, isSecure),
   );
 }
 
@@ -170,16 +172,14 @@ export async function proxy(request: NextRequest) {
   // enforces it. Must run before any early return so redirects are covered.
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const isDev = process.env.NODE_ENV === "development";
-  // TLS-dependent directives (upgrade-insecure-requests, HSTS) key on the
+  // TLS-dependent behavior (security headers, `Secure` cookies) keys on the
   // origin the response is served from, never on NODE_ENV (#59: `next start`
-  // sets NODE_ENV=production on plain-HTTP loopback). The platform's
-  // forwarded proto wins when present (Vercel sets it; first entry when a
-  // chain of proxies appends); otherwise the request URL decides. Anything
-  // not explicitly http: is treated as secure.
-  const forwardedProto =
-    request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() ||
-    request.nextUrl.protocol;
-  const isSecure = forwardedProto.replace(/:$/, "") !== "http";
+  // sets NODE_ENV=production on plain-HTTP loopback). Single derivation so
+  // headers and cookies can never disagree on the origin.
+  const isSecure = isSecureRequest({
+    forwardedProto: request.headers.get("x-forwarded-proto"),
+    protocol: request.nextUrl.protocol,
+  });
   const securityHeaders = buildSecurityHeaders({ nonce, isDev, isSecure });
 
   const applySecurityHeaders = (response: NextResponse) => {
@@ -199,8 +199,9 @@ export async function proxy(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = gate.to;
     const response = NextResponse.redirect(url);
-    if (shouldClearCookies) clearAuthCookies(response);
-    else if (refreshTokens) applySessionCookies(response, refreshTokens);
+    if (shouldClearCookies) clearAuthCookies(response, isSecure);
+    else if (refreshTokens)
+      applySessionCookies(response, refreshTokens, isSecure);
     applySecurityHeaders(response);
     return response;
   }
@@ -210,8 +211,8 @@ export async function proxy(request: NextRequest) {
   const response = NextResponse.next({
     request: { headers: requestHeaders },
   });
-  if (shouldClearCookies) clearAuthCookies(response);
-  else if (refreshTokens) applySessionCookies(response, refreshTokens);
+  if (shouldClearCookies) clearAuthCookies(response, isSecure);
+  else if (refreshTokens) applySessionCookies(response, refreshTokens, isSecure);
   applySecurityHeaders(response);
   return response;
 }

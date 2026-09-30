@@ -7,6 +7,7 @@ import {
   REFRESH_COOKIE_MAX_AGE_SECONDS,
   authBridgeSecret,
   authCookieOptions,
+  isSecureRequest,
   type AuthTokenBody,
 } from "@/lib/auth/cookies";
 import { resolveConfirmNextPath } from "@deadline-radar/validation";
@@ -63,15 +64,19 @@ export async function GET(request: NextRequest) {
         ? resolveConfirmNextPath(data.redirectTo)
         : next;
     const response = NextResponse.redirect(new URL(redirectTo, request.url));
+    const isSecure = isSecureRequest({
+      forwardedProto: request.headers.get("x-forwarded-proto"),
+      protocol: request.nextUrl.protocol,
+    });
     response.cookies.set(
       ACCESS_COOKIE,
       data.accessToken,
-      authCookieOptions(data.expiresIn ?? 60 * 60),
+      authCookieOptions(data.expiresIn ?? 60 * 60, isSecure),
     );
     response.cookies.set(
       REFRESH_COOKIE,
       data.refreshToken,
-      authCookieOptions(REFRESH_COOKIE_MAX_AGE_SECONDS),
+      authCookieOptions(REFRESH_COOKIE_MAX_AGE_SECONDS, isSecure),
     );
     return response;
   } catch {

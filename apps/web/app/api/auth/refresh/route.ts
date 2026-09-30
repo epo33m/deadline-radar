@@ -8,6 +8,7 @@ import {
   authBridgeSecret,
   authCookieOptions,
   clearedAuthCookieOptions,
+  isSecureRequest,
   stripAuthTokens,
   type AuthTokenBody,
 } from "@/lib/auth/cookies";
@@ -36,28 +37,32 @@ export async function POST(request: NextRequest) {
 
   const safe = stripAuthTokens(data);
   const response = NextResponse.json(safe, { status: upstream.status });
+  const isSecure = isSecureRequest({
+    forwardedProto: request.headers.get("x-forwarded-proto"),
+    protocol: request.nextUrl.protocol,
+  });
 
   if (data.accessToken && data.refreshToken) {
     response.cookies.set(
       ACCESS_COOKIE,
       data.accessToken,
-      authCookieOptions(data.expiresIn ?? 60 * 60),
+      authCookieOptions(data.expiresIn ?? 60 * 60, isSecure),
     );
     response.cookies.set(
       REFRESH_COOKIE,
       data.refreshToken,
-      authCookieOptions(REFRESH_COOKIE_MAX_AGE_SECONDS),
+      authCookieOptions(REFRESH_COOKIE_MAX_AGE_SECONDS, isSecure),
     );
   } else if (!upstream.ok) {
     response.cookies.set(
       ACCESS_COOKIE,
       "",
-      clearedAuthCookieOptions(),
+      clearedAuthCookieOptions(isSecure),
     );
     response.cookies.set(
       REFRESH_COOKIE,
       "",
-      clearedAuthCookieOptions(),
+      clearedAuthCookieOptions(isSecure),
     );
   }
 
