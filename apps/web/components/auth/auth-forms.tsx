@@ -22,8 +22,7 @@ import {
   dialogActionsClassName,
   dialogPrimaryActionClassName,
 } from "@/components/ui/dialog";
-import { dialogInputClassName } from "@/components/ui/dialog-form";
-import { DialogFormRow, dialogFormListClassName } from "@/components/ui/dialog-form";
+import { dialogFormListClassName } from "@/components/ui/dialog-form";
 import { Input } from "@/components/ui/input";
 import { detectBrowserTimeZone } from "@/lib/timezone";
 import {
@@ -32,11 +31,14 @@ import {
   registerSchema,
   resetPasswordSchema,
 } from "@/lib/validation/auth";
+import { cn } from "@/lib/utils";
 import { resolveSafeReturnTo } from "@deadline-radar/validation";
 
 const initialState: AuthActionState = {};
 
-const authInputClassName = dialogInputClassName;
+const authInputClassName = cn(
+  "h-12 w-full min-w-0 rounded-none border-0 bg-transparent px-3.5 py-0 font-sans text-[15px] font-normal leading-normal tracking-[-0.2px] text-left text-ink shadow-none outline-none placeholder:text-ink-muted-48 focus-visible:border-0 focus-visible:ring-0 focus-visible:outline-none disabled:opacity-50 disabled:bg-transparent dark:bg-transparent aria-invalid:border-0 aria-invalid:ring-0 aria-invalid:text-destructive",
+);
 
 const authErrorClassName =
   "text-sm leading-[1.43] tracking-[-0.224px] text-destructive";
@@ -77,12 +79,14 @@ function AuthEmailField({
   const fieldId = `${idPrefix}-email`;
 
   return (
-    <DialogFormRow label="Email" htmlFor={fieldId}>
-      <div className="space-y-2.5">
+    <li className="py-0.5">
+      <div className="space-y-1">
         <Input
           id={fieldId}
           name="email"
           type="email"
+          placeholder="Email"
+          aria-label="Email"
           autoComplete="email"
           aria-invalid={Boolean(error)}
           aria-describedby={error ? `${fieldId}-error` : undefined}
@@ -93,12 +97,12 @@ function AuthEmailField({
           }}
         />
         {error ? (
-          <p id={`${fieldId}-error`} className={authErrorClassName} role="alert">
+          <p id={`${fieldId}-error`} className={`${authErrorClassName} px-3.5 pb-2 text-left`} role="alert">
             {error}
           </p>
         ) : null}
       </div>
-    </DialogFormRow>
+    </li>
   );
 }
 
@@ -125,16 +129,18 @@ function AuthPasswordField({
   onClearError,
   onBlur,
 }: AuthPasswordFieldProps) {
-  const fieldId = `${idPrefix}-password`;
+  const fieldId = `${idPrefix}-${name}`;
 
   return (
-    <DialogFormRow label={ariaLabel} htmlFor={fieldId}>
-      <div className="space-y-2.5">
+    <li className="py-0.5">
+      <div className="space-y-1">
         <div className="relative">
           <Input
             id={fieldId}
             name={name}
             type={showPassword ? "text" : "password"}
+            placeholder={ariaLabel}
+            aria-label={ariaLabel}
             autoComplete={autoComplete}
             aria-invalid={Boolean(error)}
             aria-describedby={error ? `${fieldId}-error` : undefined}
@@ -149,7 +155,7 @@ function AuthPasswordField({
             onClick={onTogglePassword}
             aria-label={showPassword ? "Hide password" : "Show password"}
             aria-pressed={showPassword}
-            className="absolute top-1/2 right-3 -translate-y-1/2 rounded-sm text-ink-muted-48 transition-colors hover:text-ink focus-visible:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus"
+            className="absolute top-1/2 right-3.5 -translate-y-1/2 rounded-sm text-ink-muted-48 transition-colors hover:text-ink focus-visible:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus"
           >
             {showPassword ? (
               <EyeOff className="size-4" aria-hidden="true" />
@@ -159,12 +165,12 @@ function AuthPasswordField({
           </button>
         </div>
         {error ? (
-          <p id={`${fieldId}-error`} className={authErrorClassName} role="alert">
+          <p id={`${fieldId}-error`} className={`${authErrorClassName} px-3.5 pb-2 text-left`} role="alert">
             {error}
           </p>
         ) : null}
       </div>
-    </DialogFormRow>
+    </li>
   );
 }
 
@@ -182,7 +188,7 @@ function AuthFormActions({
       <Button
         type="submit"
         disabled={pending}
-        className={dialogPrimaryActionClassName}
+        className={cn(dialogPrimaryActionClassName, "font-medium")}
       >
         {pending ? pendingLabel : submitLabel}
       </Button>
@@ -470,7 +476,7 @@ export function ForgotPasswordForm() {
       <AuthFormActions
         pending={pending}
         pendingLabel="Sending…"
-        submitLabel="Send reset link"
+        submitLabel="Continue"
       />
     </form>
   );

@@ -6,7 +6,10 @@ export const dynamic = "force-dynamic";
 
 export default function ForgotPasswordPage() {
   return (
-    <AuthPageShell title="Reset password">
+    <AuthPageShell
+      title="Recover Your account"
+      subtitle="We’ll send you a link to get back in."
+    >
       <ForgotPasswordForm />
     </AuthPageShell>
   );
