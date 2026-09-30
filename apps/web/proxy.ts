@@ -170,8 +170,17 @@ export async function proxy(request: NextRequest) {
   // enforces it. Must run before any early return so redirects are covered.
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const isDev = process.env.NODE_ENV === "development";
-  const isProd = process.env.NODE_ENV === "production";
-  const securityHeaders = buildSecurityHeaders({ nonce, isDev, isProd });
+  // TLS-dependent directives (upgrade-insecure-requests, HSTS) key on the
+  // origin the response is served from, never on NODE_ENV (#59: `next start`
+  // sets NODE_ENV=production on plain-HTTP loopback). The platform's
+  // forwarded proto wins when present (Vercel sets it; first entry when a
+  // chain of proxies appends); otherwise the request URL decides. Anything
+  // not explicitly http: is treated as secure.
+  const forwardedProto =
+    request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() ||
+    request.nextUrl.protocol;
+  const isSecure = forwardedProto.replace(/:$/, "") !== "http";
+  const securityHeaders = buildSecurityHeaders({ nonce, isDev, isSecure });
 
   const applySecurityHeaders = (response: NextResponse) => {
     for (const [name, value] of Object.entries(securityHeaders)) {

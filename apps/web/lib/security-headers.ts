@@ -25,14 +25,27 @@ export interface SecurityHeaderOptions {
   nonce: string;
   /** `true` when `NODE_ENV === "development"` (allows `unsafe-eval`). */
   isDev: boolean;
-  /** `true` when `NODE_ENV === "production"` (emits HSTS). */
-  isProd: boolean;
+  /**
+   * `true` when the response is served over TLS. Derived per request in
+   * `proxy.ts` from `x-forwarded-proto` falling back to the request URL —
+   * never from `NODE_ENV` (#59: gating TLS-dependent directives on the
+   * environment emitted them from `next start` on plain-HTTP loopback).
+   */
+  isSecure: boolean;
+}
+
+export interface ContentSecurityPolicyOptions {
+  /** `true` when `NODE_ENV === "development"` (allows `unsafe-eval`). */
+  isDev: boolean;
+  /** `true` when the response is served over TLS. See `SecurityHeaderOptions`. */
+  isSecure: boolean;
 }
 
 export function buildContentSecurityPolicy(
   nonce: string,
-  isDev: boolean,
+  options: ContentSecurityPolicyOptions,
 ): string {
+  const { isDev, isSecure } = options;
   const csp = [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
@@ -53,12 +66,13 @@ export function buildContentSecurityPolicy(
     "base-uri 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",
-    // Development serves plain HTTP on 127.0.0.1. Chromium exempts loopback
-    // from this directive, WebKit/Safari does not: it upgrades every
-    // stylesheet and script to https://, the TLS handshake fails against the
-    // dev server, and the page renders as unstyled HTML. Same class of
-    // problem as HSTS on localhost above, so it is gated the same way.
-    ...(isDev ? [] : ["upgrade-insecure-requests"]),
+    // TLS-dependent directive: emit only when the response is actually served
+    // over TLS. Gating this on the environment is the #58 defect — `next
+    // start` sets NODE_ENV=production while serving plain HTTP on loopback,
+    // and WebKit (unlike Chromium) does not exempt loopback: it upgrades every
+    // stylesheet and script to https://, the handshake fails, and no client
+    // runtime ever attaches.
+    ...(isSecure ? ["upgrade-insecure-requests"] : []),
   ].join("; ");
   return csp;
 }
@@ -66,18 +80,21 @@ export function buildContentSecurityPolicy(
 export function buildSecurityHeaders(
   options: SecurityHeaderOptions,
 ): Record<string, string> {
-  const { nonce, isDev, isProd } = options;
+  const { nonce, isDev, isSecure } = options;
   const headers: Record<string, string> = {
-    "Content-Security-Policy": buildContentSecurityPolicy(nonce, isDev),
+    "Content-Security-Policy": buildContentSecurityPolicy(nonce, {
+      isDev,
+      isSecure,
+    }),
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "strict-origin-when-cross-origin",
     // Belt-and-suspenders with `frame-ancestors 'none'` for legacy agents.
     "X-Frame-Options": "DENY",
   };
-  // HSTS on http://localhost dev origins would pin HTTPS (and with
-  // `preload`, permanently) — emit only in production, mirroring the API
-  // (`apps/api/src/plugins/http-policy.ts`).
-  if (isProd) {
+  // Same rule as upgrade-insecure-requests above: HSTS (with
+  // `includeSubDomains; preload`) must never be served over plain HTTP.
+  // `isProd` alone was the same defect — `next start` on loopback emitted it.
+  if (isSecure) {
     headers["Strict-Transport-Security"] = HSTS_VALUE;
   }
   return headers;
