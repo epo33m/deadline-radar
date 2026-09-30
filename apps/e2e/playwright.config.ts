@@ -1,4 +1,4 @@
-import { defineConfig } from "@playwright/test";
+import { defineConfig, devices } from "@playwright/test";
 
 import { assertNoProductionAppEnv } from "./app-env";
 import { webServers } from "./servers";
@@ -31,9 +31,27 @@ try {
 // secret out of a non-production run.
 applyRunnerEnv(target);
 
+/**
+ * Safe environment summary (#62): which database/auth backend the suite will
+ * write to, as a host only. `SUPABASE_URL` carries the project ref, never a
+ * credential — keys are never printed here (same values `target.ts` refusal
+ * messages already print). Falls back rather than throwing when absent.
+ */
+function describeDbAuthTarget(env: Record<string, string>): string {
+  const raw = env["SUPABASE_URL"] ?? env["NEXT_PUBLIC_SUPABASE_URL"] ?? "";
+  try {
+    const host = new URL(raw).host;
+    if (host) return host;
+  } catch {
+    // Malformed URL: report unknown instead of crashing the run.
+  }
+  return "(unknown — SUPABASE_URL missing or malformed)";
+}
+
 console.log(
-  `\n  e2e target: ${target.name} → ${target.webOrigin} (env: ${target.envFile})\n`,
+  `\n  e2e target: ${target.name} → ${target.webOrigin} (env: ${target.envFile})`,
 );
+console.log(`  db/auth:    ${describeDbAuthTarget(target.env)}\n`);
 
 export default defineConfig({
   testDir: "./tests",
@@ -54,4 +72,20 @@ export default defineConfig({
     actionTimeout: 15_000,
   },
   webServer: webServers(target),
+  // #62 — both engines. Chromium runs the whole suite; WebKit runs only the
+  // browser-driven specs (`*.e2e.spec.ts`). API/process specs are engine
+  // independent, and running them twice would double staging writes and press
+  // the 20 req/min auth rate limit for no signal. Serial workers keep the
+  // projects sequential.
+  projects: [
+    {
+      name: "chromium",
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "webkit",
+      use: { ...devices["Desktop Safari"] },
+      testMatch: /.*\.e2e\.spec\.ts/,
+    },
+  ],
 });

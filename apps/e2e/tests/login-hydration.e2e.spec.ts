@@ -21,34 +21,13 @@ import {
   collectPageHealth,
   expect,
   test,
-  type Page,
 } from "./guardrails";
 
 import { cleanupUser, registerUser, runTag, type TestUser } from "../fixtures";
 
-const RUN = runTag();
+import { expectNoPasswordInUrl } from "./auth-url";
 
-/**
- * The regression assertion. Checks the raw URL, the percent-decoded URL (a
- * browser encodes the credential), and the parameter name itself — any one of
- * them carrying the password fails.
- */
-async function expectNoPasswordInUrl(page: Page, password: string) {
-  const combined = async () => {
-    const url = page.url();
-    let decoded = url;
-    try {
-      decoded = decodeURIComponent(url);
-    } catch {
-      // Malformed escape: assert on the raw URL only.
-    }
-    return `${url} || ${decoded}`;
-  };
-  await expect
-    .poll(combined, { timeout: 8_000 })
-    .not.toContain(password);
-  expect(page.url()).not.toMatch(/[?&]password=/);
-}
+const RUN = runTag();
 
 test.describe("Login hydration (#60)", () => {
   let user: TestUser | undefined;

@@ -1,5 +1,10 @@
 # E2E — link attachments
 
+> **Playwright CLI is mandatory for E2E work in this repo.**
+> See [`PLAYWRIGHT-CLI.md`](./PLAYWRIGHT-CLI.md) — normative usage standard
+> (per test type, target discipline, secrets hygiene). Review may reject E2E
+> work without CLI evidence.
+
 > **Status: advisory, non-blocking (F-7).** These suites are NOT wired into CI:
 > they need Chromium, a production web build, and a live Supabase project
 > (Auth with email-confirmation disabled, Admin API, Storage) plus remote

@@ -17,6 +17,7 @@
     "postgres": "^3.4.5"
   },
   "devDependencies": {
+    "@playwright/cli": "0.1.22",
     "@playwright/test": "1.63.0"
   }
 }
