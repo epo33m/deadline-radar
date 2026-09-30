@@ -15,6 +15,12 @@ jobs:
   verify:
     name: Lint, Test & Migration Drift Verification
     runs-on: ubuntu-latest
+    # NOTE (#81): the workspace test step runs serially (test:ci,
+    # --parallel=1) — same runner-kill flake as ci-dev.yml (exit 1 with
+    # every suite green and no Nx summary when all 6 test targets run
+    # concurrently). NX_VERBOSE_LOGGING exposes the aborted task + exit
+    # signal if a kill ever recurs.
+    timeout-minutes: 30
 
     services:
       postgres:
@@ -105,7 +111,10 @@ jobs:
         run: bun run typecheck
 
       - name: Run Workspace Tests
-        run: bun run test
+        # NOTE (#81): serial via test:ci — see the job-level note.
+        env:
+          NX_VERBOSE_LOGGING: "true"
+        run: bun run test:ci
 
       # NOTE (F-7): Playwright E2E (apps/e2e) is deliberately NOT run here.
       # It needs Chromium, a production web build, and a live Supabase

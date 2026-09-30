@@ -16,6 +16,15 @@ jobs:
   verify:
     name: Lint, Test & Build
     runs-on: ubuntu-latest
+    # NOTE (#81): the workspace test step runs serially (test:ci,
+    # --parallel=1). The api suite alone runs 539 tests in ~26s with
+    # hang-simulating servers (Bun.serve never-respond) and timer-based
+    # tests; running all 6 test targets concurrently on the shared runner
+    # got the process killed (exit 1, every suite green, no Nx summary,
+    # marked project varying run to run). Serial execution trades a few
+    # seconds for a deterministic gate. NX_VERBOSE_LOGGING exposes the
+    # aborted task + exit signal if a kill ever recurs.
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
@@ -40,7 +49,10 @@ jobs:
         # only. packages/db splits its suite: `test` (unit, incl. a meta-test
         # locking the split) runs here; `test:db` (live-database guards:
         # SEC-003, RLS matrix, drift, …) runs in ci-main.yml after migrations.
-        run: bun run test
+        # NOTE (#81): serial via test:ci — see the job-level note.
+        env:
+          NX_VERBOSE_LOGGING: "true"
+        run: bun run test:ci
 
       # NOTE: Playwright E2E (apps/e2e) is deliberately NOT run here.
       # It needs Chromium, a production web build, and a live Supabase

@@ -14,6 +14,7 @@
     "lint": "bunx nx run-many -t lint",
     "typecheck": "bunx nx run-many -t typecheck --projects=web,api,db,domain,validation,e2e",
     "test": "bunx nx run-many -t test",
+    "test:ci": "bunx nx run-many -t test --parallel=1",
     "test:scripts": "bun test scripts/lib/target.test.ts",
     "pretest:e2e": "bun run --filter e2e with-target-env -- nx run-many -t build --projects=web",
     "test:e2e": "bun run --filter e2e test:e2e",
