@@ -13,11 +13,17 @@
  * `bun run test:e2e` reach production without anyone choosing to.
  *
  * The root `.env.local` is deliberately not read here, directly or
- * transitively. #63 generalises this resolver to the other local scripts.
+ * transitively. #63 generalises this resolver to the other local scripts via
+ * `scripts/lib/target.ts`, which owns the canonical deny list and dotenv
+ * parser below.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { parseEnvFile, PRODUCTION_MARKERS } from "../../scripts/lib/target";
+
+export { parseEnvFile, PRODUCTION_MARKERS };
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -40,22 +46,6 @@ export const TARGETS = {
 } as const;
 
 export type E2ETargetName = keyof typeof TARGETS;
-
-/**
- * Production identifiers, sourced from the root `.env.production`
- * (DATABASE_URL / SUPABASE_URL at lines 23-24, WEB_ORIGIN / API_ORIGIN at
- * lines 40-41). Matched as substrings: a deny list that over-matches is safe,
- * one that under-matches reaches production.
- *
- * Exported so `app-env.ts` matches the Next app directory against the *same*
- * list. Two copies of a security deny list drift.
- */
-export const PRODUCTION_MARKERS = [
-  "bhtfkuzsdxrdmvvcczse", // production Supabase project ref
-  "bhtfkuzsdxrdmvvcczse.supabase.co",
-  "deadline-radar-web.vercel.app",
-  "deadline-radar-api-production.up.railway.app",
-] as const;
 
 /** Env keys whose value decides which database/auth the suite writes to. */
 const PRODUCTION_CHECKED_KEYS = [
@@ -134,31 +124,6 @@ function validTargets(): string {
         `  E2E_TARGET=${name}   →  ${TARGETS[name].webOrigin}  (env: ${TARGETS[name].envFile})`,
     )
     .join("\n");
-}
-
-/** dotenv semantics: strip an inline ` #` comment unless the value is quoted. */
-function unquote(value: string): string {
-  const quote = value[0];
-  if (quote === '"' || quote === "'" || quote === "`") {
-    const end = value.indexOf(quote, 1);
-    if (end !== -1) return value.slice(1, end);
-  }
-  const comment = value.search(/\s#/);
-  return (comment === -1 ? value : value.slice(0, comment)).trim();
-}
-
-export function parseEnvFile(filePath: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const rawLine of readFileSync(filePath, "utf8").split("\n")) {
-    const line = rawLine.trim();
-    if (line === "" || line.startsWith("#")) continue;
-    const eq = line.indexOf("=");
-    if (eq === -1) continue;
-    const key = line.slice(0, eq).trim().replace(/^export\s+/, "");
-    if (key === "") continue;
-    out[key] = unquote(line.slice(eq + 1).trim());
-  }
-  return out;
 }
 
 /** `[label, value, marker]` for every production reference found in `env`. */
