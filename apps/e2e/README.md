@@ -109,6 +109,22 @@ No environment variable and no escape hatch makes a production run the default
 or the easy option. Adding production to `TARGETS` is a code change, and a
 reviewable one.
 
+### Incident #64 — the run that reached production
+
+While diagnosing the client runtime, the suite was run once without
+`E2E_TARGET` and resolved production through the root `.env.local`.
+Registration failed on the password grant (production requires email
+confirmation), so the sign-up may still have created a user. Nothing has been
+inspected, verified, or removed.
+
+Decision (owner, recorded on issue #64): no production inspection, mutation,
+or cleanup. This section is the preventive closure alongside the guards that
+stop a repeat: explicit-target resolution (#62, `target.ts`), no default path
+from local tooling to production (#63, `scripts/lib/target.ts` +
+`refuse-default-prod.ts`), and the app-directory credential guard (#71,
+`app-env.ts`). Do not claim the possible leftover user was removed — removal
+was never performed nor verified.
+
 ### What the started processes inherit
 
 Playwright launches the `webServer` children as
