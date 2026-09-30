@@ -39,15 +39,23 @@ export function webServers(target: E2ETarget): WebServerConfig[] {
       env: { API_ORIGIN: target.apiOrigin, WEB_ORIGIN: target.webOrigin },
     },
     {
-      // Real Next.js web app. PRODUCTION server (`next start`), not dev:
-      // `next dev` (Turbopack) does not hydrate in this sandbox's headless
-      // Chromium (SSR HTML serves, but no client runtime ever attaches), while
-      // the production bundle hydrates correctly. Production is also the more
-      // faithful E2E target. Prerequisite: build the web app first
-      // (`bun run build` from the repo root, or `pretest:e2e` does it — it
-      // resolves the same target so the baked API_ORIGIN rewrite matches).
-      // Server Components, Server Actions, and rendered HTML are all
-      // production code paths, not test doubles.
+      // Real Next.js web app. PRODUCTION server (`next start`), not dev.
+      // Production is the more faithful E2E target. Prerequisite: build the web
+      // app first (`bun run build` from the repo root, or `pretest:e2e` does it
+      // — it resolves the same target so the baked API_ORIGIN rewrite matches).
+      // Server Components, Server Actions, and rendered HTML are all production
+      // code paths, not test doubles.
+      //
+      // An earlier version of this comment said `next dev` "does not hydrate in
+      // this sandbox's headless Chromium (SSR HTML serves, but no client runtime
+      // ever attaches), while the production bundle hydrates correctly". That was
+      // an unverified inference from `1ca1015`, and it is wrong in both halves —
+      // the 2x2 matrix in #58 finds `next dev` hydrating in Chromium *and*
+      // WebKit, and `next start` NOT hydrating in WebKit. The real cause was
+      // `upgrade-insecure-requests` emitted on this plain-HTTP origin, which
+      // WebKit honours and Chromium exempts from for loopback. Do not restore
+      // the old wording; see docs/audits/client-runtime-diagnosis-2026-09-30.md.
+      // #59 may make `next dev` a viable target again.
       command: `bunx next start --port ${target.webPort}`,
       cwd: path.join(repoRoot, "apps/web"),
       url: `${target.webOrigin}/login`,
