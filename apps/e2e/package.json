@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "test": "bun test target.test.ts app-env.test.ts",
+    "test": "bun test target.test.ts app-env.test.ts guardrails-scope.test.ts",
     "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit -p .",
     "with-target-env": "bun scripts/with-target-env.ts"
