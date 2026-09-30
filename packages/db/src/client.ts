@@ -95,5 +95,11 @@ export function createDb(
     // statement_timeout is a per-connection Postgres GUC in milliseconds.
     connection: { statement_timeout: config.statementTimeoutMs },
   });
-  return drizzle(client, { schema });
+  const db = drizzle(client, { schema });
+  // Additive only: every drizzle method keeps working, callers of the
+  // `Database` type are unaffected. Lets hosts drain the pool on shutdown
+  // (SIGTERM) instead of abandoning connections for the server to reap.
+  return Object.assign(db, {
+    close: () => client.end(),
+  });
 }
