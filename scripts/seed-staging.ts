@@ -14,19 +14,10 @@
  * bun run dev:api with the staging env file).
  */
 import { api } from "../apps/e2e/fixtures";
-import { PRODUCTION_MARKERS } from "../apps/e2e/target";
+import { assertNoProductionEnv, ScriptTargetError } from "./lib/target";
 
 const EMAIL = "ui-review@example.test";
 const PASSWORD = "UiReview-Staging-1!";
-
-/** Env keys that decide which database and auth the seed writes to. */
-const TARGET_KEYS = [
-  "DATABASE_URL",
-  "DIRECT_URL",
-  "SUPABASE_URL",
-  "NEXT_PUBLIC_SUPABASE_URL",
-  "API_ORIGIN",
-] as const;
 
 /**
  * Refuse to seed anything that resolves to production.
@@ -38,35 +29,28 @@ const TARGET_KEYS = [
  * credential reaching a process that was never meant to have it — and it is
  * silent, because a successful seed looks exactly like a correct one.
  *
- * The deny list is imported rather than copied: `target.ts` exports it for
- * exactly this reason, and two copies of a security list drift.
- *
- * Only the key names are printed, never the values.
+ * The check lives in `scripts/lib/target.ts` (#63): one deny list for every
+ * script, so copies cannot drift. Only key names are printed, never values.
+ * This script is staging-only by name, so unlike migrate/dev there is no
+ * `--allow-production` escape hatch here.
  */
-function assertNotProduction(): void {
-  const offending: string[] = [];
-  for (const key of TARGET_KEYS) {
-    const value = process.env[key];
-    if (!value) continue;
-    if (PRODUCTION_MARKERS.some((marker) => value.includes(marker))) {
-      offending.push(key);
-    }
+try {
+  assertNoProductionEnv(process.env, {
+    context: "seed-staging",
+    productionHint: "seed-staging is staging-only: there is no production escape hatch.",
+  });
+} catch (error) {
+  if (error instanceof ScriptTargetError) {
+    console.error(`\n✗ Refusing to seed: ${error.message}`);
+    console.error(
+      "\n  Seeding writes a known-password account and fixture rows, and --reset\n" +
+        "  archives existing data first. Neither is safe against production.\n" +
+        "\n  Use: bun run seed:staging        (passes --env-file=.env.staging)\n",
+    );
+    process.exit(1);
   }
-  if (offending.length === 0) return;
-
-  console.error(
-    "\n✗ Refusing to seed: this environment points at production.\n",
-  );
-  for (const key of offending) console.error(`    ${key} matches a production reference`);
-  console.error(
-    "\n  Seeding writes a known-password account and fixture rows, and --reset\n" +
-      "  archives existing data first. Neither is safe against production.\n" +
-      "\n  Use: bun run seed:staging        (passes --env-file=.env.staging)\n",
-  );
-  process.exit(1);
+  throw error;
 }
-
-assertNotProduction();
 
 const supabaseUrl = required("SUPABASE_URL");
 const supabaseAnonKey = required("SUPABASE_ANON_KEY");

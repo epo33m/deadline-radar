@@ -67,11 +67,17 @@ cherry-pick a subset — later files depend on earlier ones. `supabase/config.to
 In Supabase Auth settings for local MVP: disable **Confirm email**, and set Site URL to `http://127.0.0.1:3025`.
 
 ```bash
-bun run dev          # API :4025 + web :3025 — reads .env.local
-bun run dev:web      # UI only
-bun run dev:api      # API only
+bun run dev:staging    # API :4025 + web :3025 — reads .env.staging (required)
+bun run test:scripts   # explicit-target guard unit tests (no DB needed)
 bunx nx run-many -t test
 ```
+
+Bare `dev`, `dev:web`, `dev:api`, and `db:migrate|status|verify|drift` refuse
+to start: they used to load `.env.local` (production) implicitly, which was a
+default path from local tooling to production (#63). Name the target
+explicitly with the `:staging` variant. Production is reachable only
+deliberately — an explicit env file plus `--allow-production` on the script
+itself, never a default and never an environment variable.
 
 ## Staging database (UI work)
 
@@ -96,9 +102,13 @@ bun run seed:staging -- --reset   # archive everything and reseed
 Sign in at http://127.0.0.1:3025 with `ui-review@example.test` /
 `UiReview-Staging-1!` (created by the seed script).
 
-`scripts/dev.ts` refuses to start when `DATABASE_URL` and `SUPABASE_URL` name
-different Supabase projects, so a half-edited env file cannot silently write to
-the wrong database.
+`scripts/lib/target.ts` is the single explicit-target guard for local
+tooling: `scripts/dev.ts` refuses to start without a named env file, refuses a
+mixed env file whose `DATABASE_URL` and `SUPABASE_URL` name different Supabase
+projects, and refuses production unless `--allow-production` is passed
+deliberately. `scripts/migrate.ts`, `scripts/verify-schema-drift.ts`, and
+`scripts/seed-staging.ts` enforce the same deny list (seed has no production
+escape hatch), and no refusal prints secret values — keys and files only.
 
 OpenAPI UI: [http://127.0.0.1:4025/openapi](http://127.0.0.1:4025/openapi) (also rewritten via the web origin).
 
