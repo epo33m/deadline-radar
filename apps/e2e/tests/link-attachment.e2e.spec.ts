@@ -161,8 +161,10 @@ test("E2E-01 — create valid link renders clickable anchor with safe attrs", as
   await submitLink(page, url);
 
   // Dialog closes on success (it stays open on error: AddAttachmentForm only
-  // calls onSuccess when there is no error).
-  await expect(page.getByPlaceholder("URL")).toBeHidden();
+  // calls onSuccess when there is no error). Generous budget: submit waits on
+  // the API write plus a revalidating re-render of the task page, and staging
+  // writes alone measure 5-7s (higher on degraded days).
+  await expect(page.getByPlaceholder("URL")).toBeHidden({ timeout: 30_000 });
 
   const anchor = anchorFor(page, url);
   await expect(anchor).toBeVisible();

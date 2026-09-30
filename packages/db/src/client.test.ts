@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import {
   buildPostgresConfig,
+  createDb,
   DB_DEFAULTS,
   type DbConnectionOptions,
 } from "./client";
@@ -83,5 +84,24 @@ describe("buildPostgresConfig (RF-01 connection hardening)", () => {
   test("zero/negative explicit options are honored verbatim (operator intent)", () => {
     const config = buildPostgresConfig({ idleTimeout: 0 } as DbConnectionOptions);
     expect(config.idleTimeout).toBe(0);
+  });
+});
+
+describe("createDb close (graceful shutdown)", () => {
+  // postgres.js connects lazily: constructing and closing never touches the
+  // network, so this runs without a database.
+  const UNREACHABLE =
+    "postgres://user:pass@127.0.0.1:1/db?connect_timeout=1";
+
+  test("exposes close alongside every drizzle method", () => {
+    const db = createDb(UNREACHABLE);
+    expect(typeof db.close).toBe("function");
+    expect(typeof db.select).toBe("function");
+    expect(typeof db.execute).toBe("function");
+  });
+
+  test("close drains an unconnected pool without throwing", async () => {
+    const db = createDb(UNREACHABLE);
+    await db.close();
   });
 });
