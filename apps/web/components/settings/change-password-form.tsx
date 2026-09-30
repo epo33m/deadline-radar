@@ -168,7 +168,12 @@ export function ChangePasswordForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex w-full flex-col" noValidate>
+    <form
+      onSubmit={handleSubmit}
+      method="post"
+      className="flex w-full flex-col"
+      noValidate
+    >
       <ul className={dialogFormListClassName}>
         <PasswordField
           id="change-current-password"
