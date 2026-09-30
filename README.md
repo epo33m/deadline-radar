@@ -72,6 +72,13 @@ bun run test:scripts   # explicit-target guard unit tests (no DB needed)
 bunx nx run-many -t test
 ```
 
+Stop local servers with Ctrl-C / `SIGTERM`, never `kill -9`: the API drains
+in-flight queries and the Postgres pool on `SIGTERM`/`SIGINT`, while `kill -9`
+abandons pooled connections for the server to reap — the dangling-connection
+shape that aggravated the staging stall behind #89. (A single failed query can
+no longer kill the process either: it answers 500 and the server keeps
+serving; see `apps/api/src/lib/process-guard.ts`.)
+
 Bare `dev`, `dev:web`, `dev:api`, and `db:migrate|status|verify|drift` refuse
 to start: they used to load `.env.local` (production) implicitly, which was a
 default path from local tooling to production (#63). Name the target

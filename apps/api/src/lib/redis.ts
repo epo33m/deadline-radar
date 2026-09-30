@@ -29,6 +29,18 @@ export async function getRedis(): Promise<RedisLike | null> {
       enableReadyCheck: true,
       lazyConnect: true,
     });
+    // Issue #89, same class (found while investigating, not in the issue):
+    // without an 'error' listener, an EventEmitter 'error' from a Redis
+    // drop mid-run throws straight into uncaughtException and kills the
+    // process. Contain it here and drop the cached client so the next call
+    // retries the connection or falls back to the in-memory stores.
+    client.on("error", (err) => {
+      console.error(
+        "[redis] connection error — dropping cached client, callers fall back to in-memory stores",
+        err instanceof Error ? err.message : err,
+      );
+      redisClient = undefined;
+    });
     await client.connect();
     redisClient = client as unknown as RedisLike;
     return redisClient;

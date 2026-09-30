@@ -1,11 +1,15 @@
 import { app } from "./app";
 import { env, assertStartupConfig } from "./env";
 import { getDb } from "./lib/db";
+import { installProcessGuards } from "./lib/process-guard";
 import { initSentry } from "./lib/sentry";
 import { createShutdownHandler } from "./lib/shutdown";
 import { assertReminderSchemaPrerequisites } from "./lib/schema-prereqs";
 
 initSentry();
+// Issue #89: a single failed DB query must 500 that request, never kill the
+// process. Last-resort containment for rejections that escape request scope.
+installProcessGuards();
 assertStartupConfig();
 // RF-15: refuse to boot when the database is behind this API build in the
 // way that would silently break every sweep claim. Only ever runs in
