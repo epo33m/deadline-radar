@@ -26,13 +26,7 @@ export async function apiBrowser<T = unknown>(
   });
   const text = await response.text();
   const raw = (text ? JSON.parse(text) : {}) as Record<string, unknown>;
-  const data = normalizeApiErrorBody(raw);
-  if (!response.ok && !data.error) {
-    return {
-      ...(data as T & { error?: string }),
-      error: `Request failed (${response.status})`,
-    };
-  }
+  const data = normalizeApiErrorBody(raw, response.status);
   return data as T & {
     error?: string;
     fieldErrors?: Partial<Record<string, string[]>>;

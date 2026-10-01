@@ -157,12 +157,5 @@ export async function apiJson<T = unknown>(
     path,
     init,
   );
-  const normalized = normalizeApiErrorBody(data);
-  if (!response.ok && !normalized.error) {
-    return {
-      ...normalized,
-      error: `Request failed (${response.status})`,
-    } as T & ApiErrorBody;
-  }
-  return normalized as T & ApiErrorBody;
+  return normalizeApiErrorBody(data, response.status) as T & ApiErrorBody;
 }

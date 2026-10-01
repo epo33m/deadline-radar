@@ -21,6 +21,7 @@ import {
   formSectionGapClassName,
 } from "@/components/ui/dialog-form";
 import { Input } from "@/components/ui/input";
+import { LoadingDialog } from "@/components/ui/loading-dialog";
 import { SelectMenu } from "@/components/ui/select-menu";
 import { StatusPicker } from "@/components/tasks/status-picker";
 import { generateIdempotencyKey } from "@/lib/api/idempotency";
@@ -154,14 +155,20 @@ export function TaskForm({
   }));
 
   return (
-    <form action={formAction} className="flex w-full flex-col">
-      {task ? (
-        <input type="hidden" name="id" value={task.id} />
-      ) : (
-        <input type="hidden" name="idempotency_key" value={idempotencyKey} />
-      )}
-      {returnTo ? <input type="hidden" name="return_to" value={returnTo} /> : null}
-      <input type="hidden" name="deadline" value={deadline} />
+    <>
+      <LoadingDialog
+        open={pending}
+        title={task ? "Saving changes…" : "Creating task…"}
+        description="Please wait a moment"
+      />
+      <form action={formAction} className="flex w-full flex-col">
+        {task ? (
+          <input type="hidden" name="id" value={task.id} />
+        ) : (
+          <input type="hidden" name="idempotency_key" value={idempotencyKey} />
+        )}
+        {returnTo ? <input type="hidden" name="return_to" value={returnTo} /> : null}
+        <input type="hidden" name="deadline" value={deadline} />
 
       <div className={cn("w-full", formSectionGapClassName)}>
         {lockedCourseId ? (
@@ -284,6 +291,7 @@ export function TaskForm({
         ) : null}
       </div>
     </form>
+  </>
   );
 }
 

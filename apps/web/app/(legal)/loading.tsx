@@ -1,5 +1,5 @@
 import { PageLoading } from "@/components/ui/page-loading";
 
-export default function SummaryLoading() {
+export default function LegalLoading() {
   return <PageLoading />;
 }

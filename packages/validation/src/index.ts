@@ -68,3 +68,13 @@ export {
   roleRevokeSchema,
   type RoleAssignInput,
 } from "./admin";
+export {
+  CTA_VOCABULARY,
+  ERROR_COPY,
+  TOAST_COPY,
+  formatReferenceId,
+  resolveErrorCopy,
+  type CtaAction,
+  type ErrorCopyItem,
+  type ToastCopyKey,
+} from "./error-copy";

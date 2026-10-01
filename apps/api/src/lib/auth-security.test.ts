@@ -170,7 +170,9 @@ describe("withBridgeTokens", () => {
 
 describe("AUTH_ERRORS", () => {
   test("uses generic credential messaging", () => {
-    expect(AUTH_ERRORS.invalidCredentials).toBe("Invalid credentials.");
+    expect(AUTH_ERRORS.invalidCredentials).toBe(
+      "The email or password doesn't match our records.",
+    );
     expect(AUTH_ERRORS.invalidCredentials.toLowerCase()).not.toContain(
       "does not exist",
     );
