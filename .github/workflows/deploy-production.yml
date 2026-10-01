@@ -43,6 +43,15 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Require production database URL
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::PRODUCTION_DATABASE_URL is not set. Add it as a repository secret or a 'Production' environment secret (Settings -> Environments -> Production -> Environment secrets), then re-run this workflow."
+            exit 1
+          fi
+
       - name: Check Migration Status
         env:
           DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
