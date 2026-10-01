@@ -57,7 +57,7 @@ jobs:
           DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
         run: |
           supabase migration list --db-url "$DATABASE_URL"
-          bun run scripts/migrate.ts status
+          bun run scripts/migrate.ts status --allow-production
 
       - name: Apply Migrations
         if: ${{ github.event_name == 'push' || !inputs.dry_run }}
@@ -66,7 +66,7 @@ jobs:
         run: |
           supabase migration up --db-url "$DATABASE_URL"
           supabase migration list --db-url "$DATABASE_URL"
-          bun run scripts/migrate.ts verify
+          bun run scripts/migrate.ts verify --allow-production
 
       # App hosting deploys (Vercel productionBranch=main) fire automatically
       # off this same push. Post-deploy verification follows the manual
