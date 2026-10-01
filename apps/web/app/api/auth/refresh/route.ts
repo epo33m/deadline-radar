@@ -8,11 +8,14 @@ import {
   authBridgeSecret,
   authCookieOptions,
   clearedAuthCookieOptions,
+  isSecureRequest,
   stripAuthTokens,
   type AuthTokenBody,
 } from "@/lib/auth/cookies";
 
-const API_ORIGIN = process.env.API_ORIGIN ?? "http://127.0.0.1:4025";
+import { resolveApiOrigin } from "@/lib/api/origin";
+
+const API_ORIGIN = resolveApiOrigin();
 
 /** Optional same-origin refresh bridge for client-triggered renewal. */
 export async function POST(request: NextRequest) {
@@ -36,28 +39,32 @@ export async function POST(request: NextRequest) {
 
   const safe = stripAuthTokens(data);
   const response = NextResponse.json(safe, { status: upstream.status });
+  const isSecure = isSecureRequest({
+    forwardedProto: request.headers.get("x-forwarded-proto"),
+    protocol: request.nextUrl.protocol,
+  });
 
   if (data.accessToken && data.refreshToken) {
     response.cookies.set(
       ACCESS_COOKIE,
       data.accessToken,
-      authCookieOptions(data.expiresIn ?? 60 * 60),
+      authCookieOptions(data.expiresIn ?? 60 * 60, isSecure),
     );
     response.cookies.set(
       REFRESH_COOKIE,
       data.refreshToken,
-      authCookieOptions(REFRESH_COOKIE_MAX_AGE_SECONDS),
+      authCookieOptions(REFRESH_COOKIE_MAX_AGE_SECONDS, isSecure),
     );
   } else if (!upstream.ok) {
     response.cookies.set(
       ACCESS_COOKIE,
       "",
-      clearedAuthCookieOptions(),
+      clearedAuthCookieOptions(isSecure),
     );
     response.cookies.set(
       REFRESH_COOKIE,
       "",
-      clearedAuthCookieOptions(),
+      clearedAuthCookieOptions(isSecure),
     );
   }
 

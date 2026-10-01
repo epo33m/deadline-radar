@@ -1,0 +1,64 @@
+name: CI (dev)
+
+# Fast feedback for fixes & improvements. Runs on every branch EXCEPT main,
+# so work on dev/feature branches never touches production gates or secrets.
+# Uses no database and no secrets — lint, typecheck, unit tests, build only.
+# The full gate (migrations + SQL regression + drift) runs in ci-main.yml
+# when opening a PR toward main.
+
+on:
+  push:
+    branches-ignore: ["main"]
+  pull_request:
+    branches-ignore: ["main"]
+
+jobs:
+  verify:
+    name: Lint, Test & Build
+    runs-on: ubuntu-latest
+    # NOTE (#81): the workspace test step runs serially (test:ci,
+    # --parallel=1). The api suite alone runs 539 tests in ~26s with
+    # hang-simulating servers (Bun.serve never-respond) and timer-based
+    # tests; running all 6 test targets concurrently on the shared runner
+    # got the process killed (exit 1, every suite green, no Nx summary,
+    # marked project varying run to run). Serial execution trades a few
+    # seconds for a deterministic gate. NX_VERBOSE_LOGGING exposes the
+    # aborted task + exit signal if a kill ever recurs.
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run Lint
+        run: bun run lint
+
+      - name: Run Typecheck
+        run: bun run typecheck
+
+      - name: Run Workspace Tests
+        # NOTE (#69): this job has no database, so it runs DB-free unit tests
+        # only. packages/db splits its suite: `test` (unit, incl. a meta-test
+        # locking the split) runs here; `test:db` (live-database guards:
+        # SEC-003, RLS matrix, drift, …) runs in ci-main.yml after migrations.
+        # NOTE (#81): serial via test:ci — see the job-level note.
+        env:
+          NX_VERBOSE_LOGGING: "true"
+        run: bun run test:ci
+
+      # NOTE: Playwright E2E (apps/e2e) is deliberately NOT run here.
+      # It needs Chromium, a production web build, and a live Supabase
+      # project (Auth/Storage/Admin API + secrets). E2E is advisory:
+      # run `bun run test:e2e` manually pre-release / against staging
+      # (see apps/e2e/README.md).
+
+      - name: Build Projects
+        run: bun run build

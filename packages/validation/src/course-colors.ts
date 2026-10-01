@@ -130,6 +130,7 @@ const paletteByHex = new Map<string, CourseColorToken>();
 for (const option of SYSTEM_COLOR_TOKENS) {
   paletteByHex.set(option.light.toLowerCase(), option);
   paletteByHex.set(option.dark.toLowerCase(), option);
+  paletteByHex.set(option.token.toLowerCase(), option);
 }
 
 export function isHexColor(value: string | null | undefined): boolean {

@@ -82,6 +82,7 @@ Legenda lokasi:
 | Item | Status |
 |---|---|
 | `.env.local` / `.env*` tidak ter-commit (`git status` bersih dari secret) | ☐ |
+| Tidak ada file `.env*` di `apps/web/` (Next auto-load-nya di dev/build/start, jadi isinya masuk `process.env` web tanpa diminta — #71) | ☑ (2026-09-30: `apps/web/.env.local` yang berisi `VERCEL_OIDC_TOKEN` dihapus; `apps/e2e/app-env.ts` menolak jalan kalau muncul lagi) |
 | Rilis dari PR/diff bersih berisi HANYA fix audit | ☐ | Sign-off: pohon kerja saat ini bercampur feature work paralel (UI, account security) — rilis dari diff yang hanya memuat perbaikan terverifikasi, bukan seluruh working tree |
 | Tidak ada SQL dump / backup di repo atau hosting statis | ☐ |
 | Source-map prod tidak terekspos sembarang (atau nonaktifkan bila perlu) | ☐ |
@@ -162,7 +163,7 @@ daftar ini, tidak ada risiko yang diterima — sisanya harus ditutup.
 
 | ID | Risiko | Pemilik | Rasional | Review | Kontrol kompensasi |
 |---|---|---|---|---|---|
-| F-7 | 3 journey E2E tidak dikunci di CI (advisory) | epo33m | CI `verify` hanya sedia vanilla PostgreSQL; E2E butuh Chromium + build prod + project Supabase live | 2026-12-20 | `bun run test:e2e` manual pra-rilis vs staging (`apps/e2e/README.md`); drill sampai hijau sekali |
+| F-7 | 3 journey E2E tidak dikunci di CI (advisory) | epo33m | CI `verify` hanya sedia vanilla PostgreSQL; E2E butuh Chromium + build prod + project Supabase live | 2026-12-20 | `E2E_TARGET=staging bun run test:e2e` manual pra-rilis (`apps/e2e/README.md`); suite menolak jalan tanpa target bernama dan menolak host production (#56); drill sampai hijau sekali |
 | Quota-race | Dua txn bersamaan di 199/200 bisa lolos dua-duanya | epo33m | Diterima di komentar migrasi; API tetap enforcement utama, trigger adalah backstop | 2026-12-20 | Alarm biaya/kuota Resend (§4); hitung aktif = `deleted_at IS NULL` |
 | S-02…S-18 | Skenario staging §8 belum tereksekusi | epo33m | Tidak ada staging; S-11 tercakup sebagian oleh vektor DST unit (6 test `America/New_York`) | 2026-12-20 | Eksekusi atau terima tertulis sebelum rilis publik (C6) |
 | P2-cache | Snapshot authz tetap Map in-memory TTL 30 dtk, single replika | epo33m | MVP satu replika (keputusan di atas); refetch penuh per nav dapat diterima pada skala ini | 2026-12-20 | §11: pindah ke Redis (`REDIS_URL`) atau buang map lokal SEBELUM scale horizontal |

@@ -1,20 +1,57 @@
-import { defineConfig } from "@playwright/test";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
+import { defineConfig, devices } from "@playwright/test";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(here, "../..");
+import { assertNoProductionAppEnv } from "./app-env";
+import { webServers } from "./servers";
+import { applyRunnerEnv, E2ETargetError, resolveTarget } from "./target";
 
-// Load the same env the dev scripts use (root .env.local). Never commit secrets;
-// webServer children inherit process.env, so API + web boot with real config.
-if (typeof process.loadEnvFile === "function") {
-  process.loadEnvFile(path.join(repoRoot, ".env.local"));
+// The suite never chooses its own target: E2E_TARGET names one, the env file
+// that target declares is the only env source, and a target that resolves to a
+// production host is refused outright. See ./target.ts.
+//
+// The app-directory guard is the second half of that: `applyRunnerEnv` below
+// narrows the runner environment, but `next start` re-reads `apps/web`'s own env
+// files, so a production credential there would survive the sanitising. See
+// ./app-env.ts and #71.
+let target;
+try {
+  target = resolveTarget();
+  assertNoProductionAppEnv();
+} catch (error) {
+  if (error instanceof E2ETargetError) {
+    console.error(`\n✗ ${error.message}\n`);
+    process.exit(1);
+  }
+  throw error;
 }
 
-const API_PORT = Number(process.env.API_PORT ?? 4025);
-const WEB_PORT = Number(process.env.E2E_WEB_PORT ?? 3025);
-const API_ORIGIN = process.env.API_ORIGIN ?? `http://127.0.0.1:${API_PORT}`;
-const WEB_ORIGIN = `http://127.0.0.1:${WEB_PORT}`;
+// Playwright launches `webServer` children as
+// `{ ...defaults, ...process.env, ...server.env }` (playwright/lib/runner), so
+// the runner environment is the boundary — anything left in it reaches the API
+// and web processes. Narrowing it to the target is what keeps a production
+// secret out of a non-production run.
+applyRunnerEnv(target);
+
+/**
+ * Safe environment summary (#62): which database/auth backend the suite will
+ * write to, as a host only. `SUPABASE_URL` carries the project ref, never a
+ * credential — keys are never printed here (same values `target.ts` refusal
+ * messages already print). Falls back rather than throwing when absent.
+ */
+function describeDbAuthTarget(env: Record<string, string>): string {
+  const raw = env["SUPABASE_URL"] ?? env["NEXT_PUBLIC_SUPABASE_URL"] ?? "";
+  try {
+    const host = new URL(raw).host;
+    if (host) return host;
+  } catch {
+    // Malformed URL: report unknown instead of crashing the run.
+  }
+  return "(unknown — SUPABASE_URL missing or malformed)";
+}
+
+console.log(
+  `\n  e2e target: ${target.name} → ${target.webOrigin} (env: ${target.envFile})`,
+);
+console.log(`  db/auth:    ${describeDbAuthTarget(target.env)}\n`);
 
 export default defineConfig({
   testDir: "./tests",
@@ -27,44 +64,28 @@ export default defineConfig({
   retries: 0,
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
-    baseURL: process.env.E2E_WEB_ORIGIN ?? WEB_ORIGIN,
+    baseURL: target.webOrigin,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     // Fail fast instead of hanging: dev-server compiles are covered by the
     // 90s test timeout + 15s expect timeout; actions get the same budget.
     actionTimeout: 15_000,
   },
-  webServer: [
+  webServer: webServers(target),
+  // #62 — both engines. Chromium runs the whole suite; WebKit runs only the
+  // browser-driven specs (`*.e2e.spec.ts`). API/process specs are engine
+  // independent, and running them twice would double staging writes and press
+  // the 20 req/min auth rate limit for no signal. Serial workers keep the
+  // projects sequential.
+  projects: [
     {
-      // Real API over real HTTP + real database. No mocks, no app.handle().
-      command: "bun src/index.ts",
-      cwd: path.join(repoRoot, "apps/api"),
-      url: `${API_ORIGIN}/health`,
-      timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
-      stdout: "pipe",
-      stderr: "pipe",
+      name: "chromium",
+      use: { ...devices["Desktop Chrome"] },
     },
     {
-      // Real Next.js web app. PRODUCTION server (`next start`), not dev:
-      // `next dev` (Turbopack) does not hydrate in this sandbox's headless
-      // Chromium (SSR HTML serves, but no client runtime ever attaches), while
-      // the production bundle hydrates correctly. Production is also the more
-      // faithful E2E target. Prerequisite: build the web app first
-      // (`bun run build` from the repo root, or `pretest:e2e` does it).
-      // Server Components, Server Actions, and rendered HTML are all
-      // production code paths, not test doubles.
-      command: `bunx next start --port ${WEB_PORT}`,
-      cwd: path.join(repoRoot, "apps/web"),
-      url: `${WEB_ORIGIN}/login`,
-      timeout: 60_000,
-      reuseExistingServer: !process.env.CI,
-      stdout: "pipe",
-      stderr: "pipe",
-      env: {
-        API_ORIGIN,
-        WEB_ORIGIN,
-      },
+      name: "webkit",
+      use: { ...devices["Desktop Safari"] },
+      testMatch: /.*\.e2e\.spec\.ts/,
     },
   ],
 });

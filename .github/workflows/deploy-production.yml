@@ -1,0 +1,64 @@
+name: Production Migration & Deploy
+
+# Production is released ONLY from main, and ONLY with human approval.
+# Nothing on dev/feature branches can trigger this workflow, and no other
+# workflow reads production secrets — that is what keeps dev fully
+# disconnected from production.
+#
+# Required repo setup (Settings → Environments → Production):
+# - Required reviewers: repository owner
+# - Deployment branches: selected branches → `main` only
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (verify migration status without applying)"
+        required: true
+        type: boolean
+        default: true
+
+jobs:
+  migrate_production:
+    name: Verify & Apply Production Migrations
+    runs-on: ubuntu-latest
+    environment: Production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Check Migration Status
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: |
+          supabase migration list --db-url "$DATABASE_URL"
+          bun run scripts/migrate.ts status
+
+      - name: Apply Migrations
+        if: ${{ github.event_name == 'push' || !inputs.dry_run }}
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: |
+          supabase migration up --db-url "$DATABASE_URL"
+          supabase migration list --db-url "$DATABASE_URL"
+          bun run scripts/migrate.ts verify
+
+      # App hosting deploys (Vercel productionBranch=main) fire automatically
+      # off this same push. Post-deploy verification follows the manual
+      # production checklist: docs/PROD_ENV_CHECKLIST.md + supabase/verify-prod.sql

@@ -26,12 +26,26 @@ const optionalTrimmedNullable = z
     return trimmed;
   });
 
+/**
+ * Offset-aware ISO-8601 datetime (requires an explicit zone: trailing `Z`
+ * or a numeric offset like `+07:00`). Offset-naive wall strings such as
+ * `2026-09-30T07:30` are rejected on purpose: `new Date(wall)` parses them
+ * in the *server process* TZ, so the stored instant would shift whenever the
+ * server TZ differs from the profile TZ (#66). The client must convert the
+ * wall-clock in the profile timezone to an offset-aware instant before
+ * sending (see `zonedWallToIso` in `apps/web/lib/datetime.ts`).
+ */
+const OFFSET_AWARE_ISO_PATTERN = /([zZ]|[+-]\d{2}:?\d{2})$/;
+
 const deadlineSchema = z
   .string()
   .trim()
   .min(1, "Deadline is required")
   .refine((value) => !Number.isNaN(Date.parse(value)), {
     message: "Deadline must be a valid date and time",
+  })
+  .refine((value) => OFFSET_AWARE_ISO_PATTERN.test(value.trim()), {
+    message: "Deadline must include a timezone offset",
   })
   .transform((value) => new Date(value).toISOString());
 

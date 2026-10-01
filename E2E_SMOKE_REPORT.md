@@ -49,6 +49,10 @@ Berdasarkan analisis arsitektur, kode sumber, dan skema database, berikut adalah
   bun --env-file=.env.local run --filter e2e test:e2e smoke.spec.ts
   ```
   Hasil: **25 passed (4.9m), Exited with code 0** — bukti di `/tmp/opencode/e2e-final2.log`.
+  > Catatan: perintah ini yang dipakai pada run tersebut sudah tidak berlaku
+  > setelah #56 — `.env.local` menunjuk production dan e2e kini wajib menyebut
+  > target (`E2E_TARGET=staging`). Lihat § *Cara Menjalankan Ulang* di bawah.
+  > Angka 25/25 di atas tetap berlaku sebagai hasil run tersebut.
 - **Aturan anti-false-positive:** Real API, real DB (Supabase), real Auth. Tanpa mock pada core logic, tanpa fixed sleep (polling kondisional + bounded timeout), tanpa pre-created privileged user, tanpa hardcode HTTP 200.
 
 ---
@@ -174,13 +178,19 @@ Legenda Before: **FAIL** = gagal karena BUG-01 (`403 authz.denied` — user baru
 
 ### Cara Menjalankan Ulang
 
+> Suite e2e kini **wajib** menamai target-nya (#56). Perintah lama
+> `bun --env-file=.env.local run --filter e2e test:e2e …` sudah tidak berlaku:
+> `.env.local` menunjuk production dan tidak lagi dimuat. Lihat
+> `apps/e2e/README.md` § *Target selection*.
+
 ```bash
 # Dari root repository:
-bun --env-file=.env.local run --filter e2e test:e2e smoke.spec.ts
+E2E_TARGET=staging bun run test:e2e -- smoke.spec.ts
 
-# Atau Playwright CLI langsung:
-bunx playwright test --config=apps/e2e/playwright.config.ts smoke.spec.ts
+# Atau Playwright CLI langsung (build web dulu secara terpisah, dan
+# jalankan dari dalam apps/e2e karena config mengimpor modul target):
+(cd apps/e2e && E2E_TARGET=staging ./node_modules/.bin/playwright test smoke.spec.ts)
 
 # Hanya skenario tertentu (contoh A-06 & B-05):
-bun --env-file=.env.local run --filter e2e test:e2e smoke.spec.ts --grep "A-06|B-05"
+E2E_TARGET=staging bun run test:e2e -- smoke.spec.ts --grep "A-06|B-05"
 ```

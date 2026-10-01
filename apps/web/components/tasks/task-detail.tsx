@@ -14,6 +14,7 @@ import { AttachmentManager } from "@/components/tasks/attachment-manager";
 import { TaskForm } from "@/components/tasks/task-form";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
+import { LoadingDialog } from "@/components/ui/loading-dialog";
 import { StatusSteps } from "@/components/tasks/status-steps";
 import { ThresholdManager } from "@/components/tasks/threshold-manager";
 import { shellContainerClassName } from "@/components/ui/shell-layout";
@@ -54,22 +55,29 @@ function SidebarRemoveForm({ taskId }: { taskId: string }) {
   );
 
   return (
-    <form action={formAction}>
-      <input type="hidden" name="id" value={taskId} />
-      <button
-        type="submit"
-        disabled={pending}
-        className="flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-[17px] leading-tight tracking-[-0.374px] text-destructive transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus disabled:opacity-60"
-      >
-        <Trash2 className="size-4" strokeWidth={2} aria-hidden="true" />
-        {pending ? "Removing…" : "Remove task"}
-      </button>
-      {state.error ? (
-        <p className="mt-2 px-2 text-sm text-destructive" role="alert">
-          {state.error}
-        </p>
-      ) : null}
-    </form>
+    <>
+      <LoadingDialog
+        open={pending}
+        title="Removing task…"
+        description="Please wait a moment"
+      />
+      <form action={formAction}>
+        <input type="hidden" name="id" value={taskId} />
+        <button
+          type="submit"
+          disabled={pending}
+          className="flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-[17px] leading-tight tracking-[-0.374px] text-destructive transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus disabled:opacity-60"
+        >
+          <Trash2 className="size-4" strokeWidth={2} aria-hidden="true" />
+          {pending ? "Removing…" : "Remove task"}
+        </button>
+        {state.error ? (
+          <p className="mt-2 px-2 text-sm text-destructive" role="alert">
+            {state.error}
+          </p>
+        ) : null}
+      </form>
+    </>
   );
 }
 
@@ -81,18 +89,25 @@ function MarkDoneForm({ taskId }: { taskId: string }) {
   );
 
   return (
-    <form action={formAction}>
-      <input type="hidden" name="id" value={taskId} />
-      <Button type="submit" disabled={pending} className="shrink-0">
-        <Check className="size-4" strokeWidth={2.25} aria-hidden="true" />
-        {pending ? "Completing…" : "Mark as done"}
-      </Button>
-      {state.error ? (
-        <p className="mt-2 text-sm text-destructive" role="alert">
-          {state.error}
-        </p>
-      ) : null}
-    </form>
+    <>
+      <LoadingDialog
+        open={pending}
+        title="Completing task…"
+        description="Please wait a moment"
+      />
+      <form action={formAction}>
+        <input type="hidden" name="id" value={taskId} />
+        <Button type="submit" disabled={pending} className="shrink-0">
+          <Check className="size-4" strokeWidth={2.25} aria-hidden="true" />
+          {pending ? "Completing…" : "Mark as done"}
+        </Button>
+        {state.error ? (
+          <p className="mt-2 text-sm text-destructive" role="alert">
+            {state.error}
+          </p>
+        ) : null}
+      </form>
+    </>
   );
 }
 
@@ -504,6 +519,7 @@ export function TaskDetailPanel({
               <TaskForm
                 task={task}
                 courses={courses}
+                timeZone={timeZone}
                 submitLabel="Save changes"
                 onSuccess={() => setEditOpen(false)}
                 onCancel={() => setEditOpen(false)}

@@ -11,8 +11,10 @@
  * Why strict (no `unsafe-inline`): with a valid nonce present, modern
  * browsers ignore `unsafe-inline` anyway, so omitting it only weakens
  * legacy-browser fallback — while guaranteeing a single enforcement mode.
- * `unsafe-eval` is required in development (React dev overlays) and is
- * never emitted in production.
+ * The one exception is `style-src-attr`, which is separate by design: a
+ * nonce cannot authorise an inline `style` attribute, and the app ships
+ * runtime-computed `style={{...}}` props. `unsafe-eval` is required in
+ * development (React dev overlays) and is never emitted in production.
  */
 
 export const HSTS_VALUE =
@@ -23,24 +25,38 @@ export interface SecurityHeaderOptions {
   nonce: string;
   /** `true` when `NODE_ENV === "development"` (allows `unsafe-eval`). */
   isDev: boolean;
-  /** `true` when `NODE_ENV === "production"` (emits HSTS). */
-  isProd: boolean;
   /**
-   * Static-page hashes (`STATIC_CSP_HASHES[pathname]`). When present with at
-   * least one script hash, the CSP uses the hash variant and the `nonce`
-   * above is ignored for `script-src`/`style-src`.
+   * `true` when the response is served over TLS. Derived per request in
+   * `proxy.ts` from `x-forwarded-proto` falling back to the request URL —
+   * never from `NODE_ENV` (#59: gating TLS-dependent directives on the
+   * environment emitted them from `next start` on plain-HTTP loopback).
    */
-  staticHashes?: { scripts: string[]; styles: string[] };
+  isSecure: boolean;
+}
+
+export interface ContentSecurityPolicyOptions {
+  /** `true` when `NODE_ENV === "development"` (allows `unsafe-eval`). */
+  isDev: boolean;
+  /** `true` when the response is served over TLS. See `SecurityHeaderOptions`. */
+  isSecure: boolean;
 }
 
 export function buildContentSecurityPolicy(
   nonce: string,
-  isDev: boolean,
+  options: ContentSecurityPolicyOptions,
 ): string {
+  const { isDev, isSecure } = options;
   const csp = [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
     `style-src 'self' 'nonce-${nonce}'`,
+    // A nonce never matches an inline `style="..."` attribute — it only
+    // authorises `<style>` blocks and nonced `<link>` tags. Components that
+    // compute geometry or colour at runtime (calendar event placement,
+    // progress-bar width, chart slices, menu offsets) pass `style={{...}}`,
+    // so without this directive every one of them renders unstyled.
+    // Scoped to attributes: `<style>` elements still require the nonce.
+    "style-src-attr 'unsafe-inline'",
     "img-src 'self' blob: data:",
     "font-src 'self'",
     // Sentry error ingress (audit item 7). The SDK is disabled without
@@ -50,7 +66,13 @@ export function buildContentSecurityPolicy(
     "base-uri 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",
-    "upgrade-insecure-requests",
+    // TLS-dependent directive: emit only when the response is actually served
+    // over TLS. Gating this on the environment is the #58 defect — `next
+    // start` sets NODE_ENV=production while serving plain HTTP on loopback,
+    // and WebKit (unlike Chromium) does not exempt loopback: it upgrades every
+    // stylesheet and script to https://, the handshake fails, and no client
+    // runtime ever attaches.
+    ...(isSecure ? ["upgrade-insecure-requests"] : []),
   ].join("; ");
   return csp;
 }
@@ -93,26 +115,21 @@ export function buildStaticContentSecurityPolicy(
 export function buildSecurityHeaders(
   options: SecurityHeaderOptions,
 ): Record<string, string> {
-  const { nonce, isDev, isProd, staticHashes } = options;
-  const csp =
-    staticHashes && staticHashes.scripts.length > 0
-      ? buildStaticContentSecurityPolicy(
-          staticHashes.scripts,
-          staticHashes.styles,
-          isDev,
-        )
-      : buildContentSecurityPolicy(nonce, isDev);
+  const { nonce, isDev, isSecure } = options;
   const headers: Record<string, string> = {
-    "Content-Security-Policy": csp,
+    "Content-Security-Policy": buildContentSecurityPolicy(nonce, {
+      isDev,
+      isSecure,
+    }),
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "strict-origin-when-cross-origin",
     // Belt-and-suspenders with `frame-ancestors 'none'` for legacy agents.
     "X-Frame-Options": "DENY",
   };
-  // HSTS on http://localhost dev origins would pin HTTPS (and with
-  // `preload`, permanently) — emit only in production, mirroring the API
-  // (`apps/api/src/plugins/http-policy.ts`).
-  if (isProd) {
+  // Same rule as upgrade-insecure-requests above: HSTS (with
+  // `includeSubDomains; preload`) must never be served over plain HTTP.
+  // `isProd` alone was the same defect — `next start` on loopback emitted it.
+  if (isSecure) {
     headers["Strict-Transport-Security"] = HSTS_VALUE;
   }
   return headers;

@@ -18,9 +18,12 @@ mock.module("next/navigation", () => ({
 }));
 
 mock.module("@/lib/api/server", () => ({
-  // Keep complete: lib/api/bootstrap.ts imports clearLocalAuthCookies from
-  // this module, and bun shares one module registry across test files.
-  clearLocalAuthCookies: async () => undefined,
+  // `apiFetch` is stubbed (unused by these actions) so the mock keeps the
+  // module's full export shape: `lib/calendar/load` and `lib/summary/load`
+  // import it, and bun shares mocks across test files in one run.
+  apiFetch: async () => {
+    throw new Error("apiFetch is stubbed in idempotency.test.ts");
+  },
   apiJson: async (path: string, init: RequestInit = {}) => {
     const headersObj: Record<string, string> = {};
     if (init.headers) {

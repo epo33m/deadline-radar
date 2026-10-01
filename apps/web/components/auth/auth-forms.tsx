@@ -22,9 +22,9 @@ import {
   dialogActionsClassName,
   dialogPrimaryActionClassName,
 } from "@/components/ui/dialog";
-import { dialogInputClassName } from "@/components/ui/dialog-form";
-import { DialogFormRow, dialogFormListClassName } from "@/components/ui/dialog-form";
+import { dialogFormListClassName } from "@/components/ui/dialog-form";
 import { Input } from "@/components/ui/input";
+import { LoadingDialog } from "@/components/ui/loading-dialog";
 import { detectBrowserTimeZone } from "@/lib/timezone";
 import {
   forgotPasswordSchema,
@@ -32,11 +32,14 @@ import {
   registerSchema,
   resetPasswordSchema,
 } from "@/lib/validation/auth";
+import { cn } from "@/lib/utils";
 import { resolveSafeReturnTo } from "@deadline-radar/validation";
 
 const initialState: AuthActionState = {};
 
-const authInputClassName = dialogInputClassName;
+const authInputClassName = cn(
+  "h-12 w-full min-w-0 rounded-none border-0 bg-transparent px-3.5 py-0 font-sans text-[15px] font-normal leading-normal tracking-[-0.2px] text-left text-ink shadow-none outline-none placeholder:text-ink-muted-48 focus-visible:border-0 focus-visible:ring-0 focus-visible:outline-none disabled:opacity-50 disabled:bg-transparent dark:bg-transparent aria-invalid:border-0 aria-invalid:ring-0 aria-invalid:text-destructive",
+);
 
 const authErrorClassName =
   "text-sm leading-[1.43] tracking-[-0.224px] text-destructive";
@@ -77,12 +80,14 @@ function AuthEmailField({
   const fieldId = `${idPrefix}-email`;
 
   return (
-    <DialogFormRow label="Email" htmlFor={fieldId}>
-      <div className="space-y-2.5">
+    <li className="py-0.5">
+      <div className="space-y-1">
         <Input
           id={fieldId}
           name="email"
           type="email"
+          placeholder="Email"
+          aria-label="Email"
           autoComplete="email"
           aria-invalid={Boolean(error)}
           aria-describedby={error ? `${fieldId}-error` : undefined}
@@ -93,12 +98,12 @@ function AuthEmailField({
           }}
         />
         {error ? (
-          <p id={`${fieldId}-error`} className={authErrorClassName} role="alert">
+          <p id={`${fieldId}-error`} className={`${authErrorClassName} px-3.5 pb-2 text-left`} role="alert">
             {error}
           </p>
         ) : null}
       </div>
-    </DialogFormRow>
+    </li>
   );
 }
 
@@ -125,16 +130,18 @@ function AuthPasswordField({
   onClearError,
   onBlur,
 }: AuthPasswordFieldProps) {
-  const fieldId = `${idPrefix}-password`;
+  const fieldId = `${idPrefix}-${name}`;
 
   return (
-    <DialogFormRow label={ariaLabel} htmlFor={fieldId}>
-      <div className="space-y-2.5">
+    <li className="py-0.5">
+      <div className="space-y-1">
         <div className="relative">
           <Input
             id={fieldId}
             name={name}
             type={showPassword ? "text" : "password"}
+            placeholder={ariaLabel}
+            aria-label={ariaLabel}
             autoComplete={autoComplete}
             aria-invalid={Boolean(error)}
             aria-describedby={error ? `${fieldId}-error` : undefined}
@@ -149,7 +156,7 @@ function AuthPasswordField({
             onClick={onTogglePassword}
             aria-label={showPassword ? "Hide password" : "Show password"}
             aria-pressed={showPassword}
-            className="absolute top-1/2 right-3 -translate-y-1/2 rounded-sm text-ink-muted-48 transition-colors hover:text-ink focus-visible:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus"
+            className="absolute top-1/2 right-3.5 -translate-y-1/2 rounded-sm text-ink-muted-48 transition-colors hover:text-ink focus-visible:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus"
           >
             {showPassword ? (
               <EyeOff className="size-4" aria-hidden="true" />
@@ -159,12 +166,12 @@ function AuthPasswordField({
           </button>
         </div>
         {error ? (
-          <p id={`${fieldId}-error`} className={authErrorClassName} role="alert">
+          <p id={`${fieldId}-error`} className={`${authErrorClassName} px-3.5 pb-2 text-left`} role="alert">
             {error}
           </p>
         ) : null}
       </div>
-    </DialogFormRow>
+    </li>
   );
 }
 
@@ -182,7 +189,7 @@ function AuthFormActions({
       <Button
         type="submit"
         disabled={pending}
-        className={dialogPrimaryActionClassName}
+        className={cn(dialogPrimaryActionClassName, "font-medium")}
       >
         {pending ? pendingLabel : submitLabel}
       </Button>
@@ -237,22 +244,33 @@ export function LoginForm() {
     setPending(true);
 
     // Same-origin /api rewrite → Elysia so the browser stores httpOnly cookies.
-    const result = await apiBrowser<{
+    // A network failure rejects instead of returning { error }: surface it
+    // through the same inline error rather than leaving the form pending.
+    let result: {
       redirectTo?: string;
       error?: string;
       fieldErrors?: Partial<Record<string, string[]>>;
-      requestId?: string;
-    }>("/api/auth/login", {
-      method: "POST",
-      body: JSON.stringify({
-        email: values.email,
-        password: values.password,
-      }),
-    });
-
-    setPending(false);
+    };
+    try {
+      result = await apiBrowser<{
+        redirectTo?: string;
+        error?: string;
+        fieldErrors?: Partial<Record<string, string[]>>;
+      }>("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({
+          email: values.email,
+          password: values.password,
+        }),
+      });
+    } catch {
+      setPending(false);
+      setError("Something went wrong. Please try again.");
+      return;
+    }
 
     if (result.error) {
+      setPending(false);
       setError(result.error);
       setErrorRef(result.requestId);
       setFieldErrors(result.fieldErrors ?? {});
@@ -260,62 +278,73 @@ export function LoginForm() {
     }
 
     // SEC-005: never trust redirectTo blindly — validate, fall back internal.
-    router.replace(resolveSafeReturnTo(result.redirectTo, "/summary"));
-    router.refresh();
+    // Keep pending=true so the loading dialog covers the entire transition
+    // and route rendering until the target page mounts and this component unmounts.
+    const destination = resolveSafeReturnTo(result.redirectTo, "/summary");
+    startTransition(() => {
+      router.replace(destination);
+    });
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex w-full flex-col" noValidate>
-      {confirmError ? (
-        <p
-          className="mb-4 rounded-[11px] border border-hairline bg-canvas px-4 py-3 text-sm leading-[1.43] tracking-[-0.224px] text-ink-muted-80"
-          role="status"
-        >
-          This link is invalid or has expired.{" "}
-          <Link
-            href="/forgot-password"
-            className="font-medium text-primary hover:underline focus-visible:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus"
-          >
-            Request a new link
-          </Link>
-          .
-        </p>
-      ) : null}
-      <ul className={dialogFormListClassName}>
-        <AuthEmailField
-          idPrefix="login"
-          error={emailError}
-          onClearError={() =>
-            setClientErrors((current) => ({ ...current, email: undefined }))
-          }
-        />
-        <AuthPasswordField
-          idPrefix="login"
-          autoComplete="current-password"
-          error={passwordError}
-          showPassword={showPassword}
-          onTogglePassword={() => setShowPassword((visible) => !visible)}
-          onClearError={() =>
-            setClientErrors((current) => ({ ...current, password: undefined }))
-          }
-        />
-      </ul>
-      {error ? (
-        <p className={`${authErrorClassName} mt-4`} role="alert">
-          {error}
-          {errorRef ? (
-            <span className="mt-1 block text-xs opacity-80">
-              ref: {errorRef}
-            </span>
-          ) : null}
-        </p>
-      ) : null}
-      <AuthFormActions
-        pending={pending}
-        pendingLabel="Signing in…"
-        submitLabel="Sign in"
+    <>
+      <LoadingDialog
+        open={pending}
+        title="Signing in…"
+        description="Please wait a moment"
       />
-    </form>
+      <form
+        onSubmit={handleSubmit}
+        method="post"
+        className="flex w-full flex-col"
+        noValidate
+      >
+        {confirmError ? (
+          <p
+            className="mb-4 rounded-[11px] border border-hairline bg-canvas px-4 py-3 text-sm leading-[1.43] tracking-[-0.224px] text-ink-muted-80"
+            role="status"
+          >
+            This link is invalid or has expired.{" "}
+            <Link
+              href="/forgot-password"
+              className="font-medium text-primary hover:underline focus-visible:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus"
+            >
+              Request a new link
+            </Link>
+            .
+          </p>
+        ) : null}
+        <ul className={dialogFormListClassName}>
+          <AuthEmailField
+            idPrefix="login"
+            error={emailError}
+            onClearError={() =>
+              setClientErrors((current) => ({ ...current, email: undefined }))
+            }
+          />
+          <AuthPasswordField
+            idPrefix="login"
+            autoComplete="current-password"
+            error={passwordError}
+            showPassword={showPassword}
+            onTogglePassword={() => setShowPassword((visible) => !visible)}
+            onClearError={() =>
+              setClientErrors((current) => ({ ...current, password: undefined }))
+            }
+          />
+        </ul>
+        {error ? (
+          <p className={`${authErrorClassName} mt-4`} role="alert">
+            {error}
+          </p>
+        ) : null}
+        <AuthFormActions
+          pending={pending}
+          pendingLabel="Signing in…"
+          submitLabel="Sign in"
+        />
+      </form>
+    </>
   );
 }
 
@@ -363,24 +392,34 @@ export function RegisterForm() {
     setFieldErrors({});
     setPending(true);
 
-    const result = await apiBrowser<{
+    let result: {
       redirectTo?: string;
       message?: string;
       error?: string;
       fieldErrors?: Partial<Record<string, string[]>>;
-      requestId?: string;
-    }>("/api/auth/register", {
-      method: "POST",
-      body: JSON.stringify({
-        email: values.email,
-        password: values.password,
-        timezone: detectBrowserTimeZone(),
-      }),
-    });
-
-    setPending(false);
+    };
+    try {
+      result = await apiBrowser<{
+        redirectTo?: string;
+        message?: string;
+        error?: string;
+        fieldErrors?: Partial<Record<string, string[]>>;
+      }>("/api/auth/register", {
+        method: "POST",
+        body: JSON.stringify({
+          email: values.email,
+          password: values.password,
+          timezone: detectBrowserTimeZone(),
+        }),
+      });
+    } catch {
+      setPending(false);
+      setError("Something went wrong. Please try again.");
+      return;
+    }
 
     if (result.error) {
+      setPending(false);
       setError(result.error);
       setErrorRef(result.requestId);
       setFieldErrors(result.fieldErrors ?? {});
@@ -392,60 +431,75 @@ export function RegisterForm() {
       // confirmation message below) instead of navigating.
       const safe = resolveSafeReturnTo(result.redirectTo, "");
       if (safe !== "") {
-        router.replace(safe);
-        router.refresh();
+        // Keep pending=true so loading dialog remains until target page renders
+        startTransition(() => {
+          router.replace(safe);
+        });
         return;
       }
     }
 
-    setNotice(
+    setPending(false);
+    setError(
       result.message ??
         "Check your email to confirm your account before signing in.",
     );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex w-full flex-col" noValidate>
-      <ul className={dialogFormListClassName}>
-        <AuthEmailField
-          idPrefix="register"
-          error={emailError}
-          onClearError={() =>
-            setClientErrors((current) => ({ ...current, email: undefined }))
-          }
-        />
-        <AuthPasswordField
-          idPrefix="register"
-          autoComplete="new-password"
-          error={passwordError}
-          showPassword={showPassword}
-          onTogglePassword={() => setShowPassword((visible) => !visible)}
-          onClearError={() =>
-            setClientErrors((current) => ({ ...current, password: undefined }))
-          }
-        />
-      </ul>
-      {error ? (
-        <p className={`${authErrorClassName} mt-4`} role="alert">
-          {error}
-          {errorRef ? (
-            <span className="mt-1 block text-xs opacity-80">
-              ref: {errorRef}
-            </span>
-          ) : null}
-        </p>
-      ) : null}
-      {notice ? (
-        <p className={`${authSuccessClassName} mt-4`} role="status">
-          {notice}
-        </p>
-      ) : null}
-      <AuthFormActions
-        pending={pending}
-        pendingLabel="Creating account…"
-        submitLabel="Create account"
+    <>
+      <LoadingDialog
+        open={pending}
+        title="Creating account…"
+        description="Please wait a moment"
       />
-    </form>
+      <form
+        onSubmit={handleSubmit}
+        method="post"
+        className="flex w-full flex-col"
+        noValidate
+      >
+        <ul className={dialogFormListClassName}>
+          <AuthEmailField
+            idPrefix="register"
+            error={emailError}
+            onClearError={() =>
+              setClientErrors((current) => ({ ...current, email: undefined }))
+            }
+          />
+          <AuthPasswordField
+            idPrefix="register"
+            autoComplete="new-password"
+            error={passwordError}
+            showPassword={showPassword}
+            onTogglePassword={() => setShowPassword((visible) => !visible)}
+            onClearError={() =>
+              setClientErrors((current) => ({ ...current, password: undefined }))
+            }
+          />
+        </ul>
+        {error ? (
+          <div className="mt-4 space-y-1" role="alert">
+            <p className={authErrorClassName}>{error}</p>
+            {error.toLowerCase().includes("already exists") ? (
+              <p className="text-sm text-ink-muted-80">
+                <Link
+                  href="/login"
+                  className="font-medium text-primary hover:underline focus-visible:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus"
+                >
+                  Sign in instead
+                </Link>
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+        <AuthFormActions
+          pending={pending}
+          pendingLabel="Creating account…"
+          submitLabel="Create account"
+        />
+      </form>
+    </>
   );
 }
 
@@ -477,32 +531,39 @@ export function ForgotPasswordForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex w-full flex-col" noValidate>
-      <ul className={dialogFormListClassName}>
-        <AuthEmailField
-          idPrefix="forgot"
-          error={emailError}
-          onClearError={() =>
-            setClientErrors((current) => ({ ...current, email: undefined }))
-          }
-        />
-      </ul>
-      {state.error ? (
-        <p className={`${authErrorClassName} mt-4`} role="alert">
-          {state.error}
-        </p>
-      ) : null}
-      {state.success ? (
-        <p className={`${authSuccessClassName} mt-4`} role="status">
-          {state.success}
-        </p>
-      ) : null}
-      <AuthFormActions
-        pending={pending}
-        pendingLabel="Sending…"
-        submitLabel="Send reset link"
+    <>
+      <LoadingDialog
+        open={pending}
+        title="Sending instructions…"
+        description="Please wait a moment"
       />
-    </form>
+      <form onSubmit={handleSubmit} className="flex w-full flex-col" noValidate>
+        <ul className={dialogFormListClassName}>
+          <AuthEmailField
+            idPrefix="forgot"
+            error={emailError}
+            onClearError={() =>
+              setClientErrors((current) => ({ ...current, email: undefined }))
+            }
+          />
+        </ul>
+        {state.error ? (
+          <p className={`${authErrorClassName} mt-4`} role="alert">
+            {state.error}
+          </p>
+        ) : null}
+        {state.success ? (
+          <p className={`${authSuccessClassName} mt-4`} role="status">
+            {state.success}
+          </p>
+        ) : null}
+        <AuthFormActions
+          pending={pending}
+          pendingLabel="Sending…"
+          submitLabel="Continue"
+        />
+      </form>
+    </>
   );
 }
 
@@ -542,44 +603,56 @@ export function ResetPasswordForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex w-full flex-col" noValidate>
-      <ul className={dialogFormListClassName}>
-        <AuthPasswordField
-          idPrefix="reset"
-          autoComplete="new-password"
-          error={passwordError}
-          showPassword={showPassword}
-          onTogglePassword={() => setShowPassword((visible) => !visible)}
-          onClearError={() =>
-            setClientErrors((current) => ({ ...current, password: undefined }))
-          }
-        />
-        <AuthPasswordField
-          idPrefix="reset-confirm"
-          name="confirmPassword"
-          ariaLabel="Confirm password"
-          autoComplete="new-password"
-          error={confirmError}
-          showPassword={showPassword}
-          onTogglePassword={() => setShowPassword((visible) => !visible)}
-          onClearError={() =>
-            setClientErrors((current) => ({
-              ...current,
-              confirmPassword: undefined,
-            }))
-          }
-        />
-      </ul>
-      {state.error ? (
-        <p className={`${authErrorClassName} mt-4`} role="alert">
-          {state.error}
-        </p>
-      ) : null}
-      <AuthFormActions
-        pending={pending}
-        pendingLabel="Updating…"
-        submitLabel="Update password"
+    <>
+      <LoadingDialog
+        open={pending}
+        title="Updating password…"
+        description="Please wait a moment"
       />
-    </form>
+      <form
+        onSubmit={handleSubmit}
+        method="post"
+        className="flex w-full flex-col"
+        noValidate
+      >
+        <ul className={dialogFormListClassName}>
+          <AuthPasswordField
+            idPrefix="reset"
+            autoComplete="new-password"
+            error={passwordError}
+            showPassword={showPassword}
+            onTogglePassword={() => setShowPassword((visible) => !visible)}
+            onClearError={() =>
+              setClientErrors((current) => ({ ...current, password: undefined }))
+            }
+          />
+          <AuthPasswordField
+            idPrefix="reset-confirm"
+            name="confirmPassword"
+            ariaLabel="Confirm password"
+            autoComplete="new-password"
+            error={confirmError}
+            showPassword={showPassword}
+            onTogglePassword={() => setShowPassword((visible) => !visible)}
+            onClearError={() =>
+              setClientErrors((current) => ({
+                ...current,
+                confirmPassword: undefined,
+              }))
+            }
+          />
+        </ul>
+        {state.error ? (
+          <p className={`${authErrorClassName} mt-4`} role="alert">
+            {state.error}
+          </p>
+        ) : null}
+        <AuthFormActions
+          pending={pending}
+          pendingLabel="Updating…"
+          submitLabel="Update password"
+        />
+      </form>
+    </>
   );
 }

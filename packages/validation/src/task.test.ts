@@ -75,6 +75,37 @@ describe("taskSchema", () => {
     ).toBe(false);
   });
 
+  test("accepts offset-aware deadlines (Z and numeric offset)", () => {
+    expect(
+      taskSchema.safeParse({
+        ...validBase,
+        deadline: "2026-09-30T07:30:00+08:00",
+      }).success,
+    ).toBe(true);
+    const normalized = taskSchema.safeParse({
+      ...validBase,
+      deadline: "2026-09-30T07:30:00+08:00",
+    });
+    expect(normalized.success).toBe(true);
+    if (normalized.success) {
+      // 07:30 in UTC+8 == 23:30Z on the previous day.
+      expect(normalized.data.deadline).toBe("2026-09-29T23:30:00.000Z");
+    }
+  });
+
+  test("rejects offset-naive wall-clock strings (#66)", () => {
+    // What TaskForm used to send: parsed in the server process TZ, so the
+    // stored instant shifted whenever server TZ != profile TZ.
+    for (const wall of [
+      "2026-09-30T07:30",
+      "2026-09-30T07:30:00",
+      "2026-09-30 07:30",
+    ]) {
+      const result = taskSchema.safeParse({ ...validBase, deadline: wall });
+      expect(result.success).toBe(false);
+    }
+  });
+
   test("normalizes empty optional description to null", () => {
     const result = taskSchema.safeParse({
       ...validBase,

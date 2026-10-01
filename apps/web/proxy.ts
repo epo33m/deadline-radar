@@ -9,11 +9,13 @@ import {
   REFRESH_COOKIE_MAX_AGE_SECONDS,
   authCookieOptions,
   clearedAuthCookieOptions,
+  isSecureRequest,
   type AuthTokenBody,
 } from "@/lib/auth/cookies";
 import { resolveSessionGate } from "@/lib/auth/session-gate";
 import { STATIC_CSP_HASHES } from "@/lib/csp-hashes";
 import { buildSecurityHeaders } from "@/lib/security-headers";
+import { resolveApiOrigin } from "@/lib/api/origin";
 
 function supabaseUrl(): string {
   return (
@@ -28,7 +30,7 @@ function issuer(): string {
 }
 
 function apiOrigin(): string {
-  return process.env.API_ORIGIN ?? "http://127.0.0.1:4025";
+  return resolveApiOrigin();
 }
 
 let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
@@ -42,25 +44,26 @@ function getJwks() {
   return jwks;
 }
 
-function clearAuthCookies(response: NextResponse) {
-  response.cookies.set(ACCESS_COOKIE, "", clearedAuthCookieOptions());
-  response.cookies.set(REFRESH_COOKIE, "", clearedAuthCookieOptions());
+function clearAuthCookies(response: NextResponse, isSecure: boolean) {
+  response.cookies.set(ACCESS_COOKIE, "", clearedAuthCookieOptions(isSecure));
+  response.cookies.set(REFRESH_COOKIE, "", clearedAuthCookieOptions(isSecure));
 }
 
 function applySessionCookies(
   response: NextResponse,
   data: AuthTokenBody,
+  isSecure: boolean,
 ): void {
   if (!data.accessToken || !data.refreshToken) return;
   response.cookies.set(
     ACCESS_COOKIE,
     data.accessToken,
-    authCookieOptions(data.expiresIn ?? 60 * 60),
+    authCookieOptions(data.expiresIn ?? 60 * 60, isSecure),
   );
   response.cookies.set(
     REFRESH_COOKIE,
     data.refreshToken,
-    authCookieOptions(REFRESH_COOKIE_MAX_AGE_SECONDS),
+    authCookieOptions(REFRESH_COOKIE_MAX_AGE_SECONDS, isSecure),
   );
 }
 
@@ -186,13 +189,15 @@ export async function proxy(request: NextRequest) {
     ? ""
     : Buffer.from(crypto.randomUUID()).toString("base64");
   const isDev = process.env.NODE_ENV === "development";
-  const isProd = process.env.NODE_ENV === "production";
-  const securityHeaders = buildSecurityHeaders({
-    nonce,
-    isDev,
-    isProd,
-    staticHashes: useStaticCsp ? staticHashes : undefined,
+  // TLS-dependent behavior (security headers, `Secure` cookies) keys on the
+  // origin the response is served from, never on NODE_ENV (#59: `next start`
+  // sets NODE_ENV=production on plain-HTTP loopback). Single derivation so
+  // headers and cookies can never disagree on the origin.
+  const isSecure = isSecureRequest({
+    forwardedProto: request.headers.get("x-forwarded-proto"),
+    protocol: request.nextUrl.protocol,
   });
+  const securityHeaders = buildSecurityHeaders({ nonce, isDev, isSecure });
 
   const applySecurityHeaders = (response: NextResponse) => {
     for (const [name, value] of Object.entries(securityHeaders)) {
@@ -211,8 +216,9 @@ export async function proxy(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = gate.to;
     const response = NextResponse.redirect(url);
-    if (shouldClearCookies) clearAuthCookies(response);
-    else if (refreshTokens) applySessionCookies(response, refreshTokens);
+    if (shouldClearCookies) clearAuthCookies(response, isSecure);
+    else if (refreshTokens)
+      applySessionCookies(response, refreshTokens, isSecure);
     applySecurityHeaders(response);
     return response;
   }
@@ -224,14 +230,25 @@ export async function proxy(request: NextRequest) {
   const response = NextResponse.next({
     request: { headers: requestHeaders },
   });
-  if (shouldClearCookies) clearAuthCookies(response);
-  else if (refreshTokens) applySessionCookies(response, refreshTokens);
+  if (shouldClearCookies) clearAuthCookies(response, isSecure);
+  else if (refreshTokens) applySessionCookies(response, refreshTokens, isSecure);
   applySecurityHeaders(response);
   return response;
 }
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|api/|openapi|health|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // `_next/hmr` is the dev HMR WebSocket endpoint. It was `_next/webpack-hmr`
+    // until Next.js 16 renamed it (see the version-12 upgrade note in
+    // next/dist/docs), so an exclusion written for the old name is silently
+    // inert today.
+    //
+    // This guard is defensive, not the fix: Next's dev `upgradeHandler`
+    // short-circuits `_next/hmr` before it ever reaches the route resolver, so
+    // the proxy does not run on that socket today. Keeping it means a future
+    // dev-server change that *does* route upgrades through the matcher cannot
+    // silently break hot reload. If you ever remove this line expecting no
+    // behaviour change, that assumption is what the line exists to protect.
+    "/((?!_next/static|_next/image|_next/hmr|favicon.ico|api/|openapi|health|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

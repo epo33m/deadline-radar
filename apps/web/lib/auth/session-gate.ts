@@ -1,5 +1,18 @@
-/** Public page allowlist — everything else requires a session (fail closed). */
-const PUBLIC_EXACT = new Set(["/"]);
+/**
+ * Public page allowlist — everything else requires a session (fail closed).
+ *
+ * `/privacy` and `/terms` are here because the landing footer links both
+ * (`LEGAL_LINKS` in `@/lib/legal`, rendered by `landing-footer.tsx` on `/` and on
+ * the legal pages themselves). Without them a signed-out visitor who clicks
+ * "Privacy Policy" is bounced to `/login` and only reaches the page after
+ * authenticating. Both are static legal documents with no data access, so the
+ * gate protected nothing (#75).
+ *
+ * This list is a trust boundary: adding a path here makes it reachable without
+ * a session. `session-gate.test.ts` pins both directions — these two are
+ * allowed, and unknown paths are still redirected.
+ */
+const PUBLIC_EXACT = new Set(["/", "/privacy", "/terms"]);
 
 const PUBLIC_PREFIXES = [
   "/login",

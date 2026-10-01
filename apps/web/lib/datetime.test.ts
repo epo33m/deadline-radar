@@ -4,6 +4,7 @@ import {
   formatDeadlineTime,
   formatTime,
   toDatetimeLocalValue,
+  zonedWallToIso,
 } from "./datetime";
 
 describe("toDatetimeLocalValue", () => {
@@ -15,6 +16,59 @@ describe("toDatetimeLocalValue", () => {
     const value = toDatetimeLocalValue("2026-09-15T14:30:00.000Z");
     expect(value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
     expect(Date.parse(value)).not.toBeNaN();
+  });
+
+  test("interprets the instant in the given timezone (#66)", () => {
+    // 2026-09-29T23:30Z is 07:30 on Sep 30 in Asia/Makassar (UTC+8).
+    expect(toDatetimeLocalValue("2026-09-29T23:30:00.000Z", "Asia/Makassar")).toBe(
+      "2026-09-30T07:30",
+    );
+    expect(toDatetimeLocalValue("2026-09-29T23:30:00.000Z", "UTC")).toBe(
+      "2026-09-29T23:30",
+    );
+  });
+});
+
+describe("zonedWallToIso", () => {
+  test("converts a profile-TZ wall-clock to a UTC instant (#66)", () => {
+    expect(zonedWallToIso("2026-09-30", "07:30", "Asia/Makassar")).toBe(
+      "2026-09-29T23:30:00.000Z",
+    );
+    expect(zonedWallToIso("2026-09-30", "07:30", "UTC")).toBe(
+      "2026-09-30T07:30:00.000Z",
+    );
+  });
+
+  test("round-trips wall -> instant -> wall without shifting", () => {
+    for (const [date, time, tz] of [
+      ["2026-09-30", "07:30", "Asia/Makassar"],
+      ["2026-09-30", "22:30", "Asia/Makassar"],
+      ["2026-09-30", "00:00", "Asia/Makassar"],
+      ["2026-09-30", "23:59", "Asia/Makassar"],
+      ["2026-09-30", "07:30", "UTC"],
+    ] as const) {
+      const iso = zonedWallToIso(date, time, tz);
+      expect(iso).not.toBe("");
+      expect(toDatetimeLocalValue(iso, tz)).toBe(`${date}T${time}`);
+    }
+  });
+
+  test("keeps midnight values on the same date in the profile TZ", () => {
+    const midnight = zonedWallToIso("2026-09-30", "00:00", "Asia/Makassar");
+    expect(toDatetimeLocalValue(midnight, "Asia/Makassar")).toBe(
+      "2026-09-30T00:00",
+    );
+    const lastMinute = zonedWallToIso("2026-09-30", "23:59", "Asia/Makassar");
+    expect(toDatetimeLocalValue(lastMinute, "Asia/Makassar")).toBe(
+      "2026-09-30T23:59",
+    );
+  });
+
+  test("returns empty string for invalid input", () => {
+    expect(zonedWallToIso("", "07:30", "Asia/Makassar")).toBe("");
+    expect(zonedWallToIso("2026-09-30", "", "Asia/Makassar")).toBe("");
+    expect(zonedWallToIso("not-a-date", "07:30", "Asia/Makassar")).toBe("");
+    expect(zonedWallToIso("2026-09-30", "25:00", "Asia/Makassar")).toBe("");
   });
 });
 

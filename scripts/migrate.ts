@@ -17,21 +17,25 @@ import { spawnSync } from "node:child_process";
 import { readdirSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { assertRefsMatch, getDatabaseUrl, ScriptTargetError } from "./lib/target";
+
 const rootDir = resolve(import.meta.dir, "..");
 const migrationsDir = resolve(rootDir, "supabase/migrations");
 
-function getDatabaseUrl(): string {
-  const url = process.env.DATABASE_URL || process.env.DIRECT_URL;
-  if (!url) {
-    console.error("❌ Error: DATABASE_URL is not set.");
-    process.exit(1);
+function getDatabaseUrlOrExit(): string {
+  // Production is refused unless named explicitly and deliberately
+  // (`--allow-production`); there is no environment-variable override.
+  const allowProduction = process.argv.includes("--allow-production");
+  try {
+    assertRefsMatch(process.env, "the current environment");
+    return getDatabaseUrl(process.env, { allowProduction });
+  } catch (error) {
+    if (error instanceof ScriptTargetError) {
+      console.error(`❌ ${error.message}`);
+      process.exit(1);
+    }
+    throw error;
   }
-  // If connecting to local postgres without sslmode specified, add sslmode=disable
-  if ((url.includes("localhost") || url.includes("127.0.0.1")) && !url.includes("sslmode=")) {
-    const separator = url.includes("?") ? "&" : "?";
-    return `${url}${separator}sslmode=disable`;
-  }
-  return url;
 }
 
 function runSupabaseCli(args: string[]): { status: number; stdout: string; stderr: string } {
@@ -110,7 +114,7 @@ export function repairMigration(dbUrl: string, version: string, status: "applied
 // CLI Execution
 if (import.meta.main) {
   const command = process.argv[2] || "up";
-  const dbUrl = getDatabaseUrl();
+  const dbUrl = getDatabaseUrlOrExit();
 
   switch (command) {
     case "up":

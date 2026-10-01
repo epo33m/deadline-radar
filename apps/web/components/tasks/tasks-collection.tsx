@@ -518,6 +518,7 @@ export function TasksCollection({
           <div className="w-full text-left">
             <AddTaskForm
               courses={courses}
+              timeZone={timeZone}
               returnTo="/tasks"
               onCancel={() => setAddOpen(false)}
             />

@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export default function LoginPage() {
   return (
     <AuthPageShell
-      title="Sign in"
+      title="Sign in to Your account"
       footer={
         <>
           <AuthFooterLink href="/register">Create an account</AuthFooterLink>

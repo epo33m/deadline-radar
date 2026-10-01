@@ -1,0 +1,112 @@
+/**
+ * Device-chrome styling ported from the Stitch reference
+ * ("macOS Tahoe - iPhone Mirroring Notifications"). Plain CSS because the
+ * wallpaper streaks and the liquid-glass pill rely on layered gradients,
+ * pseudo-elements, and backdrop-filter stacks that Tailwind utilities
+ * cannot express.
+ */
+
+.macWallpaper {
+  background:
+    radial-gradient(
+      ellipse 65% 55% at 95% 15%,
+      rgba(66, 153, 225, 0.95) 0%,
+      rgba(27, 102, 217, 0.85) 45%,
+      rgba(13, 62, 148, 0.9) 100%
+    ),
+    linear-gradient(
+      132deg,
+      #6ec6f8 0%,
+      #3197ef 22%,
+      #1360c7 48%,
+      #4eb5f7 68%,
+      #207ce5 88%,
+      #0947a8 100%
+    );
+  position: relative;
+  overflow: hidden;
+}
+
+.macWallpaper::before {
+  content: "";
+  position: absolute;
+  inset: -50%;
+  background:
+    repeating-linear-gradient(
+      -38deg,
+      transparent,
+      transparent 80px,
+      rgba(255, 255, 255, 0.28) 120px,
+      rgba(110, 214, 255, 0.45) 170px,
+      transparent 240px
+    ),
+    radial-gradient(
+      circle at 10% 90%,
+      rgba(162, 235, 255, 0.5) 0%,
+      transparent 60%
+    );
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+
+.macWallpaper::after {
+  content: "";
+  position: absolute;
+  width: 140%;
+  height: 100%;
+  bottom: -15%;
+  left: -20%;
+  background: linear-gradient(
+    35deg,
+    rgba(230, 248, 255, 0.6) 0%,
+    rgba(100, 205, 255, 0.25) 35%,
+    transparent 70%
+  );
+  filter: blur(28px);
+  pointer-events: none;
+}
+
+.notificationPill {
+  background: rgba(220, 240, 250, 0.68);
+  backdrop-filter: blur(48px) saturate(190%);
+  -webkit-backdrop-filter: blur(48px) saturate(190%);
+  box-shadow:
+    0 14px 34px -8px rgba(10, 42, 85, 0.28),
+    0 4px 14px -2px rgba(10, 30, 60, 0.16),
+    inset 0 1px 1.5px rgba(255, 255, 255, 0.8),
+    inset 0 -0.5px 1px rgba(255, 255, 255, 0.35);
+  border: 0.5px solid rgba(255, 255, 255, 0.45);
+}
+
+/* iOS Lockscreen Wallpaper & Glass Styling */
+.iosWallpaper {
+  background-color: #cbd5e1;
+  background-image:
+    radial-gradient(at 15% 15%, #6a1a15 0px, transparent 55%),
+    radial-gradient(at 20% 75%, #421110 0px, transparent 50%),
+    radial-gradient(at 40% 45%, #7f231c 0px, transparent 60%),
+    radial-gradient(at 85% 15%, #8ea0ad 0px, transparent 55%),
+    radial-gradient(at 90% 85%, #b5c3cb 0px, transparent 50%),
+    radial-gradient(at 50% 100%, #301011 0px, transparent 65%);
+  filter: blur(2px);
+}
+
+.iosGlassBanner {
+  background: rgba(245, 240, 238, 0.65);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border: 0.5px solid rgba(255, 255, 255, 0.45);
+  box-shadow:
+    0 8px 32px 0 rgba(0, 0, 0, 0.12),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.4);
+}
+
+.iosActionButton {
+  background: rgba(30, 30, 30, 0.35);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  border: 0.5px solid rgba(255, 255, 255, 0.15);
+  box-shadow:
+    0 4px 12px 0 rgba(0, 0, 0, 0.15),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.25);
+}

@@ -3,7 +3,9 @@ import { execSync } from "node:child_process";
 import type { NextConfig } from "next";
 import withBundleAnalyzer from "@next/bundle-analyzer";
 
-const API_ORIGIN = process.env.API_ORIGIN ?? "http://127.0.0.1:4025";
+import { resolveApiOrigin } from "./lib/api/origin";
+
+const API_ORIGIN = resolveApiOrigin();
 
 /**
  * Deterministic build ID (perf plan, Fase C).
@@ -30,27 +32,20 @@ function resolveBuildId(): string {
 }
 
 const nextConfig: NextConfig = {
-  generateBuildId: async () => resolveBuildId(),
-  async headers() {
-    // Edge cache ONLY for the fully-static landing page (perf plan, Fase C).
-    // Same bytes for every viewer until the next deploy (chunks are
-    // content-addressed and immutable), so a 1h edge TTL with 24h
-    // stale-while-revalidate is safe. The (auth) pages are dynamic
-    // (force-dynamic + per-request nonce) and MUST NOT be edge-cached:
-    // caching them would reuse one nonce across viewers. They keep
-    // Next's default private/no-store.
-    return [
-      {
-        source: "/",
-        headers: [
-          {
-            key: "Cache-Control",
-            value: "public, s-maxage=3600, stale-while-revalidate=86400",
-          },
-        ],
-      },
-    ];
-  },
+  // Development-only. Next.js blocks its own dev resources — including the HMR
+  // WebSocket at /_next/hmr — when the request's Origin host is not on this
+  // list, and the default list is only `localhost`. Every doc in this repo
+  // tells developers to open the app on 127.0.0.1:3025 instead (.env.example,
+  // README, docs/ARCHITECTURE.md), so on the documented URL the socket was
+  // refused and the browser reported ERR_INVALID_HTTP_RESPONSE: hot reload
+  // never connected.
+  //
+  // Blocked requests get a bare socket write rather than a valid HTTP response,
+  // so the symptom reads as a protocol error instead of a permission error.
+  //
+  // Entries are hostnames, not host/port, and must include the brackets for the
+  // IPv6 loopback. This has no effect in production.
+  allowedDevOrigins: ["127.0.0.1", "[::1]"],
   async redirects() {
     return [
       {

@@ -10,6 +10,7 @@ import {
   requestIdPlugin,
 } from "../lib/api";
 import { ForbiddenFieldError } from "../lib/authorization/field-policy";
+import { isTransientConnectionError } from "../lib/process-guard";
 
 function requestIdFromContext(ctx: {
   requestId?: string;
@@ -136,6 +137,21 @@ export const errorHandlerPlugin = new Elysia({
       }),
       rid,
     );
+  }
+
+  // Issue #89: transient connection failures (socket ETIMEDOUT, dropped
+  // pool connections, Supabase-side stalls) degrade to a per-request 500.
+  // The envelope is the same generic internal error — no SQL or provider
+  // internals leak — only the log tag distinguishes the cause.
+  if (isTransientConnectionError(error)) {
+    console.error(
+      "[api] transient db/connection error",
+      rid,
+      error instanceof Error ? error.message : error,
+    );
+    Sentry.captureException(error);
+    set.status = 500;
+    return toErrorBody(ApiError.internal(), rid);
   }
 
   console.error("[api] unhandled error", rid, error);

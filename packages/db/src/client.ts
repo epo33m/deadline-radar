@@ -22,6 +22,14 @@ export type Database = ReturnType<typeof createDb>;
  *
  * Overridable via env (see buildPostgresConfig) so production can tune per
  * workload without a code deploy.
+ *
+ * Error model (issue #89): postgres.js surfaces every failure — bad query,
+ * socket ETIMEDOUT, server-side close — as a REJECTED QUERY PROMISE. There
+ * is no EventEmitter error channel on the client, only the `onclose`
+ * lifecycle hook wired below. So containment is: `await` every query in
+ * request scope (throws land in the API error-handler plugin as 500s) plus
+ * the process-level `unhandledRejection`/`uncaughtException` guards in
+ * `apps/api/src/lib/process-guard.ts` for rejections that escape scope.
  */
 export const DB_DEFAULTS = {
   connectTimeoutSec: 10,
@@ -94,6 +102,17 @@ export function createDb(
     max_lifetime: config.maxLifetime,
     // statement_timeout is a per-connection Postgres GUC in milliseconds.
     connection: { statement_timeout: config.statementTimeoutMs },
+    // Lifecycle visibility only: fires on every close (idle rotation,
+    // max-lifetime recycle, AND abnormal drops). Debug level because
+    // rotation is routine; a burst of these during an incident is the
+    // signal that the server side (e.g. Supabase) is stalling.
+    onclose: (connId) => console.debug(`[db] connection ${connId} closed`),
   });
-  return drizzle(client, { schema });
+  const db = drizzle(client, { schema });
+  // Additive only: every drizzle method keeps working, callers of the
+  // `Database` type are unaffected. Lets hosts drain the pool on shutdown
+  // (SIGTERM) instead of abandoning connections for the server to reap.
+  return Object.assign(db, {
+    close: () => client.end(),
+  });
 }

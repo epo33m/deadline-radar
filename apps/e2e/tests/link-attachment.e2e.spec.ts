@@ -13,7 +13,12 @@
  * self-sufficient: it does not depend on another test having run first.
  * All URLs carry a per-run suffix so reruns never collide with leftovers.
  */
-import { expect, test, type Page } from "@playwright/test";
+import {
+  expect,
+  test,
+  INTENTIONAL_ERROR_PAGE,
+  type Page,
+} from "./guardrails";
 import {
   cleanupUser,
   createCourse,
@@ -156,8 +161,10 @@ test("E2E-01 — create valid link renders clickable anchor with safe attrs", as
   await submitLink(page, url);
 
   // Dialog closes on success (it stays open on error: AddAttachmentForm only
-  // calls onSuccess when there is no error).
-  await expect(page.getByPlaceholder("URL")).toBeHidden();
+  // calls onSuccess when there is no error). Generous budget: submit waits on
+  // the API write plus a revalidating re-render of the task page, and staging
+  // writes alone measure 5-7s (higher on degraded days).
+  await expect(page.getByPlaceholder("URL")).toBeHidden({ timeout: 30_000 });
 
   const anchor = anchorFor(page, url);
   await expect(anchor).toBeVisible();
@@ -322,6 +329,14 @@ test("E2E-06 — user A cannot touch user B's task attachments", async ({
   expect(victimRows.map((a) => a.id)).toContain(attachmentB);
 
   // UI spot-check: B's task page is not readable as A (server 404s).
+  // That 404 is the assertion — but Next's default 404 page injects inline
+  // styles the strict CSP blocks, so the guardrail would fire on it. This
+  // exempts the whole test; the healthy pages visited above (login, task
+  // pages) stay covered by E2E-01..05 and the login-hydration journey.
+  test.info().annotations.push({
+    type: INTENTIONAL_ERROR_PAGE,
+    description: "E2E-06 asserts GET /tasks/:other-user-id → 404",
+  });
   await loginAs(page, userA);
   const response = await page.goto(`/tasks/${taskB}`);
   expect(response?.status()).toBe(404);

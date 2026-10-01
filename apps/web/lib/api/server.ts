@@ -1,16 +1,17 @@
 import { cookies, headers } from "next/headers";
 
-import { clearedAuthCookieOptions } from "@/lib/auth/cookies";
+import { clearedAuthCookieOptions, isSecureRequest } from "@/lib/auth/cookies";
 
 import {
   normalizeApiErrorBody,
   type ApiErrorBody,
 } from "@/lib/api/errors";
+import { resolveApiOrigin } from "@/lib/api/origin";
 
 export type { ApiErrorBody, ApiErrorDetail, ApiErrorObject } from "@/lib/api/errors";
 export { normalizeApiErrorBody } from "@/lib/api/errors";
 
-const API_ORIGIN = process.env.API_ORIGIN ?? "http://127.0.0.1:4025";
+const API_ORIGIN = resolveApiOrigin();
 const ACCESS_COOKIE = "dr_access_token";
 const REFRESH_COOKIE = "dr_refresh_token";
 
@@ -92,11 +93,18 @@ async function applySetCookies(response: Response): Promise<void> {
 /** Drop stale auth cookies so middleware cannot loop on invalid JWTs. */
 export async function clearLocalAuthCookies(): Promise<void> {
   try {
+    // Same origin rule as creation (see isSecureRequest): deletion scope must
+    // match or `Secure` cookies survive the clear.
+    const headerStore = await headers();
+    const isSecure = isSecureRequest({
+      forwardedProto: headerStore.get("x-forwarded-proto"),
+      host: headerStore.get("host"),
+    });
     const store = await cookies();
     // Explicit expired-cookie scope (not store.delete): must match the
     // creation attributes or production Secure cookies survive logout.
-    store.set(ACCESS_COOKIE, "", clearedAuthCookieOptions());
-    store.set(REFRESH_COOKIE, "", clearedAuthCookieOptions());
+    store.set(ACCESS_COOKIE, "", clearedAuthCookieOptions(isSecure));
+    store.set(REFRESH_COOKIE, "", clearedAuthCookieOptions(isSecure));
   } catch (error) {
     if (!isCookieMutationForbidden(error)) throw error;
   }
@@ -149,12 +157,5 @@ export async function apiJson<T = unknown>(
     path,
     init,
   );
-  const normalized = normalizeApiErrorBody(data);
-  if (!response.ok && !normalized.error) {
-    return {
-      ...normalized,
-      error: `Request failed (${response.status})`,
-    } as T & ApiErrorBody;
-  }
-  return normalized as T & ApiErrorBody;
+  return normalizeApiErrorBody(data, response.status) as T & ApiErrorBody;
 }

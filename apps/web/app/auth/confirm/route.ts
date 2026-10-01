@@ -7,11 +7,13 @@ import {
   REFRESH_COOKIE_MAX_AGE_SECONDS,
   authBridgeSecret,
   authCookieOptions,
+  isSecureRequest,
   type AuthTokenBody,
 } from "@/lib/auth/cookies";
 import { resolveConfirmNextPath } from "@deadline-radar/validation";
+import { resolveApiOrigin } from "@/lib/api/origin";
 
-const API_ORIGIN = process.env.API_ORIGIN ?? "http://127.0.0.1:4025";
+const API_ORIGIN = resolveApiOrigin();
 
 /**
  * Supabase email links hit the web origin. Exchange via API with the auth
@@ -63,15 +65,19 @@ export async function GET(request: NextRequest) {
         ? resolveConfirmNextPath(data.redirectTo)
         : next;
     const response = NextResponse.redirect(new URL(redirectTo, request.url));
+    const isSecure = isSecureRequest({
+      forwardedProto: request.headers.get("x-forwarded-proto"),
+      protocol: request.nextUrl.protocol,
+    });
     response.cookies.set(
       ACCESS_COOKIE,
       data.accessToken,
-      authCookieOptions(data.expiresIn ?? 60 * 60),
+      authCookieOptions(data.expiresIn ?? 60 * 60, isSecure),
     );
     response.cookies.set(
       REFRESH_COOKIE,
       data.refreshToken,
-      authCookieOptions(REFRESH_COOKIE_MAX_AGE_SECONDS),
+      authCookieOptions(REFRESH_COOKIE_MAX_AGE_SECONDS, isSecure),
     );
     return response;
   } catch {
