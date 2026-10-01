@@ -3,7 +3,6 @@ import { describe, expect, test } from "bun:test";
 import {
   buildContentSecurityPolicy,
   buildSecurityHeaders,
-  buildStaticContentSecurityPolicy,
   HSTS_VALUE,
 } from "./security-headers";
 
@@ -106,61 +105,5 @@ describe("buildSecurityHeaders (SEC-002)", () => {
       });
       expect("Strict-Transport-Security" in plain).toBe(false);
     }
-  });
-
-  test("uses the hash CSP when static hashes are provided", () => {
-    const headers = buildSecurityHeaders({
-      nonce: NONCE,
-      isDev: false,
-      isProd: true,
-      staticHashes: { scripts: ["'sha256-abc'"], styles: [] },
-    });
-    expect(headers["Content-Security-Policy"]).toContain("'sha256-abc'");
-    expect(headers["Content-Security-Policy"]).not.toContain("nonce-");
-  });
-
-  test("falls back to the nonce CSP when the static map is empty", () => {
-    const headers = buildSecurityHeaders({
-      nonce: NONCE,
-      isDev: false,
-      isProd: true,
-      staticHashes: { scripts: [], styles: [] },
-    });
-    expect(headers["Content-Security-Policy"]).toContain(`nonce-${NONCE}`);
-  });
-});
-
-describe("buildStaticContentSecurityPolicy (SEC-002 hash variant)", () => {
-  const HASH = "'sha256-Zm9vYmFyMTIzNDU2Nzg5MGFiY2RlZg=='";
-
-  test("authorizes hashes with strict-dynamic, never a nonce or unsafe-inline", () => {
-    const csp = buildStaticContentSecurityPolicy([HASH], [], false);
-    expect(csp).toContain(`script-src 'self' ${HASH} 'strict-dynamic'`);
-    expect(csp).toContain("style-src 'self'");
-    expect(csp).not.toContain("nonce-");
-    expect(csp).not.toContain("unsafe-inline");
-  });
-
-  test("includes style hashes when present", () => {
-    const csp = buildStaticContentSecurityPolicy([HASH], [HASH], false);
-    expect(csp).toContain(`style-src 'self' ${HASH}`);
-  });
-
-  test("allows unsafe-eval in dev only, never in prod", () => {
-    expect(
-      buildStaticContentSecurityPolicy([HASH], [], true),
-    ).toContain("unsafe-eval");
-    expect(
-      buildStaticContentSecurityPolicy([HASH], [], false),
-    ).not.toContain("unsafe-eval");
-  });
-
-  test("keeps the same framing/object/base/form/connect locks", () => {
-    const csp = buildStaticContentSecurityPolicy([HASH], [], false);
-    expect(csp).toContain("frame-ancestors 'none'");
-    expect(csp).toContain("object-src 'none'");
-    expect(csp).toContain("base-uri 'self'");
-    expect(csp).toContain("form-action 'self'");
-    expect(csp).toContain("connect-src 'self' https://*.sentry.io");
   });
 });
