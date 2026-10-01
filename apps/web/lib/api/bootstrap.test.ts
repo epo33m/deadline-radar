@@ -5,6 +5,9 @@ import { describe, expect, mock, test } from "bun:test";
 // Same specifier the actions tests mock; factories must all stay complete
 // because bun shares one module registry across test files.
 mock.module("@/lib/api/server", () => ({
+  apiFetch: async () => {
+    throw new Error("apiFetch is stubbed in bootstrap.test.ts");
+  },
   apiJson: async () => {
     throw new Error("apiJson must be injected in tests");
   },

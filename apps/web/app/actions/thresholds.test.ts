@@ -33,6 +33,7 @@ mock.module("@/lib/api/server", () => ({
     }
     return getTaskDetailResponse;
   },
+  clearLocalAuthCookies: async () => undefined,
 }));
 
 const { setDefaultThresholds } = await import("./tasks");

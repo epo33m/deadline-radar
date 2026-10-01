@@ -24,6 +24,7 @@ mock.module("@/lib/api/server", () => ({
   apiFetch: async () => {
     throw new Error("apiFetch is stubbed in idempotency.test.ts");
   },
+  clearLocalAuthCookies: async () => undefined,
   apiJson: async (path: string, init: RequestInit = {}) => {
     const headersObj: Record<string, string> = {};
     if (init.headers) {
