@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
 import { cn } from "@/lib/utils";
@@ -13,6 +13,8 @@ export type LoadingDialogProps = {
   className?: string;
 };
 
+const emptySubscribe = () => () => {};
+
 export function LoadingDialog({
   open,
   title = "Loading…",
@@ -21,11 +23,11 @@ export function LoadingDialog({
 }: LoadingDialogProps) {
   const titleId = useId();
   const descId = useId();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false
+  );
 
   useEffect(() => {
     if (!open) return;

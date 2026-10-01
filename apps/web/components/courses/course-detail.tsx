@@ -1082,12 +1082,6 @@ export function CourseDetail({ course, tasks, timeZone, timeFormat, taskView, no
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  useEffect(() => {
-    if (!isPending) {
-      setPendingTargetView(null);
-    }
-  }, [isPending]);
-
   const groups = useMemo(() => groupCourseTasks(tasks, now), [tasks, now]);
   const fillColor = getCourseColorFill(course.color);
   const coursePath = `/courses/${course.id}`;
@@ -1136,7 +1130,7 @@ export function CourseDetail({ course, tasks, timeZone, timeFormat, taskView, no
           <CourseSidebarNav
             view={view}
             taskView={taskView}
-            pendingTargetView={pendingTargetView}
+            pendingTargetView={isPending ? pendingTargetView : null}
             isNavigating={isPending}
             coursePath={coursePath}
             onChange={setView}

@@ -103,7 +103,7 @@ export function NotificationList({
           No notifications
         </h3>
         <p className="mt-2 max-w-md text-[15px] leading-relaxed text-ink-muted-64">
-          You're all caught up. Reminders for upcoming deadlines will appear here.
+          You&apos;re all caught up. Reminders for upcoming deadlines will appear here.
         </p>
       </div>
     );
