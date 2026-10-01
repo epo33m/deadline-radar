@@ -144,7 +144,11 @@ function setFixture() {
     },
   ];
   fixtureTasks = [
-    { deadline: new Date().toISOString(), status: "todo" },
+    // Anchored 1s in the past, never exactly `now`: `missed` means
+    // deadline-instant-before-now, so a deadline of `now` races the
+    // endpoint's and the RPC helper's clocks within the same millisecond
+    // and flakes (endpoint missed:0 vs RPC missed:1).
+    { deadline: new Date(Date.now() - 1000).toISOString(), status: "todo" },
   ];
 }
 
