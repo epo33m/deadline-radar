@@ -129,8 +129,10 @@ async function getText(url: string, init: RequestInit = {}): Promise<{ status: n
   check(csp.includes("nonce-"), "WEB /login CSP uses nonce (dynamic page)");
   const home = await getText(`${WEB}/`);
   const homeCsp = home.headers.get("content-security-policy") ?? "";
-  check(homeCsp.includes("sha256-"), "WEB / CSP uses hashes (static page)");
-  check(!homeCsp.includes("nonce-"), "WEB / CSP has no nonce");
+  // Landing is force-dynamic with a nonce CSP (see apps/web/app/page.tsx
+  // SEC-002 note) since the dev line reverted the static/hash variant.
+  // Accept the dynamic variant the app actually ships.
+  check(homeCsp.includes("nonce-"), "WEB / CSP uses nonce (dynamic page)");
 }
 
 // 4. Bootstrap 401 envelope shape.
