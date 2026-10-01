@@ -30,6 +30,7 @@ import {
   formSectionGapClassName,
 } from "@/components/ui/dialog-form";
 import { Input } from "@/components/ui/input";
+import { LoadingDialog } from "@/components/ui/loading-dialog";
 import { cn } from "@/lib/utils";
 import { generateIdempotencyKey } from "@/lib/api/idempotency";
 import { isSafeExternalHttpUrl } from "@deadline-radar/validation";
@@ -98,159 +99,166 @@ function AddAttachmentForm({ taskId, onSuccess, onCancel }: AddFormProps) {
   const fileId = `${formId}-file`;
 
   return (
-    <form
-      action={formAction}
-      className="flex w-full flex-col"
-      aria-busy={pending}
-    >
-      <input type="hidden" name="task_id" value={taskId} />
-      <input type="hidden" name="idempotency_key" value={idempotencyKey} />
-      <div className={cn("w-full", formSectionGapClassName)}>
-        <div className="space-y-2">
-          <ul className={dialogFormListClassName}>
-            {files.length > 0 ? (
-              <li className="py-1">
-                <ul className="flex list-none flex-col gap-2">
-                  {files.map((file, index) => (
-                    <li key={`${file.name}-${file.size}-${file.lastModified}`}>
-                      <div className="flex items-center gap-2">
-                        <p className="min-w-0 flex-1 truncate text-left font-sans text-[15px] font-normal leading-normal tracking-[-0.2px] text-ink">
-                          {file.name}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => removePickedFile(index)}
-                          disabled={pending}
-                          aria-label={`Remove ${file.name}`}
-                          className="shrink-0 text-destructive disabled:opacity-50"
-                        >
-                          <X className="size-4" aria-hidden="true" />
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+    <>
+      <LoadingDialog
+        open={pending}
+        title={files.length > 0 ? "Uploading files…" : "Saving attachment…"}
+        description="Please wait a moment"
+      />
+      <form
+        action={formAction}
+        className="flex w-full flex-col"
+        aria-busy={pending}
+      >
+        <input type="hidden" name="task_id" value={taskId} />
+        <input type="hidden" name="idempotency_key" value={idempotencyKey} />
+        <div className={cn("w-full", formSectionGapClassName)}>
+          <div className="space-y-2">
+            <ul className={dialogFormListClassName}>
+              {files.length > 0 ? (
+                <li className="py-1">
+                  <ul className="flex list-none flex-col gap-2">
+                    {files.map((file, index) => (
+                      <li key={`${file.name}-${file.size}-${file.lastModified}`}>
+                        <div className="flex items-center gap-2">
+                          <p className="min-w-0 flex-1 truncate text-left font-sans text-[15px] font-normal leading-normal tracking-[-0.2px] text-ink">
+                            {file.name}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => removePickedFile(index)}
+                            disabled={pending}
+                            aria-label={`Remove ${file.name}`}
+                            className="shrink-0 text-destructive disabled:opacity-50"
+                          >
+                            <X className="size-4" aria-hidden="true" />
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              ) : null}
+              <li className="pt-1 pb-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={pending}
+                  className="h-11 w-full justify-start border-0 bg-transparent px-0 shadow-none"
+                >
+                  Add file...
+                </Button>
               </li>
-            ) : null}
-            <li className="pt-1 pb-0">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={pending}
-                className="h-11 w-full justify-start border-0 bg-transparent px-0 shadow-none"
+            </ul>
+            <input
+              ref={fileInputRef}
+              id={fileId}
+              name="file"
+              type="file"
+              multiple
+              aria-invalid={Boolean(state.fieldErrors?.file)}
+              aria-describedby={
+                state.fieldErrors?.file ? `${fileId}-error` : undefined
+              }
+              className="sr-only"
+              onChange={handleFileChange}
+            />
+            {state.fieldErrors?.file ? (
+              <p
+                id={`${fileId}-error`}
+                className="text-sm text-destructive"
+                role="alert"
               >
-                Add file...
-              </Button>
+                {state.fieldErrors.file.join(" ")}
+              </p>
+            ) : null}
+          </div>
+          <ul className={dialogFormListClassName}>
+            <li className="py-1.5">
+              <div className="space-y-2">
+                <Input
+                  id={urlId}
+                  name="url"
+                  type="url"
+                  inputMode="url"
+                  value={url}
+                  onChange={(event) => setUrl(event.target.value)}
+                  placeholder="URL"
+                  aria-invalid={Boolean(state.fieldErrors?.url)}
+                  aria-describedby={
+                    state.fieldErrors?.url ? `${urlId}-error` : undefined
+                  }
+                  className={cn(dialogInputClassName, "text-left")}
+                />
+                {state.fieldErrors?.url ? (
+                  <p
+                    id={`${urlId}-error`}
+                    className="text-sm text-destructive"
+                    role="alert"
+                  >
+                    {state.fieldErrors.url.join(" ")}
+                  </p>
+                ) : null}
+              </div>
+            </li>
+            <li className="py-1.5">
+              <div className="space-y-2">
+                <textarea
+                  id={notesId}
+                  name="notes"
+                  value={notes}
+                  onChange={(event) => setNotes(event.target.value)}
+                  placeholder="Notes"
+                  rows={3}
+                  aria-invalid={Boolean(state.fieldErrors?.notes)}
+                  aria-describedby={
+                    state.fieldErrors?.notes ? `${notesId}-error` : undefined
+                  }
+                  className="w-full rounded-none border-0 bg-transparent px-0 py-1 font-sans text-[15px] font-normal leading-normal tracking-[-0.2px] text-ink shadow-none outline-none placeholder:text-ink-muted-48 focus-visible:border-0 focus-visible:ring-0 focus-visible:outline-none aria-invalid:text-destructive"
+                />
+                {state.fieldErrors?.notes ? (
+                  <p
+                    id={`${notesId}-error`}
+                    className="text-sm text-destructive"
+                    role="alert"
+                  >
+                    {state.fieldErrors.notes.join(" ")}
+                  </p>
+                ) : null}
+              </div>
             </li>
           </ul>
-          <input
-            ref={fileInputRef}
-            id={fileId}
-            name="file"
-            type="file"
-            multiple
-            aria-invalid={Boolean(state.fieldErrors?.file)}
-            aria-describedby={
-              state.fieldErrors?.file ? `${fileId}-error` : undefined
-            }
-            className="sr-only"
-            onChange={handleFileChange}
-          />
-          {state.fieldErrors?.file ? (
-            <p
-              id={`${fileId}-error`}
-              className="text-sm text-destructive"
-              role="alert"
+        </div>
+
+        {state.error ? (
+          <p className="pt-4 text-center text-sm text-destructive" role="alert">
+            {state.error}
+          </p>
+        ) : null}
+
+        <div className={dialogActionsClassName}>
+          <Button
+            type="submit"
+            disabled={pending}
+            className={dialogPrimaryActionClassName}
+          >
+            {pending ? "Saving…" : "Save"}
+          </Button>
+          {onCancel ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onCancel}
+              disabled={pending}
+              className={dialogSecondaryActionClassName}
             >
-              {state.fieldErrors.file.join(" ")}
-            </p>
+              Cancel
+            </Button>
           ) : null}
         </div>
-        <ul className={dialogFormListClassName}>
-          <li className="py-1.5">
-            <div className="space-y-2">
-              <Input
-                id={urlId}
-                name="url"
-                type="url"
-                inputMode="url"
-                value={url}
-                onChange={(event) => setUrl(event.target.value)}
-                placeholder="URL"
-                aria-invalid={Boolean(state.fieldErrors?.url)}
-                aria-describedby={
-                  state.fieldErrors?.url ? `${urlId}-error` : undefined
-                }
-                className={cn(dialogInputClassName, "text-left")}
-              />
-              {state.fieldErrors?.url ? (
-                <p
-                  id={`${urlId}-error`}
-                  className="text-sm text-destructive"
-                  role="alert"
-                >
-                  {state.fieldErrors.url.join(" ")}
-                </p>
-              ) : null}
-            </div>
-          </li>
-          <li className="py-1.5">
-            <div className="space-y-2">
-              <textarea
-                id={notesId}
-                name="notes"
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-                placeholder="Notes"
-                rows={3}
-                aria-invalid={Boolean(state.fieldErrors?.notes)}
-                aria-describedby={
-                  state.fieldErrors?.notes ? `${notesId}-error` : undefined
-                }
-                className="w-full rounded-none border-0 bg-transparent px-0 py-1 font-sans text-[15px] font-normal leading-normal tracking-[-0.2px] text-ink shadow-none outline-none placeholder:text-ink-muted-48 focus-visible:border-0 focus-visible:ring-0 focus-visible:outline-none aria-invalid:text-destructive"
-              />
-              {state.fieldErrors?.notes ? (
-                <p
-                  id={`${notesId}-error`}
-                  className="text-sm text-destructive"
-                  role="alert"
-                >
-                  {state.fieldErrors.notes.join(" ")}
-                </p>
-              ) : null}
-            </div>
-          </li>
-        </ul>
-      </div>
-
-      {state.error ? (
-        <p className="pt-4 text-center text-sm text-destructive" role="alert">
-          {state.error}
-        </p>
-      ) : null}
-
-      <div className={dialogActionsClassName}>
-        <Button
-          type="submit"
-          disabled={pending}
-          className={dialogPrimaryActionClassName}
-        >
-          {pending ? "Saving…" : "Save"}
-        </Button>
-        {onCancel ? (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onCancel}
-            disabled={pending}
-            className={dialogSecondaryActionClassName}
-          >
-            Cancel
-          </Button>
-        ) : null}
-      </div>
-    </form>
+      </form>
+    </>
   );
 }
 
@@ -295,32 +303,39 @@ function FileOpenButton({
   const [pending, startTransition] = useTransition();
 
   return (
-    <span className="inline-flex flex-col gap-1">
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        disabled={pending}
-        onClick={() => {
-          setError(null);
-          startTransition(async () => {
-            const result = await getAttachmentSignedUrl(storagePath);
-            if (result.error || !result.url) {
-              setError(result.error ?? "Could not open file.");
-              return;
-            }
-            window.open(result.url, "_blank", "noopener,noreferrer");
-          });
-        }}
-      >
-        {pending ? "Opening…" : label}
-      </Button>
-      {error ? (
-        <span className="text-sm text-destructive" role="alert">
-          {error}
-        </span>
-      ) : null}
-    </span>
+    <>
+      <LoadingDialog
+        open={pending}
+        title="Opening file…"
+        description="Please wait a moment"
+      />
+      <span className="inline-flex flex-col gap-1">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={pending}
+          onClick={() => {
+            setError(null);
+            startTransition(async () => {
+              const result = await getAttachmentSignedUrl(storagePath);
+              if (result.error || !result.url) {
+                setError(result.error ?? "Could not open file.");
+                return;
+              }
+              window.open(result.url, "_blank", "noopener,noreferrer");
+            });
+          }}
+        >
+          {pending ? "Opening…" : label}
+        </Button>
+        {error ? (
+          <span className="text-sm text-destructive" role="alert">
+            {error}
+          </span>
+        ) : null}
+      </span>
+    </>
   );
 }
 
@@ -347,57 +362,64 @@ function AttachmentRow({
   );
 
   return (
-    <li className="border-b border-hairline py-3 last:border-b-0">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-medium">{attachmentTitle(attachment)}</p>
-          <p className="text-sm text-ink-muted-48">
-            {attachment.type === "link" ? "Link" : "File"}
-            {attachment.type === "link" && attachment.url
-              ? ` · ${attachment.url}`
-              : null}
-          </p>
+    <>
+      <LoadingDialog
+        open={removePending}
+        title="Removing attachment…"
+        description="Please wait a moment"
+      />
+      <li className="border-b border-hairline py-3 last:border-b-0">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-medium">{attachmentTitle(attachment)}</p>
+            <p className="text-sm text-ink-muted-48">
+              {attachment.type === "link" ? "Link" : "File"}
+              {attachment.type === "link" && attachment.url
+                ? ` · ${attachment.url}`
+                : null}
+            </p>
+          </div>
+          {attachment.type === "link" &&
+          attachment.url &&
+          // SEC-006: scheme allow-list at the renderer. Unsafe values stay
+          // visible as plain text above, but never become a clickable href.
+          isSafeExternalHttpUrl(attachment.url) ? (
+            <a
+              href={attachment.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={cn(buttonVariants({ size: "sm", variant: "outline" }))}
+            >
+              Open
+            </a>
+          ) : null}
+          {attachment.type === "file" && attachment.storage_path ? (
+            <FileOpenButton
+              storagePath={attachment.storage_path}
+              label="Open"
+            />
+          ) : null}
+          <form action={removeAction}>
+            <input type="hidden" name="id" value={attachment.id} />
+            <input type="hidden" name="task_id" value={taskId} />
+            <Button
+              type="submit"
+              size="sm"
+              variant="outline"
+              disabled={removePending}
+              className="text-destructive"
+            >
+              {removePending ? "Removing…" : "Remove"}
+            </Button>
+          </form>
         </div>
-        {attachment.type === "link" &&
-        attachment.url &&
-        // SEC-006: scheme allow-list at the renderer. Unsafe values stay
-        // visible as plain text above, but never become a clickable href.
-        isSafeExternalHttpUrl(attachment.url) ? (
-          <a
-            href={attachment.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={cn(buttonVariants({ size: "sm", variant: "outline" }))}
-          >
-            Open
-          </a>
+        {removeState.error ? (
+          <p className="mt-2 text-sm text-destructive" role="alert">
+            {removeState.error}
+          </p>
         ) : null}
-        {attachment.type === "file" && attachment.storage_path ? (
-          <FileOpenButton
-            storagePath={attachment.storage_path}
-            label="Open"
-          />
-        ) : null}
-        <form action={removeAction}>
-          <input type="hidden" name="id" value={attachment.id} />
-          <input type="hidden" name="task_id" value={taskId} />
-          <Button
-            type="submit"
-            size="sm"
-            variant="outline"
-            disabled={removePending}
-            className="text-destructive"
-          >
-            {removePending ? "Removing…" : "Remove"}
-          </Button>
-        </form>
-      </div>
-      {removeState.error ? (
-        <p className="mt-2 text-sm text-destructive" role="alert">
-          {removeState.error}
-        </p>
-      ) : null}
-    </li>
+      </li>
+    </>
   );
 }
 

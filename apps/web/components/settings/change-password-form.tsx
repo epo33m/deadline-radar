@@ -23,6 +23,7 @@ import {
   dialogInputClassName,
 } from "@/components/ui/dialog-form";
 import { Input } from "@/components/ui/input";
+import { LoadingDialog } from "@/components/ui/loading-dialog";
 import { changePasswordSchema } from "@/lib/validation/auth";
 
 const initialState: AuthActionState = {};
@@ -168,88 +169,95 @@ export function ChangePasswordForm({
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      method="post"
-      className="flex w-full flex-col"
-      noValidate
-    >
-      <ul className={dialogFormListClassName}>
-        <PasswordField
-          id="change-current-password"
-          name="currentPassword"
-          label="Current password"
-          autoComplete="current-password"
-          error={currentPasswordError}
-          showPassword={showPassword}
-          onTogglePassword={() => setShowPassword((visible) => !visible)}
-          onClearError={() =>
-            setClientErrors((current) => ({
-              ...current,
-              currentPassword: undefined,
-            }))
-          }
-        />
-        <PasswordField
-          id="change-password"
-          name="password"
-          label="New password"
-          autoComplete="new-password"
-          error={passwordError}
-          showPassword={showPassword}
-          onTogglePassword={() => setShowPassword((visible) => !visible)}
-          onClearError={() =>
-            setClientErrors((current) => ({ ...current, password: undefined }))
-          }
-        />
-        <PasswordField
-          id="change-confirm-password"
-          name="confirmPassword"
-          label="Confirm new password"
-          autoComplete="new-password"
-          error={confirmError}
-          showPassword={showPassword}
-          onTogglePassword={() => setShowPassword((visible) => !visible)}
-          onClearError={() =>
-            setClientErrors((current) => ({
-              ...current,
-              confirmPassword: undefined,
-            }))
-          }
-        />
-      </ul>
+    <>
+      <LoadingDialog
+        open={pending}
+        title="Updating password…"
+        description="Please wait a moment"
+      />
+      <form
+        onSubmit={handleSubmit}
+        method="post"
+        className="flex w-full flex-col"
+        noValidate
+      >
+        <ul className={dialogFormListClassName}>
+          <PasswordField
+            id="change-current-password"
+            name="currentPassword"
+            label="Current password"
+            autoComplete="current-password"
+            error={currentPasswordError}
+            showPassword={showPassword}
+            onTogglePassword={() => setShowPassword((visible) => !visible)}
+            onClearError={() =>
+              setClientErrors((current) => ({
+                ...current,
+                currentPassword: undefined,
+              }))
+            }
+          />
+          <PasswordField
+            id="change-password"
+            name="password"
+            label="New password"
+            autoComplete="new-password"
+            error={passwordError}
+            showPassword={showPassword}
+            onTogglePassword={() => setShowPassword((visible) => !visible)}
+            onClearError={() =>
+              setClientErrors((current) => ({ ...current, password: undefined }))
+            }
+          />
+          <PasswordField
+            id="change-confirm-password"
+            name="confirmPassword"
+            label="Confirm new password"
+            autoComplete="new-password"
+            error={confirmError}
+            showPassword={showPassword}
+            onTogglePassword={() => setShowPassword((visible) => !visible)}
+            onClearError={() =>
+              setClientErrors((current) => ({
+                ...current,
+                confirmPassword: undefined,
+              }))
+            }
+          />
+        </ul>
 
-      {state.error ? (
-        <p className={errorClassName} role="alert">
-          {state.error}
-        </p>
-      ) : null}
-      {state.success ? (
-        <p className={successClassName} role="status">
-          {state.success}
-        </p>
-      ) : null}
-
-      <div className={dialogActionsClassName}>
-        <Button
-          type="submit"
-          disabled={pending}
-          className={dialogPrimaryActionClassName}
-        >
-          {pending ? "Updating…" : "Update password"}
-        </Button>
-        {onCancel ? (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onCancel}
-            disabled={pending}
-            className={dialogSecondaryActionClassName}
-          >
-            Cancel
-          </Button>
+        {state.error ? (
+          <p className={errorClassName} role="alert">
+            {state.error}
+          </p>
         ) : null}
-      </div>
-    </form>
+        {state.success ? (
+          <p className={successClassName} role="status">
+            {state.success}
+          </p>
+        ) : null}
+
+        <div className={dialogActionsClassName}>
+          <Button
+            type="submit"
+            disabled={pending}
+            className={dialogPrimaryActionClassName}
+          >
+            {pending ? "Updating…" : "Update password"}
+          </Button>
+          {onCancel ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onCancel}
+              disabled={pending}
+              className={dialogSecondaryActionClassName}
+            >
+              Cancel
+            </Button>
+          ) : null}
+        </div>
+      </form>
+    </>
   );
 }

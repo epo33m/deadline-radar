@@ -23,6 +23,7 @@ import {
   formSectionGapClassName,
 } from "@/components/ui/dialog-form";
 import { Input } from "@/components/ui/input";
+import { LoadingDialog } from "@/components/ui/loading-dialog";
 import { normalizeCourseColorForStorage } from "@/lib/courses/colors";
 import { normalizeCourseIconForStorage } from "@/lib/courses/icons";
 import { generateIdempotencyKey } from "@/lib/api/idempotency";
@@ -73,108 +74,115 @@ export function CourseForm({
   const iconId = `${formId}-icon`;
 
   return (
-    <form
-      id={formId}
-      action={formAction}
-      className="flex w-full flex-col"
-      aria-busy={pending}
-    >
-      {course ? (
-        <input type="hidden" name="id" value={course.id} />
-      ) : (
-        <input type="hidden" name="idempotency_key" value={idempotencyKey} />
-      )}
-      <input type="hidden" name="color" value={color} />
-      <input type="hidden" name="icon" value={icon} />
+    <>
+      <LoadingDialog
+        open={pending}
+        title={course ? "Saving changes…" : "Creating course…"}
+        description="Please wait a moment"
+      />
+      <form
+        id={formId}
+        action={formAction}
+        className="flex w-full flex-col"
+        aria-busy={pending}
+      >
+        {course ? (
+          <input type="hidden" name="id" value={course.id} />
+        ) : (
+          <input type="hidden" name="idempotency_key" value={idempotencyKey} />
+        )}
+        <input type="hidden" name="color" value={color} />
+        <input type="hidden" name="icon" value={icon} />
 
-      <div className={cn("w-full", formSectionGapClassName)}>
-        <ul className={dialogFormListClassName}>
-          <li className="py-1.5">
-            <Input
-              id={nameId}
-              name="name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="Title"
-              required
-              aria-invalid={Boolean(state.fieldErrors?.name)}
-              className={cn(dialogInputClassName, "text-left")}
-            />
-          </li>
+        <div className={cn("w-full", formSectionGapClassName)}>
+          <ul className={dialogFormListClassName}>
+            <li className="py-1.5">
+              <Input
+                id={nameId}
+                name="name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Title"
+                required
+                aria-invalid={Boolean(state.fieldErrors?.name)}
+                className={cn(dialogInputClassName, "text-left")}
+              />
+            </li>
 
-          <li className="py-1.5">
-            <Input
-              id={codeId}
-              name="code"
-              value={code}
-              onChange={(event) => setCode(event.target.value)}
-              placeholder="Code"
-              aria-invalid={Boolean(state.fieldErrors?.code)}
-              className={cn(dialogInputClassName, "text-left")}
-            />
-          </li>
+            <li className="py-1.5">
+              <Input
+                id={codeId}
+                name="code"
+                value={code}
+                onChange={(event) => setCode(event.target.value)}
+                placeholder="Code"
+                aria-invalid={Boolean(state.fieldErrors?.code)}
+                className={cn(dialogInputClassName, "text-left")}
+              />
+            </li>
 
-          <li className="py-1.5">
-            <textarea
-              id={descriptionId}
-              name="description"
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="Description"
-              rows={3}
-              aria-invalid={Boolean(state.fieldErrors?.description)}
-              className="w-full rounded-none border-0 bg-transparent px-0 py-1 font-sans text-[15px] font-normal leading-relaxed tracking-[-0.2px] text-ink shadow-none outline-none placeholder:text-ink-muted-48 focus-visible:border-0 focus-visible:ring-0 focus-visible:outline-none aria-invalid:text-destructive"
-            />
-          </li>
-        </ul>
+            <li className="py-1.5">
+              <textarea
+                id={descriptionId}
+                name="description"
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="Description"
+                rows={3}
+                aria-invalid={Boolean(state.fieldErrors?.description)}
+                className="w-full rounded-none border-0 bg-transparent px-0 py-1 font-sans text-[15px] font-normal leading-relaxed tracking-[-0.2px] text-ink shadow-none outline-none placeholder:text-ink-muted-48 focus-visible:border-0 focus-visible:ring-0 focus-visible:outline-none aria-invalid:text-destructive"
+              />
+            </li>
+          </ul>
 
-        <ul className={cn("w-full list-none divide-y divide-divider-soft", formCardClassName)}>
-          <DialogFormRow label="Color" htmlFor={colorId}>
-            <ColorPicker
-              id={colorId}
-              value={color}
-              onChange={setColor}
-              compact
-            />
-          </DialogFormRow>
-          <DialogFormRow label="Icon" htmlFor={iconId}>
-            <IconPicker
-              id={iconId}
-              value={icon}
-              onChange={setIcon}
-              compact
-            />
-          </DialogFormRow>
-        </ul>
-      </div>
+          <ul className={cn("w-full list-none divide-y divide-divider-soft", formCardClassName)}>
+            <DialogFormRow label="Color" htmlFor={colorId}>
+              <ColorPicker
+                id={colorId}
+                value={color}
+                onChange={setColor}
+                compact
+              />
+            </DialogFormRow>
+            <DialogFormRow label="Icon" htmlFor={iconId}>
+              <IconPicker
+                id={iconId}
+                value={icon}
+                onChange={setIcon}
+                compact
+              />
+            </DialogFormRow>
+          </ul>
+        </div>
 
-      {state.error ? (
-        <p className="pt-4 text-center text-sm text-destructive" role="alert">
-          {state.error}
-        </p>
-      ) : null}
-
-      <div className={dialogActionsClassName}>
-        <Button
-          type="submit"
-          disabled={pending}
-          className={dialogPrimaryActionClassName}
-        >
-          {pending ? "Saving…" : submitLabel}
-        </Button>
-        {onCancel ? (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onCancel}
-            disabled={pending}
-            className={dialogSecondaryActionClassName}
-          >
-            Cancel
-          </Button>
+        {state.error ? (
+          <p className="pt-4 text-center text-sm text-destructive" role="alert">
+            {state.error}
+          </p>
         ) : null}
-      </div>
-    </form>
+
+        <div className={dialogActionsClassName}>
+          <Button
+            type="submit"
+            disabled={pending}
+            className={dialogPrimaryActionClassName}
+          >
+            {pending ? "Saving…" : submitLabel}
+          </Button>
+          {onCancel ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onCancel}
+              disabled={pending}
+              className={dialogSecondaryActionClassName}
+            >
+              Cancel
+            </Button>
+          ) : null}
+        </div>
+      </form>
+    </>
   );
 }
 

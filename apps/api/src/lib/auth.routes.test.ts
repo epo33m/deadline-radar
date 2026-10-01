@@ -506,7 +506,34 @@ describe("auth routes integration / security", () => {
     expect(errMsg).toBe(AUTH_ERRORS.sessionExpired);
   });
 
-  test("register returns generic failure without provider message", async () => {
+  test("register returns 409 conflict when account already exists", async () => {
+    signUp.mockImplementationOnce(async () => ({
+      data: { session: null, user: null },
+      error: { message: "User already registered" },
+    }));
+
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/auth/register", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: "student@example.com",
+          password: "secret12",
+        }),
+      }),
+    );
+    expect(response.status).toBe(409);
+    const body = (await response.json()) as { error?: { code?: string; message?: string } | string };
+    const errMsg = typeof body.error === 'string' ? body.error : body.error?.message;
+    expect(errMsg).toBe(AUTH_ERRORS.accountAlreadyExists);
+  });
+
+  test("register returns generic failure when provider fails without conflict", async () => {
+    signUp.mockImplementationOnce(async () => ({
+      data: { session: null, user: null },
+      error: { message: "Service connection error" },
+    }));
+
     const response = await app.handle(
       new Request("http://localhost/api/v1/auth/register", {
         method: "POST",
@@ -521,7 +548,6 @@ describe("auth routes integration / security", () => {
     const body = (await response.json()) as { error?: { code?: string; message?: string } | string };
     const errMsg = typeof body.error === 'string' ? body.error : body.error?.message;
     expect(errMsg).toBe(AUTH_ERRORS.registrationFailed);
-    expect(errMsg).not.toContain("already registered");
   });
 
   test("logout-all requires authentication", async () => {

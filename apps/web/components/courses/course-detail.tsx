@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Calendar,
   Check,
@@ -8,13 +9,14 @@ import {
   ChevronRight,
   Circle,
   ClockAlert,
+  Loader2,
   Pencil,
   Plus,
   Trash2,
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useState, useTransition } from "react";
 import type { TimeFormat } from "@deadline-radar/validation";
 import { useNow } from "@/lib/use-now";
 
@@ -32,6 +34,7 @@ import {
   dialogPrimaryActionClassName,
   dialogSecondaryActionClassName,
 } from "@/components/ui/dialog";
+import { LoadingDialog } from "@/components/ui/loading-dialog";
 import { getCourseColorFill, getCourseColorLabel } from "@/lib/courses/colors";
 import { CourseIconView } from "@/components/courses/course-icon";
 import { getCourseIconLabel } from "@/lib/courses/icons";
@@ -113,48 +116,55 @@ function DeleteCourseDialog({
   );
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title="Delete course"
-      dismissible={!pending}
-    >
-      <div className="flex w-full flex-col">
-        <p className="text-[15px] leading-relaxed text-ink">
-          Are you sure you want to delete &ldquo;{course.name}&rdquo;?
-        </p>
-        <p className="pt-2 text-sm leading-relaxed text-ink-muted-48">
-          This will permanently remove the course from your list. You cannot
-          restore it from the Courses page.
-        </p>
-
-        {state.error ? (
-          <p className="pt-4 text-center text-sm text-destructive" role="alert">
-            {state.error}
+    <>
+      <LoadingDialog
+        open={pending}
+        title="Deleting course…"
+        description="Please wait a moment"
+      />
+      <Dialog
+        open={open}
+        onOpenChange={onOpenChange}
+        title="Delete course"
+        dismissible={!pending}
+      >
+        <div className="flex w-full flex-col">
+          <p className="text-[15px] leading-relaxed text-ink">
+            Are you sure you want to delete &ldquo;{course.name}&rdquo;?
           </p>
-        ) : null}
+          <p className="pt-2 text-sm leading-relaxed text-ink-muted-48">
+            This will permanently remove the course from your list. You cannot
+            restore it from the Courses page.
+          </p>
 
-        <form action={formAction} className={dialogActionsClassName}>
-          <input type="hidden" name="id" value={course.id} />
-          <Button
-            type="submit"
-            disabled={pending}
-            className={`${dialogPrimaryActionClassName} bg-destructive text-white hover:bg-destructive/90`}
-          >
-            {pending ? "Deleting…" : "Delete"}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={pending}
-            onClick={() => onOpenChange(false)}
-            className={dialogSecondaryActionClassName}
-          >
-            Cancel
-          </Button>
-        </form>
-      </div>
-    </Dialog>
+          {state.error ? (
+            <p className="pt-4 text-center text-sm text-destructive" role="alert">
+              {state.error}
+            </p>
+          ) : null}
+
+          <form action={formAction} className={dialogActionsClassName}>
+            <input type="hidden" name="id" value={course.id} />
+            <Button
+              type="submit"
+              disabled={pending}
+              className={`${dialogPrimaryActionClassName} bg-destructive text-white hover:bg-destructive/90`}
+            >
+              {pending ? "Deleting…" : "Delete"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={pending}
+              onClick={() => onOpenChange(false)}
+              className={dialogSecondaryActionClassName}
+            >
+              Cancel
+            </Button>
+          </form>
+        </div>
+      </Dialog>
+    </>
   );
 }
 
@@ -332,20 +342,35 @@ const TASK_CARD_CONFIG: {
 function CourseTaskSummaryCards({
   counts,
   coursePath,
+  pendingTargetView,
+  isNavigating,
+  onSelectTaskView,
 }: {
   counts: Record<CourseTaskCardTone, number>;
   coursePath: string;
+  pendingTargetView?: CourseTaskView | null;
+  isNavigating?: boolean;
+  onSelectTaskView?: (view: CourseTaskView, href: string) => void;
 }) {
   return (
     <div className="grid grid-cols-3 gap-3 sm:gap-4">
       {TASK_CARD_CONFIG.map((card) => {
+        const isCardLoading = isNavigating && pendingTargetView === card.id;
+        const href = `${coursePath}?view=${card.id}`;
         return (
           <Link
             key={card.id}
-            href={`${coursePath}?view=${card.id}`}
+            href={href}
+            onClick={(e) => {
+              if (onSelectTaskView) {
+                e.preventDefault();
+                onSelectTaskView(card.id, href);
+              }
+            }}
             className={cn(
               "inline-flex items-center justify-between gap-2 rounded-full border px-3 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus sm:px-4 sm:py-2",
               card.cardClass ?? "border-hairline bg-canvas hover:border-ink/20",
+              isCardLoading && "opacity-80",
             )}
           >
             <span className={cn("text-sm font-bold sm:text-base", card.cardClass ? "text-white" : "text-ink-muted-80")}>
@@ -353,10 +378,13 @@ function CourseTaskSummaryCards({
             </span>
             <span
               className={cn(
-                "font-display text-xl font-black tabular-nums sm:text-2xl",
+                "inline-flex items-center gap-1.5 font-display text-xl font-black tabular-nums sm:text-2xl",
                 card.toneClass,
               )}
             >
+              {isCardLoading ? (
+                <Loader2 className="size-4 animate-spin text-white" aria-hidden="true" />
+              ) : null}
               {counts[card.id]}
             </span>
           </Link>
@@ -369,16 +397,22 @@ function CourseTaskSummaryCards({
 function CourseSidebarNav({
   view,
   taskView,
+  pendingTargetView,
+  isNavigating,
   coursePath,
   onChange,
+  onSelectTaskView,
   onDelete,
   onNavigate,
   className,
 }: {
   view: CourseView;
   taskView: CourseTaskView;
+  pendingTargetView?: CourseTaskView | null;
+  isNavigating?: boolean;
   coursePath: string;
   onChange: (view: CourseView) => void;
+  onSelectTaskView?: (view: CourseTaskView, href: string) => void;
   onDelete: () => void;
   onNavigate?: () => void;
   className?: string;
@@ -400,6 +434,8 @@ function CourseSidebarNav({
         : "text-ink-muted-80 hover:bg-muted/60 hover:text-ink",
     );
 
+  const isTaskLoading = isNavigating && pendingTargetView === "all";
+
   return (
     <nav
       aria-label="Course sections"
@@ -409,7 +445,7 @@ function CourseSidebarNav({
         {COURSE_VIEWS.map((item) => {
           const hasChildren = item.children && item.children.length > 0;
           const selected =
-            view === item.id && (!hasChildren || taskView === "all");
+            view === item.id && (!hasChildren || (taskView === "all" && (!isNavigating || pendingTargetView === "all")));
           const isExpanded = item.id === "task" && taskExpanded;
 
           return (
@@ -419,14 +455,25 @@ function CourseSidebarNav({
                   <Link
                     href={coursePath}
                     aria-current={selected ? "page" : undefined}
-                    onClick={() => {
+                    onClick={(e) => {
                       setTaskExpanded(true);
-                      onChange(item.id);
+                      if (onSelectTaskView) {
+                        e.preventDefault();
+                        onSelectTaskView("all", coursePath);
+                      } else {
+                        onChange(item.id);
+                      }
                       onNavigate?.();
                     }}
-                    className="flex-1 outline-none focus-visible:ring-2 focus-visible:ring-primary-focus"
+                    className="flex flex-1 items-center gap-2 outline-none focus-visible:ring-2 focus-visible:ring-primary-focus"
                   >
-                    {item.label}
+                    <span>{item.label}</span>
+                    {isTaskLoading ? (
+                      <Loader2
+                        className="size-3.5 animate-spin text-primary shrink-0"
+                        aria-hidden="true"
+                      />
+                    ) : null}
                   </Link>
                   <button
                     type="button"
@@ -459,16 +506,23 @@ function CourseSidebarNav({
               {hasChildren && isExpanded && (
                 <ul className="mt-1 ml-4 flex flex-col space-y-3">
                   {item.children!.map((child) => {
+                    const isChildLoading = isNavigating && pendingTargetView === child.id;
                     const childActive =
-                      view === item.id && taskView === child.id;
+                      (view === item.id && taskView === child.id && !isNavigating) || isChildLoading;
                     const ChildIcon = child.icon;
+                    const childHref = `${coursePath}?view=${child.id}`;
                     return (
                       <li key={child.id}>
                         <Link
-                          href={`${coursePath}?view=${child.id}`}
+                          href={childHref}
                           aria-current={childActive ? "page" : undefined}
-                          onClick={() => {
-                            onChange(item.id);
+                          onClick={(e) => {
+                            if (onSelectTaskView) {
+                              e.preventDefault();
+                              onSelectTaskView(child.id, childHref);
+                            } else {
+                              onChange(item.id);
+                            }
                             onNavigate?.();
                           }}
                           className={cn(
@@ -478,12 +532,19 @@ function CourseSidebarNav({
                               : "text-ink-muted-80 hover:bg-muted/60 hover:text-ink",
                           )}
                         >
-                          <ChildIcon
-                            className="size-4 shrink-0"
-                            strokeWidth={2}
-                            aria-hidden="true"
-                          />
-                          {child.label}
+                          {isChildLoading ? (
+                            <Loader2
+                              className="size-4 shrink-0 animate-spin text-primary"
+                              aria-hidden="true"
+                            />
+                          ) : (
+                            <ChildIcon
+                              className="size-4 shrink-0"
+                              strokeWidth={2}
+                              aria-hidden="true"
+                            />
+                          )}
+                          <span className="flex-1">{child.label}</span>
                         </Link>
                       </li>
                     );
@@ -769,6 +830,41 @@ function CourseAbout({
     </div>
   );
 }
+function CourseTasksLoadingSkeleton({ taskView }: { taskView: CourseTaskView }) {
+  const label =
+    taskView === "upcoming"
+      ? "upcoming"
+      : taskView === "overdue"
+        ? "overdue"
+        : taskView === "done"
+          ? "completed"
+          : "";
+
+  return (
+    <div className="space-y-4 py-2 animate-in fade-in duration-150" role="status" aria-live="polite" aria-busy="true">
+      <div className="flex items-center gap-2 text-ink-muted-64">
+        <Loader2 className="size-4 animate-spin text-primary" aria-hidden="true" />
+        <span className="text-sm font-medium">Loading {label ? `${label} ` : ""}tasks…</span>
+      </div>
+      <div className="space-y-3">
+        {[1, 2, 3].map((i) => (
+          <div
+            key={i}
+            className="flex min-h-16 items-center gap-3.5 rounded-lg border border-hairline/60 bg-muted/20 px-4 py-3 animate-pulse"
+          >
+            <div className="size-5 rounded-full bg-muted/80" />
+            <div className="flex-1 space-y-2">
+              <div className="h-4 w-2/5 rounded bg-muted/80" />
+              <div className="h-3 w-1/4 rounded bg-muted/60" />
+            </div>
+            <div className="h-3 w-16 rounded bg-muted/60" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function CourseTasks({
   course,
   groups,
@@ -780,6 +876,9 @@ function CourseTasks({
   now,
   coursePath,
   onAdd,
+  isLoading,
+  pendingTargetView,
+  onSelectTaskView,
 }: {
   course: CourseListItem;
   groups: CourseTaskGroups<CourseDetailTask>;
@@ -791,6 +890,9 @@ function CourseTasks({
   now: Date;
   coursePath: string;
   onAdd: () => void;
+  isLoading?: boolean;
+  pendingTargetView?: CourseTaskView | null;
+  onSelectTaskView?: (view: CourseTaskView, href: string) => void;
 }) {
   const cardCounts = useMemo(
     () => ({
@@ -801,7 +903,7 @@ function CourseTasks({
     [groups],
   );
 
-  if (!hasTasks) {
+  if (!hasTasks && !isLoading) {
     return (
       <div className="space-y-6">
         <h2 className="font-display text-[32px] font-semibold leading-[1.07] tracking-[-0.28px] text-ink sm:text-[36px] lg:text-[44px]">
@@ -827,11 +929,13 @@ function CourseTasks({
     );
   }
 
-  const viewTitle = taskView === "all" ? "Tasks" :
-    taskView === "upcoming" ? "Upcoming correlated task" :
-    taskView === "overdue" ? "Overdue correlated task" : "Done correlated task";
+  const effectiveView = isLoading && pendingTargetView ? pendingTargetView : taskView;
 
-  if (taskView !== "all" && filteredTasks.length === 0) {
+  const viewTitle = effectiveView === "all" ? "Tasks" :
+    effectiveView === "upcoming" ? "Upcoming correlated task" :
+    effectiveView === "overdue" ? "Overdue correlated task" : "Done correlated task";
+
+  if (!isLoading && taskView !== "all" && filteredTasks.length === 0) {
     const config = {
       upcoming: {
         headline: "No upcoming tasks",
@@ -880,7 +984,7 @@ function CourseTasks({
   return (
     <div
       className={cn(
-        taskView === "all" ? "space-y-6 sm:space-y-8" : "space-y-5 sm:space-y-6",
+        effectiveView === "all" ? "space-y-6 sm:space-y-8" : "space-y-5 sm:space-y-6",
       )}
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -889,7 +993,7 @@ function CourseTasks({
             {viewTitle}
           </h2>
         </div>
-        {taskView !== "done" ? (
+        {effectiveView !== "done" ? (
           <Button
             type="button"
             onClick={onAdd}
@@ -903,13 +1007,18 @@ function CourseTasks({
       </div>
 
       <div className="space-y-6">
-        {taskView === "all" ? (
+        {effectiveView === "all" ? (
           <>
             <CourseTaskSummaryCards
               counts={cardCounts}
               coursePath={coursePath}
+              pendingTargetView={pendingTargetView}
+              isNavigating={isLoading}
+              onSelectTaskView={onSelectTaskView}
             />
-            {filteredTasks.length === 0 ? (
+            {isLoading ? (
+              <CourseTasksLoadingSkeleton taskView={pendingTargetView ?? "all"} />
+            ) : filteredTasks.length === 0 ? (
               <p className="py-8 text-center text-[15px] text-ink-muted-48">
                 No tasks yet.
               </p>
@@ -925,6 +1034,8 @@ function CourseTasks({
               />
             )}
           </>
+        ) : isLoading ? (
+          <CourseTasksLoadingSkeleton taskView={pendingTargetView ?? taskView} />
         ) : (
           <CourseTaskGroup
             title={viewTitle}
@@ -939,13 +1050,13 @@ function CourseTasks({
         )}
       </div>
 
-      {taskView === "all" ? (
+      {!isLoading && effectiveView === "all" ? (
         <p className="pb-2 text-center text-sm text-ink-muted-48">
           That&apos;s all for now.
         </p>
       ) : null}
 
-      {taskView !== "done" ? (
+      {effectiveView !== "done" ? (
         <Button
           type="button"
           onClick={onAdd}
@@ -960,6 +1071,10 @@ function CourseTasks({
 }
 
 export function CourseDetail({ course, tasks, timeZone, timeFormat, taskView, nowIso }: CourseDetailProps) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [pendingTargetView, setPendingTargetView] = useState<CourseTaskView | null>(null);
+
   const now = useNow(60_000, nowIso);
   const [view, setView] = useState<CourseView>("task");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -967,11 +1082,26 @@ export function CourseDetail({ course, tasks, timeZone, timeFormat, taskView, no
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
+  useEffect(() => {
+    if (!isPending) {
+      setPendingTargetView(null);
+    }
+  }, [isPending]);
+
   const groups = useMemo(() => groupCourseTasks(tasks, now), [tasks, now]);
   const fillColor = getCourseColorFill(course.color);
   const coursePath = `/courses/${course.id}`;
   const openAdd = () => setAddOpen(true);
   const closeSidebar = () => setSidebarOpen(false);
+
+  const handleSelectTaskView = (targetView: CourseTaskView, targetUrl: string) => {
+    if (targetView === taskView && view === "task") return;
+    setPendingTargetView(targetView);
+    setView("task");
+    startTransition(() => {
+      router.push(targetUrl);
+    });
+  };
 
   const filteredTasks = useMemo(() => {
     if (taskView === "all") return tasks;
@@ -1006,8 +1136,11 @@ export function CourseDetail({ course, tasks, timeZone, timeFormat, taskView, no
           <CourseSidebarNav
             view={view}
             taskView={taskView}
+            pendingTargetView={pendingTargetView}
+            isNavigating={isPending}
             coursePath={coursePath}
             onChange={setView}
+            onSelectTaskView={handleSelectTaskView}
             onDelete={() => setDeleteOpen(true)}
           />
         </div>
@@ -1025,6 +1158,9 @@ export function CourseDetail({ course, tasks, timeZone, timeFormat, taskView, no
               now={now}
               coursePath={coursePath}
               onAdd={openAdd}
+              isLoading={isPending}
+              pendingTargetView={pendingTargetView}
+              onSelectTaskView={handleSelectTaskView}
             />
           ) : (
             <CourseAbout
@@ -1077,8 +1213,11 @@ export function CourseDetail({ course, tasks, timeZone, timeFormat, taskView, no
           <CourseSidebarNav
             view={view}
             taskView={taskView}
+            pendingTargetView={pendingTargetView}
+            isNavigating={isPending}
             coursePath={coursePath}
             onChange={setView}
+            onSelectTaskView={handleSelectTaskView}
             onNavigate={closeSidebar}
             onDelete={() => {
               setDeleteOpen(true);

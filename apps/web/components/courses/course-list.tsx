@@ -17,6 +17,7 @@ import {
   dialogPrimaryActionClassName,
   dialogSecondaryActionClassName,
 } from "@/components/ui/dialog";
+import { LoadingDialog } from "@/components/ui/loading-dialog";
 import {
   findCourseColorOption,
   getCourseCardPresentation,
@@ -353,48 +354,55 @@ function DeleteCourseDialog({
   }, [pending, state.error, onOpenChange]);
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title="Delete course"
-      dismissible={!pending}
-    >
-      <div className="flex w-full flex-col">
-        <p className="text-[15px] leading-relaxed text-ink">
-          Are you sure you want to delete &ldquo;{course.name}&rdquo;?
-        </p>
-        <p className="pt-2 text-sm leading-relaxed text-ink-muted-48">
-          This will permanently remove the course from your list. You cannot
-          restore it from the Courses page.
-        </p>
-
-        {state.error ? (
-          <p className="pt-4 text-center text-sm text-destructive" role="alert">
-            {state.error}
+    <>
+      <LoadingDialog
+        open={pending}
+        title="Deleting course…"
+        description="Please wait a moment"
+      />
+      <Dialog
+        open={open}
+        onOpenChange={onOpenChange}
+        title="Delete course"
+        dismissible={!pending}
+      >
+        <div className="flex w-full flex-col">
+          <p className="text-[15px] leading-relaxed text-ink">
+            Are you sure you want to delete &ldquo;{course.name}&rdquo;?
           </p>
-        ) : null}
+          <p className="pt-2 text-sm leading-relaxed text-ink-muted-48">
+            This will permanently remove the course from your list. You cannot
+            restore it from the Courses page.
+          </p>
 
-        <form action={formAction} className={dialogActionsClassName}>
-          <input type="hidden" name="id" value={course.id} />
-          <Button
-            type="submit"
-            disabled={pending}
-            className={`${dialogPrimaryActionClassName} bg-destructive text-white hover:bg-destructive/90`}
-          >
-            {pending ? "Deleting…" : "Delete"}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={pending}
-            onClick={() => onOpenChange(false)}
-            className={dialogSecondaryActionClassName}
-          >
-            Cancel
-          </Button>
-        </form>
-      </div>
-    </Dialog>
+          {state.error ? (
+            <p className="pt-4 text-center text-sm text-destructive" role="alert">
+              {state.error}
+            </p>
+          ) : null}
+
+          <form action={formAction} className={dialogActionsClassName}>
+            <input type="hidden" name="id" value={course.id} />
+            <Button
+              type="submit"
+              disabled={pending}
+              className={`${dialogPrimaryActionClassName} bg-destructive text-white hover:bg-destructive/90`}
+            >
+              {pending ? "Deleting…" : "Delete"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={pending}
+              onClick={() => onOpenChange(false)}
+              className={dialogSecondaryActionClassName}
+            >
+              Cancel
+            </Button>
+          </form>
+        </div>
+      </Dialog>
+    </>
   );
 }
 

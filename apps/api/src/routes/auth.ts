@@ -143,7 +143,33 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
           method: "password",
           request,
         });
+        const msg = (error.message || "").toLowerCase();
+        const code = (error as { code?: string }).code;
+        if (
+          code === "user_already_exists" ||
+          code === "email_exists" ||
+          msg.includes("already registered") ||
+          msg.includes("already in use") ||
+          msg.includes("already exists") ||
+          msg.includes("user already")
+        ) {
+          throw ApiError.conflict(AUTH_ERRORS.accountAlreadyExists);
+        }
         throw ApiError.validation(AUTH_ERRORS.registrationFailed);
+      }
+
+      if (
+        data.user &&
+        Array.isArray(data.user.identities) &&
+        data.user.identities.length === 0
+      ) {
+        await recordAuthEvent({
+          event: "register.failure",
+          result: "failure",
+          method: "password",
+          request,
+        });
+        throw ApiError.conflict(AUTH_ERRORS.accountAlreadyExists);
       }
 
       if (data.session && data.user) {
@@ -220,7 +246,7 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
           description:
             "200 with a session when email confirmation is off; 202 " +
             "when a confirmation email was sent.",
-          errors: [400, 429],
+          errors: [400, 409, 429],
           extraResponses: {
             202: {
               description: "Confirmation email sent; no session yet.",
