@@ -73,7 +73,11 @@ describe("RF-14 — GET /health/cron", () => {
   });
 
   test("freshness boundary: started exactly 2× interval ago is still healthy", async () => {
-    selectQueue = [[reminderRun({ status: "ok", startedAgoMs: 2 * HOUR, finished: true })]];
+    // 1s inside the edge, not exactly on it: the route compares wall-clock
+    // ms (`Date.now() - startedAt <= 2 * interval`), so an exact-edge
+    // fixture races the milliseconds between fixture creation and the probe
+    // and flakes 503 under load.
+    selectQueue = [[reminderRun({ status: "ok", startedAgoMs: 2 * HOUR - 1000, finished: true })]];
     const { status } = await probe();
     expect(status).toBe(200);
   });
