@@ -77,41 +77,6 @@ export function buildContentSecurityPolicy(
   return csp;
 }
 
-/**
- * Hash-based CSP for prerendered-static pages (perf plan, Fase C).
- *
- * Same policy shape as the nonce variant, but the per-request nonce is
- * replaced by the SHA-256 hashes of the page's own inline blocks (derived
- * at build time by `scripts/build-csp-hashes.ts`). Hashes are as strong as
- * nonces for byte-identical content — which is exactly what a prerendered
- * page is — and unlike a nonce they do not force dynamic rendering, so the
- * page stays static and edge-cacheable.
- *
- * `strict-dynamic` is kept: the hashed bootstrap is the trust root and the
- * chunks it loads inherit trust; legacy browsers fall back to `'self'`,
- * which still covers the external `/_next/static` chunks.
- */
-export function buildStaticContentSecurityPolicy(
-  scriptHashes: string[],
-  styleHashes: string[],
-  isDev: boolean,
-): string {
-  const csp = [
-    "default-src 'self'",
-    `script-src 'self'${scriptHashes.length > 0 ? ` ${scriptHashes.join(" ")}` : ""} 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
-    `style-src 'self'${styleHashes.length > 0 ? ` ${styleHashes.join(" ")}` : ""}`,
-    "img-src 'self' blob: data:",
-    "font-src 'self'",
-    "connect-src 'self' https://*.sentry.io",
-    "object-src 'none'",
-    "base-uri 'self'",
-    "form-action 'self'",
-    "frame-ancestors 'none'",
-    "upgrade-insecure-requests",
-  ].join("; ");
-  return csp;
-}
-
 export function buildSecurityHeaders(
   options: SecurityHeaderOptions,
 ): Record<string, string> {

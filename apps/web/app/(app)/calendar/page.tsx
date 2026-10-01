@@ -17,11 +17,11 @@ type CalendarPageProps = {
 };
 
 export default async function CalendarPage({ searchParams }: CalendarPageProps) {
-  // searchParams + bootstrap are independent — resolve together. The month
+  // searchParams + session are independent — resolve together. The month
   // range fetch below still needs the timezone, so it follows.
-  const [{ month: monthParam }, { user }] = await Promise.all([
+  const [{ month: monthParam }, user] = await Promise.all([
     searchParams,
-    requireBootstrap(),
+    requireSession(),
   ]);
   const timeZone = user.timezone;
   const month = parseMonthParam(monthParam, timeZone);

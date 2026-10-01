@@ -202,10 +202,6 @@ export function LoginForm() {
   const searchParams = useSearchParams();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | undefined>();
-  // Correlation id for bug reports ("gak jelas" class): the API echoes
-  // requestId on every error envelope; surfacing it lets a report pin the
-  // exact server log line instead of a vague description.
-  const [errorRef, setErrorRef] = useState<string | undefined>();
   const [fieldErrors, setFieldErrors] = useState<
     Partial<Record<string, string[]>>
   >({});
@@ -239,7 +235,6 @@ export function LoginForm() {
 
     setClientErrors({});
     setError(undefined);
-    setErrorRef(undefined);
     setFieldErrors({});
     setPending(true);
 
@@ -272,7 +267,6 @@ export function LoginForm() {
     if (result.error) {
       setPending(false);
       setError(result.error);
-      setErrorRef(result.requestId);
       setFieldErrors(result.fieldErrors ?? {});
       return;
     }
@@ -352,10 +346,6 @@ export function RegisterForm() {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | undefined>();
-  const [errorRef, setErrorRef] = useState<string | undefined>();
-  // 202 confirmation message is NOT an error: neutral success styling with
-  // role=status (was: red error styling, which read as "register gagal").
-  const [notice, setNotice] = useState<string | undefined>();
   const [fieldErrors, setFieldErrors] = useState<
     Partial<Record<string, string[]>>
   >({});
@@ -387,8 +377,6 @@ export function RegisterForm() {
 
     setClientErrors({});
     setError(undefined);
-    setErrorRef(undefined);
-    setNotice(undefined);
     setFieldErrors({});
     setPending(true);
 
@@ -421,7 +409,6 @@ export function RegisterForm() {
     if (result.error) {
       setPending(false);
       setError(result.error);
-      setErrorRef(result.requestId);
       setFieldErrors(result.fieldErrors ?? {});
       return;
     }
