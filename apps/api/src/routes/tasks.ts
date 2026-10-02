@@ -91,21 +91,28 @@ function assertFreshUpdatedAt(
 /** Standard default offsets — those may exist even when already past (kept but skipped, DOMAIN.md §4). */
 const DEFAULT_REMINDER_OFFSETS = [7, 3, 1, 0];
 
+/** I-07: fetch the loop-invariant profile timezone once per request, outside
+ * the write tx (shorter hold, no extra pool connection mid-transaction). */
+async function resolveTaskTimezone(userId: string): Promise<string | null> {
+  const [profile] = await getDb()
+    .select({ timezone: profiles.timezone })
+    .from(profiles)
+    .where(eq(profiles.id, userId))
+    .limit(1);
+  return profile?.timezone ?? null;
+}
+
 /** Reject non-default thresholds whose trigger instant is already in the past (DOMAIN.md §4). */
 async function assertThresholdNotInPast(
   task: { userId: string; deadline: Date },
   daysBefore: number,
+  timezone: string | null,
 ): Promise<void> {
   if (DEFAULT_REMINDER_OFFSETS.includes(daysBefore)) return;
-  const [profile] = await getDb()
-    .select({ timezone: profiles.timezone })
-    .from(profiles)
-    .where(eq(profiles.id, task.userId))
-    .limit(1);
   const trigger = thresholdTriggerAt(
     task.deadline.toISOString(),
     daysBefore,
-    profile?.timezone ?? "UTC",
+    timezone ?? "UTC",
   );
   if (Number.isNaN(trigger.getTime()) || Date.now() >= trigger.getTime()) {
     throw ApiError.validation("Reminder time has already passed", [
@@ -621,13 +628,19 @@ export const taskRoutes = new Elysia({ prefix: "/api/v1/tasks" })
       const taskId = params.id;
       const daysBefore = parsed.data.days_before;
 
+      // I-07: loop-invariant profile read once, outside the write tx.
+      // Default offsets skip the lookup entirely (unchanged behavior).
+      const timezone = DEFAULT_REMINDER_OFFSETS.includes(daysBefore)
+        ? null
+        : await resolveTaskTimezone(ctx.subject.id);
+
       let response: { threshold: ReturnType<typeof serializeThreshold> };
       try {
         // Check + guard + count + insert in one transaction (P2-3).
         response = await withUserRls(ctx.subject.id, async (tx) => {
           const task = await ownedTaskInTx(tx, ctx.subject.id, taskId);
           if (!task) throw ApiError.notFound("Task not found");
-          await assertThresholdNotInPast(task, daysBefore);
+          await assertThresholdNotInPast(task, daysBefore, timezone);
           // SEC-003: bound thresholds per task (each due threshold is an email).
           const [thresholdQuota] = await tx
             .select({ value: count() })
@@ -722,6 +735,15 @@ export const taskRoutes = new Elysia({ prefix: "/api/v1/tasks" })
         );
       }
 
+      // I-07: loop-invariant profile read once, outside the write tx —
+      // N thresholds share one query instead of N. All-default payloads
+      // skip the lookup entirely (unchanged behavior).
+      const timezone = parsed.data.thresholds.some(
+        (item) => !DEFAULT_REMINDER_OFFSETS.includes(item.days_before),
+      )
+        ? await resolveTaskTimezone(ctx.subject.id)
+        : null;
+
       // Check + replace-all in ONE withUserRls transaction (P2-3): previously
       // an ownedTask check tx followed by a separate db.transaction.
       const result = await withUserRls(ctx.subject.id, async (tx) => {
@@ -729,7 +751,7 @@ export const taskRoutes = new Elysia({ prefix: "/api/v1/tasks" })
         if (!task) throw ApiError.notFound("Task not found");
 
         for (const item of parsed.data.thresholds) {
-          await assertThresholdNotInPast(task, item.days_before);
+          await assertThresholdNotInPast(task, item.days_before, timezone);
         }
 
         const desiredOffsets = parsed.data.thresholds.map((t) => t.days_before);
@@ -836,11 +858,19 @@ export const taskRoutes = new Elysia({ prefix: "/api/v1/tasks" })
           parsed.error.flatten().fieldErrors,
         );
       }
+      // I-07: loop-invariant profile read once, outside the write tx.
+      // Default offsets skip the lookup entirely (unchanged behavior).
+      const timezone = DEFAULT_REMINDER_OFFSETS.includes(
+        parsed.data.days_before,
+      )
+        ? null
+        : await resolveTaskTimezone(ctx.subject.id);
+
       // Check + mutate in one transaction (P2-3).
       return withUserRls(ctx.subject.id, async (tx) => {
         const task = await ownedTaskInTx(tx, ctx.subject.id, params.id);
         if (!task) throw ApiError.notFound("Task not found");
-        await assertThresholdNotInPast(task, parsed.data.days_before);
+        await assertThresholdNotInPast(task, parsed.data.days_before, timezone);
         try {
           const [row] = await tx
             .update(reminderThresholds)
