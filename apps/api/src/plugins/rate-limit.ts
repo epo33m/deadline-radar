@@ -115,9 +115,23 @@ export const redisRateLimitStore: RateLimitStore = {
         );
       }
     }
+    // Real window end when the server can tell us; a fresh incr fallback
+    // would fabricate a full window on every hit near the boundary.
+    let resetAt = now + windowMs;
+    if (typeof redis.pttl === "function") {
+      try {
+        const ttl = await withRedisTimeout(redis.pttl(redisKey));
+        if (typeof ttl === "number" && ttl > 0) resetAt = now + ttl;
+      } catch (error) {
+        console.warn(
+          "[redis] pttl failed",
+          error instanceof Error ? error.message : "unknown",
+        );
+      }
+    }
     return {
       remaining: Math.max(0, max - count),
-      resetAt: now + windowMs,
+      resetAt,
       limited: count > max,
     };
   },
@@ -179,6 +193,9 @@ export const rateLimitPlugin = new Elysia({ name: "rate-limit" })
         normalizeRequestId(extractClientRequestId(request));
       set.status = 429;
       set.headers["X-Request-Id"] = rid;
+      set.headers["Retry-After"] = String(
+        Math.max(1, Math.ceil((resetAt - Date.now()) / 1000)),
+      );
       return toErrorBody(ApiError.rateLimited(), rid);
     }
   },

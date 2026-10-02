@@ -219,13 +219,10 @@ describe("finding #10 — openapi coverage", () => {
       ["post", "/api/v1/attachments/link"],
       ["post", "/api/v1/attachments/file"],
       ["post", "/api/v1/admin/roles/assign"],
+      ["post", "/api/v1/admin/roles/revoke"],
     ] as Array<[string, string]>) {
       expect(headerParams(method, path)).toContain("Idempotency-Key");
     }
-    // Endpoints without idempotency support must not claim it.
-    expect(headerParams("post", "/api/v1/admin/roles/revoke")).not.toContain(
-      "Idempotency-Key",
-    );
     // Rate-limit headers on throttled responses.
     const login = op(spec, "post", "/api/v1/auth/login");
     const responses = login["responses"] as Record<

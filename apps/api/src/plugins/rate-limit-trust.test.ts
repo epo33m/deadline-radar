@@ -116,6 +116,22 @@ describe("finding #9 — rate-limit trust", () => {
     expect(lastStatus).toBe(429);
   });
 
+  test("A2. global 429 carries a sane Retry-After header", async () => {
+    delete process.env.TRUST_PROXY;
+    let last: Response | null = null;
+    for (let i = 0; i < 21; i += 1) {
+      last = await forgotAttempt(
+        { "x-forwarded-for": "9.9.9.7" },
+        `ra${i}@example.com`,
+      );
+    }
+    expect(last!.status).toBe(429);
+    const retryAfter = Number(last!.headers.get("Retry-After"));
+    expect(Number.isFinite(retryAfter)).toBe(true);
+    expect(retryAfter).toBeGreaterThanOrEqual(1);
+    expect(retryAfter).toBeLessThanOrEqual(60);
+  });
+
   test("C. rotating IPs does not escape the account login throttle", async () => {
     const statuses: number[] = [];
     for (let i = 0; i < 10; i += 1) {
