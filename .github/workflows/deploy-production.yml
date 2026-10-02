@@ -1,8 +1,8 @@
 name: Production Migration & Deploy
 
 # Production is released ONLY from main, and ONLY with human approval.
-# Nothing on dev/feature branches can trigger this workflow, and no other
-# workflow reads production secrets — that is what keeps dev fully
+# Nothing on feature branches can trigger this workflow, and no other
+# workflow reads production secrets — that is what keeps daily work fully
 # disconnected from production.
 #
 # Required repo setup (Settings → Environments → Production):

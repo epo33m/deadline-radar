@@ -1,10 +1,10 @@
-name: CI (dev)
+name: CI (feature)
 
 # Fast feedback for fixes & improvements. Runs on every branch EXCEPT main,
-# so work on dev/feature branches never touches production gates or secrets.
-# Uses no database and no secrets — lint, typecheck, unit tests, build only.
-# The full gate (migrations + SQL regression + drift) runs in ci-main.yml
-# when opening a PR toward main.
+# so work on short-lived feature branches never touches production gates or
+# secrets. Uses no database and no secrets — lint, typecheck, unit tests,
+# build only. The full gate (migrations + SQL regression + drift) runs in
+# ci-main.yml when opening a PR toward main.
 
 on:
   push:

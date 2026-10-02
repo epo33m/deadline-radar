@@ -1,59 +1,62 @@
 # Branching & CI/CD — Deadline Radar
 
-> Sumber kebenaran untuk alur branch, CI, dan deploy. Terakhir diverifikasi
-> 2026-09-30 via Vercel CLI + GitHub API.
+> Sumber kebenaran untuk alur branch, CI, dan deploy. Migrasi ke trunk-based
+> 2026-10-02: branch `dev` dihapus, default branch kini `main`.
 
 ## Branch
 
 | Branch | Peran | Default |
 |---|---|---|
-| `feature/*`, `fix/*`, `improvement/*` | Kerja harian: perbaikan & improvement | — |
-| `dev` | Integrasi. Semua PR fitur mengarah ke sini | ✅ default branch (origin/HEAD) |
-| `main` | Produksi/live. Hanya menerima PR dari `dev` + commit ops | — |
+| `feature/*`, `fix/*`, `improvement/*` | Kerja harian: branch pendek (1–2 hari max), 1 branch = 1 issue | — |
+| `main` | Trunk + produksi/live. Satu-satunya branch abadi | ✅ default branch (origin/HEAD) |
 
-**`dev` tidak punya hubungan deploy ke production.** Pemisahnya bersifat
-teknis, bukan sekadar konvensi (lihat bawah).
+Tidak ada branch integrasi. Setiap PR menarget `main` langsung.
 
 ## Alur
 
 ```
-feature/* ──PR──▶ dev ──PR──▶ main ──▶ production
-              ▲           ▲
-         CI ringan   CI penuh (gate)
-         staging DB  Production
-         otomatis    (approval)
+feature/* ──PR──▶ main ──▶ production
+               ▲
+          ci-main (gate penuh, required check)
+          staging termigrasi saat PR (verifikasi pre-merge)
+          Production (approval)
 ```
 
 Tidak ada Vercel Preview. Deployment non-`main` dimatikan di repo
 (`apps/web/vercel.json`), jadi satu-satunya deployment Vercel adalah
 production dari `main`.
 
-1. Kerja di branch fitur, buka PR ke `dev`. `ci-dev` (lint, typecheck,
+1. Mulai dari fresh: `git checkout main && git pull && git checkout -b fix/<issue>-<nama>`.
+   Sync tiap hari di dalam branch (`git fetch origin && git rebase origin/main`)
+   agar conflict dicicil kecil, bukan meledak pas merge.
+2. Buka PR ke `main`. `CI (feature)` (lint, typecheck,
    test, build — tanpa database, tanpa secrets) harus hijau.
    `packages/db` memisah suitnya: `test` (unit bebas-DB, termasuk
-   meta-test pengunci split) jalan di ci-dev; `test:db` (guard
+   meta-test pengunci split) jalan di CI feature; `test:db` (guard
    live-database) hanya jalan di ci-main setelah migrasi (#69).
-2. Merge ke `dev` → otomatis: migrasi database **staging**
-   (`deploy-staging.yml`) saja. Verifikasi di staging. Tidak ada Vercel
-   Preview — lihat "Project Vercel" di bawah.
-3. Buka PR `dev` → `main`. `ci-main` (gate penuh: fresh-DB migration,
+3. `deploy-staging.yml` jalan otomatis tiap PR ke `main` (dan tiap push
+   `main`, idempoten): migrasi database **staging** agar perubahan bisa
+   diverifikasi **sebelum** merge. Tidak ada Vercel Preview — lihat
+   "Project Vercel" di bawah.
+4. `ci-main` (gate penuh: fresh-DB migration,
    11 file regresi SQL, drift, lint, typecheck, test, build) harus hijau.
-4. Merge ke `main` → `deploy-production.yml` (perlu approval pemilik) +
+5. Merge ke `main` → `deploy-production.yml` (perlu approval pemilik) +
    Vercel **Production** deployment. Lanjut checklist manual
    `docs/PROD_ENV_CHECKLIST.md` + `supabase/verify-prod.sql`.
+6. Hapus head branch setelah merge. Tag tiap beta (`v0.1.0-beta.N`).
 
-## Pemisahan dev vs production
+## Pemisahan fitur vs production
 
-| Aspek | dev / feature | main / production |
+| Aspek | feature branch | main / production |
 |---|---|---|
-| CI | `ci-dev.yml` (ringan) | `ci-main.yml` (gate penuh, required check) |
+| CI | `ci-dev.yml` ("CI (feature)", ringan) | `ci-main.yml` (gate penuh, required check) |
 | Vercel | tidak ada deployment (`git.deploymentEnabled` = false) | Production deployment dari `deadline-radar-web` saja |
-| DB deploy | staging otomatis tiap push `dev` | production hanya dari `main` + approval |
+| DB deploy | staging otomatis tiap PR ke `main` | production hanya dari `main` + approval |
 | Secrets | staging (`STAGING_DATABASE_URL`) | production (`PRODUCTION_DATABASE_URL`, hanya dibaca `deploy-production.yml`) |
 | E2E Playwright | manual vs staging | manual pre-release |
 
-Tidak ada workflow yang trigger dari branch dev/fitur dan membaca secret
-production — itu yang membuat dev terputus total dari production.
+Tidak ada workflow yang trigger dari branch fitur dan membaca secret
+production — itu yang membuat kerja harian terputus total dari production.
 
 ## Project Vercel
 
@@ -73,7 +76,9 @@ Hanya satu project Vercel yang dipakai:
   semua deployment gagal. Build command di sini sama persis dengan script
   `build` di `apps/web/package.json`; `apps/web/vercel.test.ts` mengunci
   keduanya agar tidak melenceng.
-- `git.deploymentEnabled` — `main` saja yang deploy. Vercel tidak bisa
+- `git.deploymentEnabled` — `main` saja yang deploy (`dev: false`
+  dipertahankan eksplisit agar nama itu tidak pernah bisa deploy kalau
+  dibuat ulang). Vercel tidak bisa
   mematikan komentar bot per-branch, jadi deployment non-`main` dimatikan di
   sumbernya. Kalau `main` terhapus dari sini, merge tetap hijau tetapi
   production tidak pernah ter-deploy — itu sebabnya ada `vercel.test.ts`.
@@ -94,15 +99,16 @@ build dan komentarnya, dan menghapus project tidak bisa dibatalkan.
 ## Setup manual yang belum bisa otomatis (GitHub Settings)
 
 Repo ini private tanpa Pro, jadi langkah berikut dikerjakan manusia sekali
-saja di Settings → Branches / Environments. Status per 2026-09-29:
+saja di Settings → Branches / Environments. Status per 2026-10-02
+(pasca-migrasi trunk-based):
 
 - [x] Environment `staging`: sudah dibuat via API.
 - [x] Environment `Production` → deployment branches = `main` saja: sudah
   diset via API (custom branch policy `main`).
+- [x] Default branch = `main` (dulu `dev`; `dev` dihapus 2026-10-02).
 - [ ] Protection `main`: require PR, require `ci-main` hijau, 1 review,
   block force-push — butuh Pro / repo public, hanya bisa diklik manual
   (API mengembalikan 403).
-- [ ] Protection `dev`: require PR + `ci-dev` hijau — sama, manual.
 - [ ] Environment `Production` → required reviewer = pemilik — butuh
   plan berbayar (API: 422 billing plan), hanya bisa diklik manual; tanpa
   ini, approval prod mengandalkan proteksi branch `main` + review PR.
