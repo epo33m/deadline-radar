@@ -116,6 +116,8 @@ type Store = {
   failRunRecordAlways: boolean;
   failNextSelectOnce: boolean;
   failRecheckOnce: boolean;
+  /** I-01: fail the next F-10 sweep-claim update once (row-level DB error). */
+  failSweepClaimOnce: boolean;
   /** RF-01: count of task BATCH-fetch selects so far (live recheck excluded). */
   taskBatchFetchCount: number;
   /** RF-01: fail the Nth task batch-fetch once (1-based). */
@@ -152,6 +154,7 @@ function resetStore(): void {
     failRunRecordAlways: false,
     failNextSelectOnce: false,
     failRecheckOnce: false,
+    failSweepClaimOnce: false,
     taskBatchFetchCount: 0,
     failTaskBatchFetchNumber: null,
     completeTaskBeforeSendOnce: false,
@@ -545,6 +548,10 @@ function doUpdateReturning(set: Record<string, unknown>): { id: string }[] {
   if (set.status === "sending") {
     // F-10 atomic sweep claim: first committer wins; a stale lease (crashed
     // claimant) is reclaimable, a fresh one belongs to a live run.
+    if (store.failSweepClaimOnce) {
+      store.failSweepClaimOnce = false;
+      throw new Error("fake db: sweep claim failed");
+    }
     const row = store.deliveries.find(
       (d) =>
         d.status === "pending" ||
@@ -1204,6 +1211,100 @@ describe("state-write failure containment", () => {
     expect(store.deliveries.find((d) => d.channel === "email")?.status).toBe(
       "pending",
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// I-01: row-level cron failures contained; 200 {ok:true} contract
+// ---------------------------------------------------------------------------
+
+describe("I-01: row-level failure containment", () => {
+  const USER_B = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+  const TASK_B = "11111111-1111-4111-8111-111111111111";
+  const THRESHOLD_B = "22222222-2222-4222-8222-222222222222";
+
+  function seedSecondTaskWithStuckPending(): void {
+    const now = Date.now();
+    store.taskRows.push({
+      id: TASK_B,
+      userId: USER_B,
+      status: "todo",
+      deadline: new Date(now + 86_400_000 - 60_000),
+      createdAt: new Date(now - 10 * 86_400_000),
+      title: "Task B",
+    });
+    store.thresholdRows.push({
+      id: THRESHOLD_B,
+      taskId: TASK_B,
+      daysBefore: 1,
+      createdAt: new Date(now - 10 * 86_400_000),
+    });
+    store.profileRows.push({
+      id: USER_B,
+      email: "b@example.com",
+      timezone: "UTC",
+    });
+    store.deliveries.push({
+      id: "dlv-stuck-b",
+      taskId: TASK_B,
+      thresholdId: THRESHOLD_B,
+      daysBefore: 1,
+      channel: "email",
+      status: "pending",
+      retryCount: 0,
+      sentAt: null,
+    });
+  }
+
+  test("sweep-claim DB throw is contained: rest of batch completes, ledger records error", async () => {
+    seedOpenTaskWithThreshold();
+    seedSecondTaskWithStuckPending();
+    store.failSweepClaimOnce = true;
+
+    const result = await runEvaluateReminders(new Date(Date.now() + 86_400_000));
+
+    // No throw: task A's fresh send completed while B's sweep claim failed.
+    expect(result.emailsSent).toBe(1);
+    expect(sendCalls).toHaveLength(1);
+    expect(result.emailsFailed).toBe(1);
+    expect(result.rowErrors).toBe(1);
+    // The failed row is never marked failed by the containment path (it stays
+    // pending/sending for the next run). Note: the fake's markSent resolves to
+    // the first actionable row, so no per-row status is asserted here — the
+    // counts above plus the ledger below are the contract.
+    expect(
+      store.deliveries.find((d) => d.id === "dlv-stuck-b")?.status,
+    ).not.toBe("failed");
+    // Ledger records error status — a partial run is never silently "ok".
+    expect(store.runs).toHaveLength(1);
+    expect(store.runs[0]!.status).toBe("error");
+    expect(store.runs[0]!.error).toMatch(/row-level/);
+  });
+
+  test("taxonomy: row-error continues the run, infra-error aborts with ledger error", async () => {
+    // Row half: a sweep-claim throw resolves (contained) with rowErrors set.
+    seedOpenTaskWithThreshold();
+    seedPendingDelivery();
+    store.failSweepClaimOnce = true;
+    const partial = await runEvaluateReminders(
+      new Date(Date.now() + 86_400_000),
+    );
+    expect(partial.rowErrors).toBe(1);
+    expect(partial.emailsSent).toBe(0);
+    expect(store.runs[0]!.status).toBe("error");
+
+    // Infra half: a batch-select failure still aborts fail-fast with a
+    // ledger error (and rethrows — the route converts it to 200, covered in
+    // cron-blackout.test.ts).
+    resetStore();
+    sendCalls = [];
+    seedOpenTaskWithThreshold();
+    store.failNextSelectOnce = true;
+    await expect(
+      runEvaluateReminders(new Date(Date.now() + 86_400_000)),
+    ).rejects.toThrow("fake db: batch select failed");
+    expect(store.runs).toHaveLength(1);
+    expect(store.runs[store.runs.length - 1]!.status).toBe("error");
   });
 });
 

@@ -105,6 +105,13 @@ export type EvaluateRemindersResult = {
   emailsPoisoned: number;
   /** Due emails skipped by the per-user per-run cap; stay pending. */
   emailsSkippedQuota: number;
+  /**
+   * I-01: contained row-level DB-operation failures (a single delivery's
+   * claim/write throwing). Each is counted and the batch continues; the
+   * ledger records an error status so partial runs are never silently "ok".
+   * Provider send failures are NOT counted here (they stay in emailsFailed).
+   */
+  rowErrors: number;
   /** F-04 run-ledger id, or null when the record write itself failed. */
   runId: string | null;
   /**
@@ -221,6 +228,7 @@ export async function runEvaluateReminders(
             emailsFailed: 0,
             emailsPoisoned: 0,
             emailsSkippedQuota: 0,
+            rowErrors: 0,
             runId: null,
             skipped: true,
             truncated: false,
@@ -252,6 +260,7 @@ export async function runEvaluateReminders(
       emailsFailed: 0,
       emailsPoisoned: 0,
       emailsSkippedQuota: 0,
+      rowErrors: 0,
       runId: null,
       skipped: false,
       truncated: false,
@@ -574,7 +583,29 @@ export async function runEvaluateReminders(
 
   // A mid-run throw still finalizes the ledger row (status error) before
   // propagating, so crashes are distinguishable from a dead scheduler.
+  // Only batch/infra-scope failures reach that path: per-delivery
+  // (row-level) DB failures are contained below via recordRowError and never
+  // throw, so one bad row cannot abort the rest of the batch (I-01).
   let runError: unknown = null;
+
+  // I-01 row/batch/infra taxonomy state. Row-level = one delivery's
+  // claim/write/cancel; contained (count-and-continue). Batch/infra =
+  // batch selects, multi-row inserts, lock/pool; fail-fast with ledger
+  // error (runError path above).
+  let rowErrors = 0;
+  let firstRowError: string | null = null;
+  function recordRowError(error: unknown, context: string): void {
+    rowErrors += 1;
+    const message =
+      error instanceof Error && error.message.length > 0
+        ? error.message
+        : "unknown";
+    if (firstRowError === null) firstRowError = message;
+    console.error(
+      `[reminders] row-level DB failure contained (${context})`,
+      message,
+    );
+  }
   try {
     while (true) {
       // RF-12: stop at the per-run bounds. Checked BEFORE the batch select,
@@ -835,21 +866,29 @@ export async function runEvaluateReminders(
       // preserves order so emailWork stays deterministic.
       const claimedRetries = await Promise.all(
         retryActions.map(async (action) => {
-          const [claimed] = await db
-            .update(notificationDeliveries)
-            .set({
-              status: "pending",
-              retryCount: action.retry_count + 1,
-            })
-            .where(
-              and(
-                eq(notificationDeliveries.id, action.delivery_id),
-                eq(notificationDeliveries.status, "failed"),
-                lt(notificationDeliveries.retryCount, MAX_EMAIL_DELIVERY_RETRIES),
-              ),
-            )
-            .returning({ id: notificationDeliveries.id });
-          return claimed ? action : null;
+          try {
+            const [claimed] = await db
+              .update(notificationDeliveries)
+              .set({
+                status: "pending",
+                retryCount: action.retry_count + 1,
+              })
+              .where(
+                and(
+                  eq(notificationDeliveries.id, action.delivery_id),
+                  eq(notificationDeliveries.status, "failed"),
+                  lt(notificationDeliveries.retryCount, MAX_EMAIL_DELIVERY_RETRIES),
+                ),
+              )
+              .returning({ id: notificationDeliveries.id });
+            return claimed ? action : null;
+          } catch (error) {
+            // I-01 row-level: one retry claim throwing skips that delivery
+            // this run (it stays failed for the next run) without aborting
+            // the batch.
+            recordRowError(error, "retry-claim");
+            return null;
+          }
         }),
       );
       for (const action of claimedRetries) {
@@ -989,15 +1028,23 @@ export async function runEvaluateReminders(
       }
 
       /** Drop a cancelled delivery so a later run can re-create it cleanly
-       * (a lingering `pending` row would suppress re-evaluation instead). */
-      async function cancelStaleDelivery(deliveryId: string): Promise<void> {
-        await db
-          .delete(notificationDeliveries)
-          .where(eq(notificationDeliveries.id, deliveryId));
-        console.log(
-          "[reminders] skipped send, task edited mid-run",
-          deliveryId,
-        );
+       * (a lingering `pending` row would suppress re-evaluation instead).
+       * Never throws (I-01 row-level): a failing delete leaves the row
+       * pending for the next run and the batch continues. */
+      async function cancelStaleDelivery(deliveryId: string): Promise<boolean> {
+        try {
+          await db
+            .delete(notificationDeliveries)
+            .where(eq(notificationDeliveries.id, deliveryId));
+          console.log(
+            "[reminders] skipped send, task edited mid-run",
+            deliveryId,
+          );
+          return true;
+        } catch (error) {
+          recordRowError(error, "cancel-stale");
+          return false;
+        }
       }
 
       // Send jobs run with bounded concurrency below. Everything order- or
@@ -1043,20 +1090,29 @@ export async function runEvaluateReminders(
           totalEmailsSkippedQuota += 1;
           continue;
         }
-        sendJobs.push(() =>
-          deliverEmail({
-            deliveryId: work.deliveryId,
-            to,
-            taskTitle: task.title,
-            daysBefore: work.daysBefore,
-            deadlineIso: task.deadline.toISOString(),
-            timeZone: profile?.timezone ?? "UTC",
-            emailSnapshot: deliveryById.get(work.deliveryId)?.emailSnapshot,
-            emailIdempotencyKey:
-              deliveryById.get(work.deliveryId)?.emailIdempotencyKey,
-            late: work.late,
-          }),
-        );
+        sendJobs.push(async () => {
+          try {
+            await deliverEmail({
+              deliveryId: work.deliveryId,
+              to,
+              taskTitle: task.title,
+              daysBefore: work.daysBefore,
+              deadlineIso: task.deadline.toISOString(),
+              timeZone: profile?.timezone ?? "UTC",
+              emailSnapshot: deliveryById.get(work.deliveryId)?.emailSnapshot,
+              emailIdempotencyKey:
+                deliveryById.get(work.deliveryId)?.emailIdempotencyKey,
+              late: work.late,
+            });
+          } catch (error) {
+            // I-01 row-level: deliverEmail contains its own send/write
+            // failures, so reaching here is unexpected — contain it anyway
+            // so one delivery can never abort the batch via mapWithLimit's
+            // Promise.all.
+            recordRowError(error, "send");
+            totalEmailsFailed += 1;
+          }
+        });
       }
 
       const queuedIds = new Set(emailWork.map((w) => w.deliveryId));
@@ -1102,39 +1158,49 @@ export async function runEvaluateReminders(
         // No row lock is held across the network call that follows. The claim
         // stays inside the job so it immediately precedes its send.
         sendJobs.push(async () => {
-          const [claimedSweep] = await db
-            .update(notificationDeliveries)
-            .set({ status: "sending", claimedAt: new Date() })
-            .where(
-              and(
-                eq(notificationDeliveries.id, row.id),
-                or(
-                  eq(notificationDeliveries.status, "pending"),
-                  and(
-                    eq(notificationDeliveries.status, "sending"),
-                    lt(
-                      notificationDeliveries.claimedAt,
-                      new Date(Date.now() - SENDING_CLAIM_STALE_MS),
+          try {
+            const [claimedSweep] = await db
+              .update(notificationDeliveries)
+              .set({ status: "sending", claimedAt: new Date() })
+              .where(
+                and(
+                  eq(notificationDeliveries.id, row.id),
+                  or(
+                    eq(notificationDeliveries.status, "pending"),
+                    and(
+                      eq(notificationDeliveries.status, "sending"),
+                      lt(
+                        notificationDeliveries.claimedAt,
+                        new Date(Date.now() - SENDING_CLAIM_STALE_MS),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            )
-            .returning({ id: notificationDeliveries.id });
-          if (!claimedSweep) return;
-          // No row lock is held across this network call: same-key concurrent
-          // sends dedup at the provider, and confirmation writes are contained.
-          await deliverEmail({
-            deliveryId: row.id,
-            to,
-            taskTitle: task.title,
-            daysBefore: row.daysBefore,
-            deadlineIso: task.deadline.toISOString(),
-            timeZone: profile?.timezone ?? "UTC",
-            failedRetryCount: (row.retryCount ?? 0) + 1,
-            emailSnapshot: row.emailSnapshot,
-            emailIdempotencyKey: row.emailIdempotencyKey,
-          });
+              )
+              .returning({ id: notificationDeliveries.id });
+            if (!claimedSweep) return;
+            // No row lock is held across this network call: same-key concurrent
+            // sends dedup at the provider, and confirmation writes are contained.
+            await deliverEmail({
+              deliveryId: row.id,
+              to,
+              taskTitle: task.title,
+              daysBefore: row.daysBefore,
+              deadlineIso: task.deadline.toISOString(),
+              timeZone: profile?.timezone ?? "UTC",
+              failedRetryCount: (row.retryCount ?? 0) + 1,
+              emailSnapshot: row.emailSnapshot,
+              emailIdempotencyKey: row.emailIdempotencyKey,
+            });
+          } catch (error) {
+            // I-01 row-level: a sweep-claim DB throw (or any unexpected send
+            // failure) is contained — the row stays pending/sending for the
+            // next run and the rest of the batch completes. F-10 exactly-once
+            // semantics are untouched: the claim still immediately precedes
+            // its send inside the job.
+            recordRowError(error, "sweep-claim");
+            totalEmailsFailed += 1;
+          }
         });
       }
 
@@ -1179,6 +1245,13 @@ export async function runEvaluateReminders(
     }
   }
 
+  // I-01: contained row errors still finalize the ledger as error (never
+  // silently "ok") but do NOT throw — the batch completed and the HTTP
+  // contract stays 200. Only batch/infra failures (runError) rethrow.
+  const rowErrorSummary =
+    rowErrors > 0
+      ? `${rowErrors} row-level DB failure${rowErrors === 1 ? "" : "s"} contained (first: ${firstRowError ?? "unknown"}) — rest of batch completed`
+      : null;
   const result: EvaluateRemindersResult = {
     evaluatedTasks: totalEvaluated,
     created: totalCreated,
@@ -1187,6 +1260,7 @@ export async function runEvaluateReminders(
     emailsFailed: totalEmailsFailed,
     emailsPoisoned: totalEmailsPoisoned,
     emailsSkippedQuota: totalEmailsSkippedQuota,
+    rowErrors,
     runId,
     truncated,
   };
@@ -1195,7 +1269,13 @@ export async function runEvaluateReminders(
       `[reminders] skipped ${invalidTaskSuppressed} more tasks with invalid timestamps`,
     );
   }
-  await finishRunRecord(runError ? "error" : "ok", result, runError ?? undefined);
+  await finishRunRecord(
+    runError || rowErrorSummary ? "error" : "ok",
+    result,
+    // finishRunRecord extracts Error.message: wrap the summary so the ledger
+    // carries the row-error context instead of "unknown".
+    runError ?? (rowErrorSummary ? new Error(rowErrorSummary) : undefined),
+  );
   if (runError) throw runError;
   return result;
 }
