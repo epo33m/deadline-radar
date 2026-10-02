@@ -2,9 +2,34 @@ import type { TimeFormat } from "@deadline-radar/validation";
 
 export type { TimeFormat } from "@deadline-radar/validation";
 
+/**
+ * One formatter per (locale, options) — creating `Intl.DateTimeFormat`
+ * per call/per row allocates heavily (F-11c). Keyed on the options shape;
+ * every call site uses fixed option literals, so the Map stays tiny.
+ */
+const formatterCache = new Map<string, Intl.DateTimeFormat>();
+
+function getFormatter(
+  locale: string,
+  options: Intl.DateTimeFormatOptions,
+): Intl.DateTimeFormat {
+  const key = `${locale}|${JSON.stringify(options)}`;
+  let formatter = formatterCache.get(key);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(locale, options);
+    formatterCache.set(key, formatter);
+  }
+  return formatter;
+}
+
+/** Test hook — number of cached formatters (should stay constant per options set). */
+export function formatterCacheSize(): number {
+  return formatterCache.size;
+}
+
 /** Wall-clock parts of an instant in a given IANA timezone. */
 function getZonedDateTimeParts(date: Date, timeZone: string) {
-  const formatter = new Intl.DateTimeFormat("en-US", {
+  const formatter = getFormatter("en-US", {
     timeZone,
     year: "numeric",
     month: "2-digit",
@@ -157,7 +182,7 @@ export function formatDeadline(
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
 
-  const parts = new Intl.DateTimeFormat("en-US", {
+  const parts = getFormatter("en-US", {
     timeZone,
     year: "numeric",
     month: "2-digit",
@@ -203,14 +228,14 @@ export function formatTime(
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
   if (timeFormat === "24h") {
-    return new Intl.DateTimeFormat(DEADLINE_DISPLAY_LOCALE, {
+    return getFormatter(DEADLINE_DISPLAY_LOCALE, {
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
       timeZone,
     }).format(date);
   }
-  return new Intl.DateTimeFormat(DEADLINE_DISPLAY_LOCALE, {
+  return getFormatter(DEADLINE_DISPLAY_LOCALE, {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
@@ -231,7 +256,7 @@ export function formatDeadlineTime(
 export function formatDeadlineDate(iso: string, timeZone = "UTC"): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
-  return new Intl.DateTimeFormat(DEADLINE_DISPLAY_LOCALE, {
+  return getFormatter(DEADLINE_DISPLAY_LOCALE, {
     month: "short",
     day: "numeric",
     timeZone,

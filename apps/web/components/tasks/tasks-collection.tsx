@@ -28,6 +28,7 @@ import {
 } from "@/lib/tasks/global-tasks";
 import { cn } from "@/lib/utils";
 import { useNow } from "@/lib/use-now";
+import { sortTasksAllView } from "@/lib/task-sort";
 import type { CourseListItem } from "@/types/course";
 import type { TaskListItem } from "@/types/task";
 
@@ -43,13 +44,6 @@ const STATUS_VIEWS: { id: TasksStatusView; label: string }[] = [
   { id: "late", label: "Overdue" },
   { id: "done", label: "Done" },
 ];
-
-/** Sort weight for the default All view — active tasks first, starting from todo. */
-const STATUS_ORDER: Record<TaskStatus, number> = {
-  todo: 0,
-  in_progress: 1,
-  done: 2,
-};
 
 /** Card badge — same labels/colors as StatusPicker in task detail. */
 const CARD_STATUS_META: Record<TaskStatus, { label: string; pillClass: string }> = {
@@ -261,20 +255,7 @@ export function TasksCollection({
   );
 
   /** Default "All" view: active first (todo → in progress → done), nearest deadline first. */
-  const allTasks = useMemo(
-    () =>
-      [...searchedTasks].sort((a, b) => {
-        const orderA = STATUS_ORDER[a.status] ?? 99;
-        const orderB = STATUS_ORDER[b.status] ?? 99;
-        if (orderA !== orderB) return orderA - orderB;
-        const aMs = new Date(a.deadline).getTime();
-        const bMs = new Date(b.deadline).getTime();
-        const aSafe = Number.isNaN(aMs) ? Number.POSITIVE_INFINITY : aMs;
-        const bSafe = Number.isNaN(bMs) ? Number.POSITIVE_INFINITY : bMs;
-        return aSafe - bSafe;
-      }),
-    [searchedTasks],
-  );
+  const allTasks = useMemo(() => sortTasksAllView(searchedTasks), [searchedTasks]);
 
   const filteredTasks =
     view === "all"

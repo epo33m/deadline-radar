@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Bell, CheckCheck, ChevronRight } from "lucide-react";
-import { useEffect, useActionState } from "react";
+import { useEffect, useActionState, useMemo } from "react";
 import type { TimeFormat } from "@deadline-radar/validation";
 
 import {
@@ -85,7 +85,10 @@ export function NotificationList({
   timeFormat?: TimeFormat;
 }) {
   const { syncFromList } = useNotifications();
-  const unreadCount = notifications.filter((n) => !n.read_at).length;
+  const unreadCount = useMemo(
+    () => notifications.filter((n) => !n.read_at).length,
+    [notifications],
+  );
 
   // The server already fetched this list; when it is complete the badge can
   // be aligned to ground truth at zero extra queries.
