@@ -8,6 +8,7 @@ import {
   generateIdempotencyKey,
   normalizeIdempotencyKey,
 } from "@/lib/api/idempotency";
+import { mapWithConcurrency } from "@/lib/concurrency";
 
 export type AttachmentActionState = {
   error?: string;
@@ -70,25 +71,33 @@ export async function addFileAttachment(
     generateIdempotencyKey();
 
   const notes = formData.get("notes");
-  for (let i = 0; i < pickedFiles.length; i++) {
-    const file = pickedFiles[i];
-    const fileKey = deriveFileIdempotencyKey(baseKey, i);
-
-    const body = new FormData();
-    body.set("task_id", taskId);
-    if (typeof notes === "string" && notes.trim()) body.set("notes", notes);
-    body.set("file", file);
-
-    const result = await apiJson("/api/v1/attachments/file", {
-      method: "POST",
-      headers: {
-        "Idempotency-Key": fileKey,
-      },
-      body,
-    });
-    if (result.error) {
-      return { error: result.error, fieldErrors: result.fieldErrors };
-    }
+  // Fan out with a hard bound — NEVER an unbounded Promise.all. The API
+  // side is per-file idempotent (deriveFileIdempotencyKey), so parallel
+  // retries with the same keys are safe (F-13). Stop-on-first-error is
+  // preserved: dispatching halts at the first failure; in-flight uploads
+  // settle, and that first error is returned.
+  const { results, failureIndex } = await mapWithConcurrency(
+    pickedFiles,
+    4,
+    async (file, i) => {
+      const fileKey = deriveFileIdempotencyKey(baseKey, i);
+      const body = new FormData();
+      body.set("task_id", taskId);
+      if (typeof notes === "string" && notes.trim()) body.set("notes", notes);
+      body.set("file", file);
+      return apiJson("/api/v1/attachments/file", {
+        method: "POST",
+        headers: {
+          "Idempotency-Key": fileKey,
+        },
+        body,
+      });
+    },
+    (result) => Boolean(result.error),
+  );
+  if (failureIndex !== undefined) {
+    const failed = results[failureIndex];
+    return { error: failed.error, fieldErrors: failed.fieldErrors };
   }
   revalidateTask(taskId);
   return {};

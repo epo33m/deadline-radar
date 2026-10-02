@@ -3,9 +3,28 @@ import {
   formatDeadline,
   formatDeadlineTime,
   formatTime,
+  formatterCacheSize,
   toDatetimeLocalValue,
   zonedWallToIso,
 } from "./datetime";
+
+describe("Intl formatter cache (F-11c)", () => {
+  test("repeated formatting of the same shape reuses cached formatters", () => {
+    formatTime("2026-09-15T14:30:00.000Z", "24h", "UTC");
+    const sizeAfterFirst = formatterCacheSize();
+    formatTime("2026-09-16T10:00:00.000Z", "24h", "UTC");
+    formatTime("2026-09-17T11:00:00.000Z", "24h", "UTC");
+    expect(formatterCacheSize()).toBe(sizeAfterFirst);
+  });
+
+  test("output is deterministic across repeated calls with the same shape", () => {
+    const iso = "2026-09-15T14:30:00.000Z";
+    expect(formatDeadline(iso, "Asia/Jakarta", "24h")).toBe(
+      formatDeadline(iso, "Asia/Jakarta", "24h"),
+    );
+    expect(formatTime(iso, "12h", "UTC")).toBe(formatTime(iso, "12h", "UTC"));
+  });
+});
 
 describe("toDatetimeLocalValue", () => {
   test("returns empty string for invalid input", () => {

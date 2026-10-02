@@ -18,6 +18,7 @@ import {
   type CalendarCell,
   type CalendarMonth,
   type CalendarTask,
+  EMPTY_TASKS,
 } from "@/lib/calendar/month";
 import { getCourseColorFill } from "@/lib/courses/colors";
 import { formatDeadlineTime } from "@/lib/datetime";
@@ -32,6 +33,8 @@ type CalendarMonthViewProps = {
   cells: CalendarCell[];
   tasksByDay: Map<string, CalendarTask[]>;
 };
+
+export { EMPTY_TASKS } from "@/lib/calendar/month";
 
 /**
  * Memoized: props are memo-stable across the 60s `useNow` tick (task object
@@ -252,7 +255,7 @@ export function CalendarMonthView({
       : (listedDays[0]?.dayKey ??
         cells.find((cell) => cell.inCurrentMonth)?.dayKey ??
         liveTodayKey));
-  const selectedTasks = tasksByDay.get(selectedKey) ?? [];
+  const selectedTasks = tasksByDay.get(selectedKey) ?? EMPTY_TASKS;
 
   return (
     <div className="space-y-4">
@@ -328,7 +331,7 @@ export function CalendarMonthView({
                     <CalendarDayCell
                       key={`${currentMonthParam}-${cell.dayKey}`}
                       cell={cell}
-                      tasks={tasksByDay.get(cell.dayKey) ?? []}
+                      tasks={tasksByDay.get(cell.dayKey) ?? EMPTY_TASKS}
                       isToday={cell.dayKey === liveTodayKey}
                       isSelected={cell.dayKey === selectedKey}
                       onSelect={setSelectedDayKey}

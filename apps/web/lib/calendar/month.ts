@@ -239,6 +239,15 @@ export function monthVisibleRange(
   };
 }
 
+/**
+ * Shared fallback for days without tasks. A fresh `[]` per render would
+ * break `CalendarDayCell`'s memo; one frozen reference keeps empty cells
+ * memo-stable (F-11b).
+ */
+export const EMPTY_TASKS: CalendarTask[] = Object.freeze(
+  [],
+) as unknown as CalendarTask[];
+
 export function groupTasksByDay(
   tasks: CalendarTask[],
   timeZone: string,
