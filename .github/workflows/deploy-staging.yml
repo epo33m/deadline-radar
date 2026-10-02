@@ -1,13 +1,18 @@
 name: Staging Migration & Deploy
 
-# Staging follows dev automatically: every push to dev applies pending
-# migrations to the staging database so fixes/improvements are verifiable
-# immediately. Manual dry-runs remain available via workflow_dispatch.
+# Staging follows main's pull requests (trunk-based): every PR toward main
+# applies pending migrations to the staging database, so the change is
+# verifiable on staging DURING review — before it can reach production.
+# The post-merge push re-runs idempotently (`migration up` is a no-op when
+# there is nothing pending), which also covers direct pushes to main.
+# Manual dry-runs remain available via workflow_dispatch.
 # Reads ONLY staging secrets — never production.
 
 on:
   push:
-    branches: ["dev"]
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
   workflow_dispatch:
     inputs:
       dry_run:
