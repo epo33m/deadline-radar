@@ -3,6 +3,7 @@ import { env } from "../env";
 type RedisLike = {
   incr(key: string): Promise<number>;
   pexpire(key: string, ms: number): Promise<number>;
+  pttl?: (key: string) => Promise<number>;
   get(key: string): Promise<string | null>;
   set(key: string, value: string, opts?: { px?: number; nx?: boolean }): Promise<string | null>;
   del(key: string): Promise<number>;

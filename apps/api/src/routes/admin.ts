@@ -111,7 +111,7 @@ export const adminRoutes = new Elysia({ prefix: "/api/v1/admin" })
   )
   .post(
     "/roles/revoke",
-    async ({ requireAuthz, request }) => {
+    async ({ requireAuthz, request, set }) => {
       const ctx = await requireAuthz("role.revoke");
       const body = await readJsonBody(request);
       assertNoForbiddenMutationKeys(body, { allow: ["user_id"] });
@@ -121,6 +121,20 @@ export const adminRoutes = new Elysia({ prefix: "/api/v1/admin" })
           "Invalid role revoke",
           parsed.error.flatten().fieldErrors,
         );
+      }
+      const idemKey = readIdempotencyKey(request);
+      if (idemKey) {
+        const { replay } = await beginIdempotent({
+          userId: ctx.subject.id,
+          key: idemKey,
+          method: "POST",
+          path: "/api/v1/admin/roles/revoke",
+          body: parsed.data,
+        });
+        if (replay) {
+          set.status = replay.statusCode;
+          return replay.body;
+        }
       }
       const result = await revokeRole({
         actorId: ctx.subject.id,
@@ -134,7 +148,16 @@ export const adminRoutes = new Elysia({ prefix: "/api/v1/admin" })
         }
         throw ApiError.validation("Invalid role");
       }
-      return { ok: true, userId: result.userId, roleSlug: result.roleSlug };
+      const response = { ok: true as const, userId: result.userId, roleSlug: result.roleSlug };
+      if (idemKey) {
+        await completeIdempotent({
+          userId: ctx.subject.id,
+          key: idemKey,
+          statusCode: 200,
+          body: response,
+        });
+      }
+      return response;
     },
     {
       detail: {
@@ -151,8 +174,9 @@ export const adminRoutes = new Elysia({ prefix: "/api/v1/admin" })
             },
             ["ok", "userId", "roleSlug"],
           ),
-          errors: [400, 401, 403, 404, 429],
+          errors: [400, 401, 403, 404, 409, 429],
         }),
+        ...idempotent(),
       },
     },
   )

@@ -11,9 +11,11 @@ import {
 
 function fakeClient(overrides: {
   incr: () => Promise<number>;
+  pttl?: () => Promise<number>;
 }): {
   incr: () => Promise<number>;
   pexpire: () => Promise<number>;
+  pttl?: () => Promise<number>;
   get: () => Promise<string | null>;
   set: () => Promise<string | null>;
   del: () => Promise<number>;
@@ -21,6 +23,7 @@ function fakeClient(overrides: {
   return {
     incr: overrides.incr,
     pexpire: async () => 1,
+    pttl: overrides.pttl,
     get: async () => null,
     set: async () => "OK",
     del: async () => 0,
@@ -109,6 +112,31 @@ describe("rate limit stores", () => {
     } finally {
       restore();
     }
+  });
+
+  test("redis resetAt tracks real PTTL instead of a full fabricated window", async () => {
+    setRedisClientForTests(
+      fakeClient({
+        incr: async () => 2,
+        pttl: async () => 30_000,
+      }),
+    );
+    const before = Date.now();
+    const result = await redisRateLimitStore.consume("pttl:key", 3, 60_000);
+    expect(result.resetAt).toBeGreaterThanOrEqual(before + 29_000);
+    expect(result.resetAt).toBeLessThanOrEqual(before + 31_000);
+  });
+
+  test("missing/absent PTTL falls back to a full window", async () => {
+    setRedisClientForTests(
+      fakeClient({
+        incr: async () => 2,
+        pttl: async () => -1,
+      }),
+    );
+    const before = Date.now();
+    const result = await redisRateLimitStore.consume("pttl:key2", 3, 60_000);
+    expect(result.resetAt).toBeGreaterThanOrEqual(before + 59_000);
   });
 
   test("throwing redis falls back to memory without 500ing", async () => {
