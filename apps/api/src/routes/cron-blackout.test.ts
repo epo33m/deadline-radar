@@ -8,6 +8,7 @@ const savedCronSecret = process.env.CRON_SECRET;
 const savedCutoff = process.env.REMINDER_CUTOFF_ISO;
 
 const sentryCalls: unknown[][] = [];
+const sentryExceptionCalls: unknown[][] = [];
 const sentryExtras: Record<string, unknown>[] = [];
 const fakeScope = {
   setLevel: (_level: unknown) => undefined,
@@ -21,27 +22,38 @@ mock.module("@sentry/bun", () => ({
   captureMessage: (...args: unknown[]) => {
     sentryCalls.push(args);
   },
-  captureException: (..._args: unknown[]) => undefined,
+  captureException: (...args: unknown[]) => {
+    sentryExceptionCalls.push(args);
+  },
 }));
 
 const USER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const TASK = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const THRESHOLD = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
-let selectQueue: unknown[][] = [];
+let selectQueue: unknown[] = [];
 let insertCalls = 0;
 // NEW-01: when true, the reminder_runs lock insert fails on every attempt
 // (a persistent DB error), so the run must abort fail-closed.
 let failRunsInsert = false;
 
-function chainForSelect(rows: unknown[]) {
+// I-01: sentinel that makes the next SELECT reject (mid-run infra failure).
+const THROW_SELECT = Symbol("throw-select");
+
+function chainForSelect(rows: unknown) {
   const self: Record<string, (...args: never[]) => unknown> = {};
   self["from"] = () => self;
   self["where"] = () => self;
   self["orderBy"] = () => self;
-  self["limit"] = (async () => rows) as never;
-  self["then"] = ((resolve: (v: unknown) => void) =>
-    Promise.resolve(rows).then(resolve)) as never;
+  self["limit"] = (async () => {
+    if (rows === THROW_SELECT) throw new Error("db batch select failed");
+    return rows;
+  }) as never;
+  self["then"] = ((resolve: (v: unknown) => void, reject?: (e: unknown) => void) =>
+    (rows === THROW_SELECT
+      ? Promise.reject(new Error("db batch select failed"))
+      : Promise.resolve(rows)
+    ).then(resolve, reject)) as never;
   return self;
 }
 
@@ -116,6 +128,7 @@ const { app } = await import("../app");
 beforeEach(() => {
   resetRateLimitBuckets();
   sentryCalls.length = 0;
+  sentryExceptionCalls.length = 0;
   sentryExtras.length = 0;
   selectQueue = [];
   insertCalls = 0;
@@ -276,5 +289,27 @@ describe("F-06 — blackout alert keeps the 200 contract", () => {
     expect(String(sentryCalls[0]?.[0])).toMatch(/lock unavailable/);
     expect(sentryExtras).toHaveLength(1);
     expect(sentryExtras[0]).toMatchObject({ runId: null });
+  });
+
+  test("I-01: mid-run infra throw → 200 {ok:true} + Sentry exception (hard alert, never silenced)", async () => {
+    // The task batch SELECT throws mid-run: the service finalizes the ledger
+    // as error and rethrows, and the route converts it to the 200 contract
+    // with an out-of-band exception alert.
+    selectQueue = [
+      [], // purgeExpiredIdempotencyKeys scan (no expired keys)
+      THROW_SELECT, // taskRows batch fetch throws
+    ];
+
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/cron/evaluate-reminders", {
+        headers: { authorization: "Bearer test-cron-secret" },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true });
+    expect(sentryExceptionCalls).toHaveLength(1);
+    // No blackout message: nothing was attempted, the failure is infra.
+    expect(sentryCalls).toHaveLength(0);
   });
 });

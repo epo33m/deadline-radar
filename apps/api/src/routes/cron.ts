@@ -75,10 +75,26 @@ export const cronRoutes = new Elysia({ prefix: "/api/v1/cron" }).get(
     // single invocation inside the host timeout; a truncated run records it on
     // the ledger and the next scheduled run mops up the remainder. Passing the
     // env values explicitly so the cron surface stays explicit about its bounds.
-    const result = await runEvaluateReminders(simulatedNow, {
-      maxTasksPerRun: env.maxTasksPerRun(),
-      maxRunDurationMs: env.maxRunDurationMs(),
-    });
+    // I-01: the 200 {ok:true} contract holds even when the run aborts
+    // mid-batch (batch/infra failure). The service already finalized the
+    // ledger as error before rethrowing, so the catch below only converts the
+    // transport outcome — the hard alert still fires out-of-band via Sentry
+    // (never silenced as success). Scoped narrowly around the service call so
+    // auth/validation ApiErrors above still map to 401/400.
+    let result: Awaited<ReturnType<typeof runEvaluateReminders>>;
+    try {
+      result = await runEvaluateReminders(simulatedNow, {
+        maxTasksPerRun: env.maxTasksPerRun(),
+        maxRunDurationMs: env.maxRunDurationMs(),
+      });
+    } catch (error) {
+      console.error(
+        "[cron] evaluate-reminders failed:",
+        error instanceof Error ? error.message : "unknown error",
+      );
+      Sentry.captureException(error);
+      return { ok: true };
+    }
     const durationMs = Date.now() - startedAt;
     // F-06: the response contract stays `200 {ok:true}` (SEC-008) — a total
     // delivery blackout is signaled out-of-band instead. No-op without
@@ -87,13 +103,18 @@ export const cronRoutes = new Elysia({ prefix: "/api/v1/cron" }).get(
     // RF-04: a single-flight skip is a normal no-op, not an incident.
     // NEW-01: a lock-unavailable abort (DB could not grant single-flight) is
     // an infrastructure signal — alert out-of-band, keep the 200 contract.
+    // I-01: a run that contained row-level DB failures is neither clean
+    // "ok" nor a "blackout" — it completed with a ledger error. The outcome
+    // stays in the log/Sentry (never in the HTTP body per SEC-008).
     const outcome = result.skipped
       ? "skipped"
       : result.lockUnavailable
         ? "lock-unavailable"
         : isSystemicReminderFailure(result)
           ? "blackout"
-          : "ok";
+          : result.rowErrors > 0
+            ? "partial"
+            : "ok";
     if (outcome === "lock-unavailable") {
       Sentry.withScope((scope) => {
         scope.setLevel("warning");
@@ -143,6 +164,25 @@ export const cronRoutes = new Elysia({ prefix: "/api/v1/cron" }).get(
         Sentry.captureMessage("reminder run truncated: per-run caps reached before full scan");
       });
     }
+    // I-01: a partial run (contained row errors, ledger error) warns
+    // out-of-band like the truncation signal — counts only, no PII, same as
+    // the existing blackout/truncation alerts. No-op without SENTRY_DSN.
+    if (outcome === "partial") {
+      Sentry.withScope((scope) => {
+        scope.setLevel("warning");
+        scope.setExtras({
+          runId: result.runId,
+          rowErrors: result.rowErrors,
+          evaluatedTasks: result.evaluatedTasks,
+          emailsSent: result.emailsSent,
+          emailsFailed: result.emailsFailed,
+          durationMs,
+        });
+        Sentry.captureMessage(
+          "reminder run partial: row-level DB failures contained, batch completed",
+        );
+      });
+    }
     // SEC-008 (least-info): the scheduler only needs success/failure.
     // Volume metrics stay in the server log, never in the HTTP response.
     // runId correlates the log line with the reminder_runs ledger row (F-04).
@@ -160,6 +200,7 @@ export const cronRoutes = new Elysia({ prefix: "/api/v1/cron" }).get(
         emailsFailed: result.emailsFailed,
         emailsPoisoned: result.emailsPoisoned,
         emailsSkippedQuota: result.emailsSkippedQuota,
+        rowErrors: result.rowErrors,
       }),
     );
     return { ok: true };
