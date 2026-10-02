@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { CourseDetail } from "@/components/courses/course-detail";
 import { requireBootstrap } from "@/lib/api/bootstrap";
+import { getCourse } from "@/lib/api/course";
 import { apiJson } from "@/lib/api/server";
 import type { Course } from "@/types/course";
 import type { Task } from "@/types/task";
@@ -9,18 +10,6 @@ import type { Task } from "@/types/task";
 type CourseDetailPageProps = {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ view?: string }>;
-};
-
-type ApiCourse = {
-  id: string;
-  userId: string;
-  name: string;
-  code: string | null;
-  color: string | null;
-  icon?: string | null;
-  description: string | null;
-  createdAt: string | Date;
-  deletedAt: string | Date | null;
 };
 
 type ApiTask = {
@@ -38,9 +27,7 @@ function iso(value: string | Date | null | undefined): string | null {
 
 export async function generateMetadata({ params }: CourseDetailPageProps) {
   const { id } = await params;
-  const result = await apiJson<{ course?: { name: string } }>(
-    `/api/v1/courses/${id}`,
-  );
+  const result = await getCourse(id);
   return { title: result.course?.name ?? "Course" };
 }
 
@@ -55,7 +42,7 @@ export default async function CourseDetailPage({
   ]);
 
   const [courseResult, tasksResult] = await Promise.all([
-    apiJson<{ course?: ApiCourse; error?: string }>(`/api/v1/courses/${id}`),
+    getCourse(id),
     apiJson<{ tasks?: ApiTask[] }>(`/api/v1/tasks?courseId=${id}`),
   ]);
 
