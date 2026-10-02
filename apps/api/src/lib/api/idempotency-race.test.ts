@@ -51,6 +51,9 @@ type IdemRow = {
 const idemStore = new Map<string, IdemRow>();
 let attachmentInserts = 0;
 let storageUploads = 0;
+// I-02: fail the next N idempotencyKeys UPDATEs (complete path) once each.
+let failCompleteCount = 0;
+let completeUpdateCalls = 0;
 
 // Select gate: holds the first lookup until the second arrives so both
 // contenders deterministically observe the pre-insert state together.
@@ -328,6 +331,11 @@ function chain(op: "select" | "insert" | "update" | "delete", table?: unknown) {
         return matched.map((row) => ({ id: row.id ?? row.key }));
       }
       if (op === "update" && table === idempotencyKeys) {
+        completeUpdateCalls += 1;
+        if (failCompleteCount > 0) {
+          failCompleteCount -= 1;
+          throw new Error("fake db: complete update failed");
+        }
         if (state.where !== undefined) {
           for (const row of matchingRows(state.where)) {
             if (state.set && "responseStatus" in state.set) {
@@ -363,6 +371,24 @@ function chain(op: "select" | "insert" | "update" | "delete", table?: unknown) {
           };
           idemStore.set(mapKey, row);
           return [row];
+        }
+        if (op === "update" && table === idempotencyKeys) {
+          completeUpdateCalls += 1;
+          if (failCompleteCount > 0) {
+            failCompleteCount -= 1;
+            throw new Error("fake db: complete update failed");
+          }
+          if (state.where !== undefined) {
+            for (const row of matchingRows(state.where)) {
+              if (state.set && "responseStatus" in state.set) {
+                row.responseStatus = state.set["responseStatus"] as number;
+              }
+              if (state.set && "responseBody" in state.set) {
+                row.responseBody = state.set["responseBody"];
+              }
+            }
+          }
+          return [];
         }
         if (op === "update") {
           if (state.where !== undefined) {
@@ -499,6 +525,8 @@ describe("finding #7 & M-7 — idempotency race, stale recovery & cleanup", () =
     idemStore.clear();
     attachmentInserts = 0;
     storageUploads = 0;
+    failCompleteCount = 0;
+    completeUpdateCalls = 0;
     gateArmed = false;
     selectArrivals = 0;
     releaseFirstSelect = null;
@@ -853,6 +881,95 @@ describe("finding #7 & M-7 — idempotency race, stale recovery & cleanup", () =
     expect(statuses).toEqual([200, 409]);
     expect(storageUploads).toBe(1);
     expect(attachmentInserts).toBe(1);
+    expect(idemStore.size).toBe(1);
+  });
+});
+
+describe("I-02 — complete-after-commit gap", () => {
+  beforeEach(() => {
+    resetRateLimitBuckets();
+    idemStore.clear();
+    attachmentInserts = 0;
+    storageUploads = 0;
+    failCompleteCount = 0;
+    completeUpdateCalls = 0;
+    gateArmed = false;
+    selectArrivals = 0;
+    releaseFirstSelect = null;
+    setVerifyAccessTokenOverride(null);
+    setLoadAuthorizationContextOverride(null);
+    setOwnershipOverrides(null);
+  });
+
+  const OPTS = {
+    userId: USER_A,
+    key: "complete-key",
+    method: "POST",
+    path: "/api/v1/attachments/file",
+    body: { task_id: TASK_A, size: 10 },
+  };
+
+  test("transient complete failure is retried bounded, then succeeds", async () => {
+    await beginIdempotent(OPTS);
+    failCompleteCount = 2;
+
+    const completed = await completeIdempotent({
+      userId: USER_A,
+      key: OPTS.key,
+      statusCode: 200,
+      body: { ok: true },
+    });
+
+    expect(completed).toBe(true);
+    // 2 failures + 1 success = bounded, not once and not unbounded.
+    expect(completeUpdateCalls).toBe(3);
+    expect(idemStore.get(`${USER_A}:${OPTS.key}`)?.responseStatus).toBe(200);
+  });
+
+  test("persistent complete failure never throws: same-key retry creates no second row", async () => {
+    await beginIdempotent(OPTS);
+    failCompleteCount = 99;
+
+    const completed = await completeIdempotent({
+      userId: USER_A,
+      key: OPTS.key,
+      statusCode: 200,
+      body: { ok: true },
+    });
+
+    // No throw (caller serves the already-committed success response).
+    expect(completed).toBe(false);
+    expect(completeUpdateCalls).toBe(3);
+    // The key row still exists exactly once — no duplicate side effect row.
+    expect(idemStore.size).toBe(1);
+    // Immediate retry with the same key+body: in-flight 409, still one row.
+    const retry = await tryBegin(USER_A, OPTS.key, OPTS.body);
+    expect(retry.ok).toBe(false);
+    if (!retry.ok) {
+      expect(retry.error).toBeInstanceOf(ApiError);
+      expect((retry.error as ApiError).status).toBe(409);
+    }
+    expect(idemStore.size).toBe(1);
+  });
+
+  test("fingerprint mismatch still 409 even when the key never completed", async () => {
+    await beginIdempotent(OPTS);
+    failCompleteCount = 99;
+    await completeIdempotent({
+      userId: USER_A,
+      key: OPTS.key,
+      statusCode: 200,
+      body: { ok: true },
+    });
+
+    const mismatch = await tryBegin(USER_A, OPTS.key, { different: true });
+    expect(mismatch.ok).toBe(false);
+    if (!mismatch.ok) {
+      expect(mismatch.error).toBeInstanceOf(ApiError);
+      expect((mismatch.error as ApiError).code).toBe(
+        API_ERROR_CODES.IDEMPOTENCY_CONFLICT,
+      );
+    }
     expect(idemStore.size).toBe(1);
   });
 });

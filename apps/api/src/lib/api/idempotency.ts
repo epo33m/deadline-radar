@@ -242,22 +242,52 @@ export async function beginIdempotent(options: {
   throw ApiError.conflict("Idempotent request already in progress");
 }
 
+/** I-02: bounded attempts for post-commit completion. The business row is
+ * already committed when this runs, so a transient write failure must be
+ * retried here rather than surfaced — a persistently failing completion must
+ * never turn an already-applied side effect into a 500. */
+const MAX_COMPLETE_ATTEMPTS = 3;
+const COMPLETE_RETRY_BACKOFF_MS = 100;
+
+/**
+ * Record the completed response for an idempotency key. Never throws for
+ * write failures: retries bounded, then returns false so the caller serves
+ * the already-built success response (the side effect is committed).
+ * Failures are logged with key + user scope for diagnosis. Callers must
+ * still return their success response regardless of the boolean.
+ */
 export async function completeIdempotent(options: {
   userId: string;
   key: string;
   statusCode: number;
   body: unknown;
-}): Promise<void> {
-  await getDb()
-    .update(idempotencyKeys)
-    .set({
-      responseStatus: options.statusCode,
-      responseBody: options.body as Record<string, unknown>,
-    })
-    .where(
-      and(
-        eq(idempotencyKeys.userId, options.userId),
-        eq(idempotencyKeys.key, options.key),
-      ),
-    );
+}): Promise<boolean> {
+  for (let attempt = 1; attempt <= MAX_COMPLETE_ATTEMPTS; attempt += 1) {
+    try {
+      await getDb()
+        .update(idempotencyKeys)
+        .set({
+          responseStatus: options.statusCode,
+          responseBody: options.body as Record<string, unknown>,
+        })
+        .where(
+          and(
+            eq(idempotencyKeys.userId, options.userId),
+            eq(idempotencyKeys.key, options.key),
+          ),
+        );
+      return true;
+    } catch (error) {
+      console.error(
+        `[idempotency] complete failed (attempt ${attempt}/${MAX_COMPLETE_ATTEMPTS})`,
+        `userId=${options.userId} key=${options.key}`,
+        error instanceof Error ? error.message : "unknown error",
+      );
+      if (attempt >= MAX_COMPLETE_ATTEMPTS) return false;
+      await new Promise((resolve) =>
+        setTimeout(resolve, COMPLETE_RETRY_BACKOFF_MS * attempt),
+      );
+    }
+  }
+  return false;
 }
