@@ -162,30 +162,17 @@ export const notificationRoutes = new Elysia({
         );
       }
 
-      const [owned] = await getDb()
-        .select({ id: notificationDeliveries.id })
-        .from(notificationDeliveries)
-        .innerJoin(tasks, eq(notificationDeliveries.taskId, tasks.id))
-        .where(
-          and(
-            eq(notificationDeliveries.id, parsed.data.id),
-            eq(tasks.userId, ctx.subject.id),
-            isNull(tasks.deletedAt),
-          ),
-        )
-        .limit(1);
-
-      if (!owned) throw ApiError.notFound("Notification not found");
-
+      // I-07: single conditional mutation — no separate ownership SELECT.
+      // Ownership is enforced inside the statement (deliveries carry no
+      // userId column, so scope through the parent task owned by the
+      // requester); zero rows means missing, not-owned, or raced away, all
+      // reported as the same generic 404 with no enumeration.
       const updated = await getDb()
         .update(notificationDeliveries)
         .set({ readAt: new Date() })
         .where(
           and(
-            eq(notificationDeliveries.id, owned.id),
-            // Ownership is enforced in the mutation itself, not only by the
-            // lookup above: deliveries carry no userId column, so scope
-            // through the parent task owned by the requester.
+            eq(notificationDeliveries.id, parsed.data.id),
             inArray(
               notificationDeliveries.taskId,
               getDb()
@@ -202,8 +189,6 @@ export const notificationRoutes = new Elysia({
         )
         .returning({ id: notificationDeliveries.id });
       if (updated.length === 0) {
-        // Ownership changed (or row vanished) between lookup and update.
-        // Same generic 404 — no enumeration.
         throw ApiError.notFound("Notification not found");
       }
 

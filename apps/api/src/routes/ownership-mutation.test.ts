@@ -347,7 +347,6 @@ describe("finding #4 — ownership inside the mutation", () => {
 
   test("user A marks own notification read → 200 and mutation carries user_id", async () => {
     authedAs(["notification.mark-read"]);
-    selectResultQueue = [[{ id: NOTIF_A }]];
 
     const response = await app.handle(
       new Request(`http://localhost/api/v1/notifications/${NOTIF_A}/read`, {
@@ -359,20 +358,18 @@ describe("finding #4 — ownership inside the mutation", () => {
 
     const { params } = singleMutation("update");
     expect(params).toContain(NOTIF_A);
-    // Two select conditions: the authorization lookup plus the mutation's
-    // ownership subquery (old code records only the lookup).
-    expect(recordedSelectWheres.length).toBe(2);
-    // The last recorded select condition is the mutation's ownership
-    // subquery (the authorization lookup is recorded first).
+    // I-07: one select condition — the mutation's ownership subquery. No
+    // separate authorization lookup select exists anymore.
+    expect(recordedSelectWheres.length).toBe(1);
     const subquery = ownershipSubqueryCondition();
     expect(subquery.columns).toContain("user_id");
     expect(subquery.params).toContain(USER_A);
   });
 
-  test("user A marks user B notification read → 404 and no update mutation runs", async () => {
+  test("user A marks user B notification read → 404 with ownership in the mutation", async () => {
     authedAs(["notification.mark-read"]);
-    // Ownership lookup finds nothing for B's notification.
-    selectResultQueue = [[]];
+    // The folded mutation finds no row for B's notification.
+    updateResultRows = [];
 
     const response = await app.handle(
       new Request(`http://localhost/api/v1/notifications/${NOTIF_B}/read`, {
@@ -386,13 +383,19 @@ describe("finding #4 — ownership inside the mutation", () => {
     };
     const err = body.error;
     expect(typeof err === "string" ? err : err?.code).toBe("NOT_FOUND");
-    // B's notification stays unread at the mutation layer: zero updates.
-    expect(recordedMutations.filter((m) => m.op === "update").length).toBe(0);
+    // I-07: the single UPDATE still runs — and its own predicate carries
+    // the requester's user_id (inside the ownership subquery), which is
+    // what excludes B's row.
+    const { params } = singleMutation("update");
+    expect(params).toContain(NOTIF_B);
+    const subquery = ownershipSubqueryCondition();
+    expect(subquery.columns).toContain("user_id");
+    expect(subquery.params).toContain(USER_A);
   });
 
   test("mark nonexistent notification read → 404 existing behavior", async () => {
     authedAs(["notification.mark-read"]);
-    selectResultQueue = [[]];
+    updateResultRows = [];
 
     const response = await app.handle(
       new Request(

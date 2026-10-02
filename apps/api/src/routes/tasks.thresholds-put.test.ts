@@ -59,6 +59,8 @@ type StoredTask = {
 let tasksStore: StoredTask[] = [];
 let thresholdsStore: StoredThreshold[] = [];
 let shouldFailInsideTx = false;
+// I-07 spy: profile (timezone) SELECTs issued outside the write tx.
+let profileSelectCalls = 0;
 
 mock.module("../lib/db", () => ({
   getDb: () => {
@@ -66,7 +68,10 @@ mock.module("../lib/db", () => ({
       select: () => ({
         from: () => ({
           where: () => ({
-            limit: async () => [{ timezone: "UTC" }],
+            limit: async () => {
+              profileSelectCalls += 1;
+              return [{ timezone: "UTC" }];
+            },
           }),
         }),
       }),
@@ -190,6 +195,7 @@ describe("PUT /api/v1/tasks/:id/thresholds — Atomic Bulk Replace", () => {
   beforeEach(() => {
     resetRateLimitBuckets();
     shouldFailInsideTx = false;
+    profileSelectCalls = 0;
     tasksStore = [
       {
         id: TASK_A,
@@ -484,6 +490,7 @@ describe("RF-09 threshold removal archives (never hard-deletes)", () => {
   beforeEach(() => {
     resetRateLimitBuckets();
     shouldFailInsideTx = false;
+    profileSelectCalls = 0;
     tasksStore = [
       {
         id: TASK_A,
@@ -569,6 +576,49 @@ describe("RF-09 threshold removal archives (never hard-deletes)", () => {
     // Old archived row + new live row.
     expect(thresholdsStore.filter((t) => t.daysBefore === 3).length).toBe(2);
     expect(thresholdsStore.filter((t) => t.daysBefore === 3 && !t.deletedAt).length).toBe(1);
+  });
+
+  test("I-07: PUT with 3 non-default thresholds issues exactly 1 profile query", async () => {
+    const res = await app.handle(
+      new Request(`http://localhost/api/v1/tasks/${TASK_A}/thresholds`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer user-a",
+        },
+        body: JSON.stringify({
+          thresholds: [
+            { days_before: 5 },
+            { days_before: 6 },
+            { days_before: 9 },
+          ],
+        }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(profileSelectCalls).toBe(1);
+  });
+
+  test("I-07: PUT with all-default offsets skips the profile lookup", async () => {
+    const res = await app.handle(
+      new Request(`http://localhost/api/v1/tasks/${TASK_A}/thresholds`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer user-a",
+        },
+        body: JSON.stringify({
+          thresholds: [
+            { days_before: 7 },
+            { days_before: 3 },
+            { days_before: 1 },
+            { days_before: 0 },
+          ],
+        }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(profileSelectCalls).toBe(0);
   });
 
   test("DELETE /thresholds/:id archives (row survives with deletedAt)", async () => {

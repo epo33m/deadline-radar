@@ -28,6 +28,10 @@ type MockNotif = {
 let notifStore: MockNotif[] = [];
 let currentRequestedId = NOTIF_ACTIVE;
 let currentCallerUserId = USER_A;
+// I-07 spies: the folded mutation must issue one UPDATE and zero ownership
+// SELECTs per mark-read.
+let ownershipLookupUsed = false;
+let updateCalls = 0;
 
 mock.module("../lib/db", () => ({
   getDb: () => ({
@@ -37,6 +41,7 @@ mock.module("../lib/db", () => ({
         innerJoin: () => ({
           where: (clause: any) => ({
             limit: async () => {
+              ownershipLookupUsed = true;
               const activeNotifs = notifStore.filter(
                 (n) => n.deletedAt === null && n.userId === currentCallerUserId,
               );
@@ -49,8 +54,19 @@ mock.module("../lib/db", () => ({
     update: () => ({
       set: (values: any) => ({
         where: () => ({
+          // I-07: evaluate the folded ownership predicate (id + owner +
+          // live) like the IN-subquery does in production.
           returning: async () => {
-            return [{ id: NOTIF_ACTIVE }];
+            updateCalls += 1;
+            const row = notifStore.find(
+              (n) =>
+                n.id === currentRequestedId &&
+                n.userId === currentCallerUserId &&
+                n.deletedAt === null,
+            );
+            if (!row) return [];
+            row.readAt = new Date();
+            return [{ id: row.id }];
           },
         }),
       }),
@@ -63,6 +79,10 @@ const { app } = await import("../app");
 describe("Finding L-6: POST /api/v1/notifications/:id/read deleted task filtering", () => {
   beforeEach(() => {
     resetRateLimitBuckets();
+    ownershipLookupUsed = false;
+    updateCalls = 0;
+    currentRequestedId = NOTIF_ACTIVE;
+    currentCallerUserId = USER_A;
     notifStore = [
       {
         id: NOTIF_ACTIVE,
@@ -112,6 +132,71 @@ describe("Finding L-6: POST /api/v1/notifications/:id/read deleted task filterin
     expect(res.status).toBe(200);
     const body = (await res.json()) as any;
     expect(body.ok).toBe(true);
+  });
+
+  test("I-07: happy path issues one UPDATE and zero ownership SELECTs", async () => {
+    currentRequestedId = NOTIF_ACTIVE;
+    const res = await app.handle(
+      new Request(`http://localhost/api/v1/notifications/${NOTIF_ACTIVE}/read`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer token-user-a",
+        },
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(updateCalls).toBe(1);
+    expect(ownershipLookupUsed).toBe(false);
+    expect(
+      notifStore.find((n) => n.id === NOTIF_ACTIVE)?.readAt,
+    ).toBeInstanceOf(Date);
+  });
+
+  test("I-07: missing id and not-owned yield byte-identical 404s", async () => {
+    const missingId = "99999999-9999-4999-8999-999999999999";
+    currentRequestedId = missingId;
+    const missingRes = await app.handle(
+      new Request(`http://localhost/api/v1/notifications/${missingId}/read`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer token-user-a",
+        },
+      }),
+    );
+    expect(missingRes.status).toBe(404);
+
+    currentRequestedId = NOTIF_ACTIVE;
+    currentCallerUserId = USER_B;
+    const notOwnedRes = await app.handle(
+      new Request(`http://localhost/api/v1/notifications/${NOTIF_ACTIVE}/read`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer token-user-b",
+        },
+      }),
+    );
+    expect(notOwnedRes.status).toBe(404);
+
+    // Same generic 404 contract (requestIds are per-request by design).
+    const missingBody = (await missingRes.json()) as Record<string, unknown>;
+    const notOwnedBody = (await notOwnedRes.json()) as Record<string, unknown>;
+    delete missingBody.requestId;
+    delete notOwnedBody.requestId;
+    expect(notOwnedBody).toEqual(missingBody);
+  });
+
+  test("I-07: row vanishing mid-flight still yields 404", async () => {
+    currentRequestedId = NOTIF_ACTIVE;
+    notifStore = notifStore.filter((n) => n.id !== NOTIF_ACTIVE);
+    const res = await app.handle(
+      new Request(`http://localhost/api/v1/notifications/${NOTIF_ACTIVE}/read`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer token-user-a",
+        },
+      }),
+    );
+    expect(res.status).toBe(404);
   });
 
   test("marking soft-deleted task notification as read returns 404 Not Found", async () => {
