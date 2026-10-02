@@ -859,47 +859,43 @@ export async function runEvaluateReminders(
         }
       }
 
-      // Atomic claim: only a row still `failed` with retryCount < MAX_EMAIL_DELIVERY_RETRIES
-      // transitions to `pending`. A concurrent run acting on a stale snapshot
-      // gets 0 rows and skips the send below, so exactly one run delivers each retry.
-      // Claims touch independent rows — run them concurrently; Promise.all
-      // preserves order so emailWork stays deterministic.
-      const claimedRetries = await Promise.all(
-        retryActions.map(async (action) => {
-          try {
-            const [claimed] = await db
-              .update(notificationDeliveries)
-              .set({
-                status: "pending",
-                retryCount: action.retry_count + 1,
-              })
-              .where(
-                and(
-                  eq(notificationDeliveries.id, action.delivery_id),
-                  eq(notificationDeliveries.status, "failed"),
-                  lt(notificationDeliveries.retryCount, MAX_EMAIL_DELIVERY_RETRIES),
-                ),
-              )
-              .returning({ id: notificationDeliveries.id });
-            return claimed ? action : null;
-          } catch (error) {
-            // I-01 row-level: one retry claim throwing skips that delivery
-            // this run (it stays failed for the next run) without aborting
-            // the batch.
-            recordRowError(error, "retry-claim");
-            return null;
-          }
-        }),
-      );
-      for (const action of claimedRetries) {
-        if (!action) continue;
-        totalRetried += 1;
-        emailWork.push({
-          deliveryId: action.delivery_id,
-          taskId: action.task_id,
-          thresholdId: action.threshold_id,
-          daysBefore: action.days_before,
-        });
+      // I-06: one set-based atomic claim for the whole batch (1 statement,
+      // N rows) instead of N per-row UPDATEs. The per-row predicate is
+      // preserved inside WHERE — only rows still `failed` below the retry cap
+      // transition, so a concurrent run acting on a stale snapshot gets 0 of
+      // those rows and exactly one run delivers each retry. RETURNING ids map
+      // back to actions in input order so emailWork stays deterministic.
+      // A statement failure is batch-scope (not row-scope): it propagates to
+      // the runError abort path with a ledger error.
+      if (retryActions.length > 0) {
+        const claimed = await db
+          .update(notificationDeliveries)
+          .set({
+            status: "pending",
+            retryCount: sql`${notificationDeliveries.retryCount} + 1`,
+          })
+          .where(
+            and(
+              inArray(
+                notificationDeliveries.id,
+                retryActions.map((action) => action.delivery_id),
+              ),
+              eq(notificationDeliveries.status, "failed"),
+              lt(notificationDeliveries.retryCount, MAX_EMAIL_DELIVERY_RETRIES),
+            ),
+          )
+          .returning({ id: notificationDeliveries.id });
+        const claimedIds = new Set(claimed.map((row) => row.id));
+        for (const action of retryActions) {
+          if (!claimedIds.has(action.delivery_id)) continue;
+          totalRetried += 1;
+          emailWork.push({
+            deliveryId: action.delivery_id,
+            taskId: action.task_id,
+            thresholdId: action.threshold_id,
+            daysBefore: action.days_before,
+          });
+        }
       }
 
       // F-08: a task may be completed (or deleted) after the batch snapshot
@@ -1027,25 +1023,26 @@ export async function runEvaluateReminders(
         );
       }
 
-      /** Drop a cancelled delivery so a later run can re-create it cleanly
-       * (a lingering `pending` row would suppress re-evaluation instead).
-       * Never throws (I-01 row-level): a failing delete leaves the row
-       * pending for the next run and the batch continues. */
-      async function cancelStaleDelivery(deliveryId: string): Promise<boolean> {
+      /** Drop cancelled deliveries so a later run can re-create them cleanly
+       * (lingering `pending` rows would suppress re-evaluation instead).
+       * I-06: one batched DELETE for the whole batch instead of serial
+       * per-row awaits. Never throws (I-01 row-level): a failing delete
+       * leaves the rows pending for the next run and the batch continues. */
+      async function cancelStaleDeliveries(deliveryIds: string[]): Promise<void> {
+        if (deliveryIds.length === 0) return;
         try {
           await db
             .delete(notificationDeliveries)
-            .where(eq(notificationDeliveries.id, deliveryId));
+            .where(inArray(notificationDeliveries.id, deliveryIds));
           console.log(
-            "[reminders] skipped send, task edited mid-run",
-            deliveryId,
+            `[reminders] skipped sends, tasks edited mid-run (${deliveryIds.length} cancelled)`,
           );
-          return true;
         } catch (error) {
-          recordRowError(error, "cancel-stale");
-          return false;
+          recordRowError(error, "cancel-stale-batch");
         }
       }
+
+      const staleDeliveryIds: string[] = [];
 
       // Send jobs run with bounded concurrency below. Everything order- or
       // budget-sensitive (live check, recipient lookup, per-user quota claim)
@@ -1067,7 +1064,8 @@ export async function runEvaluateReminders(
         }
         if (isDeliveryStale(work)) {
           // Deadline/threshold edited mid-run: the queued email is stale.
-          await cancelStaleDelivery(work.deliveryId);
+          // Collected for the single batched delete below.
+          staleDeliveryIds.push(work.deliveryId);
           continue;
         }
         const task = taskById.get(work.taskId);
@@ -1132,7 +1130,7 @@ export async function runEvaluateReminders(
         if (
           isDeliveryStale({ taskId: row.taskId, thresholdId: row.thresholdId })
         ) {
-          await cancelStaleDelivery(row.id);
+          staleDeliveryIds.push(row.id);
           continue;
         }
         const profile = profileById.get(task.userId);
@@ -1203,6 +1201,9 @@ export async function runEvaluateReminders(
           }
         });
       }
+
+      // I-06: one batched drop for every delivery cancelled as stale above.
+      await cancelStaleDeliveries(staleDeliveryIds);
 
       await mapWithLimit(sendJobs, EMAIL_SEND_CONCURRENCY, (job) => job());
 

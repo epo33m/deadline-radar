@@ -118,6 +118,16 @@ type Store = {
   failRecheckOnce: boolean;
   /** I-01: fail the next F-10 sweep-claim update once (row-level DB error). */
   failSweepClaimOnce: boolean;
+  /** I-06: fail the next set-based retry-claim UPDATE once (batch-scope). */
+  failRetryClaimBatchOnce: boolean;
+  /** I-06: fail the next batched stale-delete once (contained, best-effort). */
+  failStaleDeleteOnce: boolean;
+  /** I-06: edit every deadline on the next delivery insert (batch stale). */
+  editAllDeadlinesBeforeSend: boolean;
+  /** I-06: set-based retry-claim UPDATE statements issued. */
+  retryClaimUpdateCalls: number;
+  /** I-06: batched stale-delete statements issued. */
+  staleDeleteCalls: number;
   /** RF-01: count of task BATCH-fetch selects so far (live recheck excluded). */
   taskBatchFetchCount: number;
   /** RF-01: fail the Nth task batch-fetch once (1-based). */
@@ -155,6 +165,11 @@ function resetStore(): void {
     failNextSelectOnce: false,
     failRecheckOnce: false,
     failSweepClaimOnce: false,
+    failRetryClaimBatchOnce: false,
+    failStaleDeleteOnce: false,
+    editAllDeadlinesBeforeSend: false,
+    retryClaimUpdateCalls: 0,
+    staleDeleteCalls: 0,
     taskBatchFetchCount: 0,
     failTaskBatchFetchNumber: null,
     completeTaskBeforeSendOnce: false,
@@ -450,6 +465,12 @@ function doInsert(
       task.deadlineUpdatedAt = new Date();
     }
   }
+  if (store.editAllDeadlinesBeforeSend) {
+    for (const task of store.taskRows) {
+      task.deadline = new Date(Date.now() + 2 * 86_400_000);
+      task.deadlineUpdatedAt = new Date();
+    }
+  }
   if (store.editThresholdBeforeSendOnce) {
     store.editThresholdBeforeSendOnce = false;
     const threshold = store.thresholdRows.find((t) => t.id === row.thresholdId);
@@ -537,13 +558,22 @@ function isReminderRunsTable(table: unknown): boolean {
 }
 function doUpdateReturning(set: Record<string, unknown>): { id: string }[] {
   if (set.status === "pending" && "retryCount" in set) {
-    const row = store.deliveries.find(
+    // I-06 set-based retry claim: one statement transitions every matching
+    // row (production predicate: failed + below retry cap). The fake ignores
+    // the WHERE text and applies the same predicate to the whole store.
+    store.retryClaimUpdateCalls += 1;
+    if (store.failRetryClaimBatchOnce) {
+      store.failRetryClaimBatchOnce = false;
+      throw new Error("fake db: retry claim batch failed");
+    }
+    const claimed = store.deliveries.filter(
       (d) => d.status === "failed" && d.retryCount < 3,
     );
-    if (!row) return [];
-    row.status = "pending";
-    row.retryCount = set.retryCount as number;
-    return [{ id: row.id }];
+    for (const row of claimed) {
+      row.status = "pending";
+      row.retryCount += 1;
+    }
+    return claimed.map((row) => ({ id: row.id }));
   }
   if (set.status === "sending") {
     // F-10 atomic sweep claim: first committer wins; a stale lease (crashed
@@ -781,6 +811,11 @@ mock.module("../lib/db", () => ({
               table === notificationDeliveries ||
               getTableName(table) === "notification_deliveries"
             ) {
+              store.staleDeleteCalls += 1;
+              if (store.failStaleDeleteOnce) {
+                store.failStaleDeleteOnce = false;
+                throw new Error("fake db: stale delete failed");
+              }
               const ids = collectParamValues(args[0]);
               for (let i = store.deliveries.length - 1; i >= 0; i--) {
                 if (ids.includes(store.deliveries[i]!.id)) {
@@ -1305,6 +1340,154 @@ describe("I-01: row-level failure containment", () => {
     ).rejects.toThrow("fake db: batch select failed");
     expect(store.runs).toHaveLength(1);
     expect(store.runs[store.runs.length - 1]!.status).toBe("error");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// I-06: set-based claims/deletes (EXPLAIN-gated index skipped with evidence)
+// ---------------------------------------------------------------------------
+
+describe("I-06: set-based batch writes", () => {
+  function seedTasksWithFailedDeliveries(count: number): void {
+    const now = Date.now();
+    store.taskRows = [];
+    store.thresholdRows = [];
+    store.deliveries = [];
+    for (let i = 0; i < count; i++) {
+      const n = String(i).padStart(2, "0");
+      const taskId = `task-${n}`;
+      const thresholdId = `thr-${n}`;
+      store.taskRows.push({
+        id: taskId,
+        userId: USER,
+        status: "todo",
+        deadline: new Date(now + 86_400_000 - 60_000),
+        createdAt: new Date(now - 10 * 86_400_000),
+        title: `Task ${n}`,
+      });
+      store.thresholdRows.push({
+        id: thresholdId,
+        taskId,
+        daysBefore: 1,
+        createdAt: new Date(now - 10 * 86_400_000),
+      });
+      store.deliveries.push({
+        id: `dlv-${n}`,
+        taskId,
+        thresholdId,
+        daysBefore: 1,
+        channel: "email",
+        status: "failed",
+        retryCount: 0,
+        sentAt: null,
+      });
+    }
+    store.profileRows = [
+      { id: USER, email: "user@example.com", timezone: "UTC" },
+    ];
+  }
+
+  function seedFreshTasks(count: number): void {
+    const now = Date.now();
+    store.taskRows = [];
+    store.thresholdRows = [];
+    store.deliveries = [];
+    for (let i = 0; i < count; i++) {
+      const n = String(i).padStart(2, "0");
+      const taskId = `task-${n}`;
+      const thresholdId = `thr-${n}`;
+      store.taskRows.push({
+        id: taskId,
+        userId: USER,
+        status: "todo",
+        deadline: new Date(now + 86_400_000 - 60_000),
+        createdAt: new Date(now - 10 * 86_400_000),
+        title: `Task ${n}`,
+      });
+      store.thresholdRows.push({
+        id: thresholdId,
+        taskId,
+        daysBefore: 1,
+        createdAt: new Date(now - 10 * 86_400_000),
+      });
+    }
+    store.profileRows = [
+      { id: USER, email: "user@example.com", timezone: "UTC" },
+    ];
+  }
+
+  test("retry claims collapse to one statement with identical results", async () => {
+    seedTasksWithFailedDeliveries(3);
+
+    const result = await runEvaluateReminders(new Date(Date.now() + 86_400_000));
+
+    expect(result.retried).toBe(3);
+    expect(store.retryClaimUpdateCalls).toBe(1);
+    // Every claimed retry transitioned failed→pending→sent with retryCount+1.
+    const sent = store.deliveries.filter(
+      (d) => d.channel === "email" && d.status === "sent",
+    );
+    expect(sent).toHaveLength(3);
+    expect(result.emailsSent).toBe(3);
+    expect(result.rowErrors).toBe(0);
+  });
+
+  test("100-retry batch completes in a single claim statement", async () => {
+    seedTasksWithFailedDeliveries(100);
+
+    const result = await runEvaluateReminders(new Date(Date.now() + 86_400_000));
+
+    // Claims are quota-independent: all 100 claimed in one statement even
+    // though sends stop at the per-user per-run cap.
+    expect(result.retried).toBe(100);
+    expect(store.retryClaimUpdateCalls).toBe(1);
+    expect(result.rowErrors).toBe(0);
+  });
+
+  test("stale cancels batch into a single delete", async () => {
+    seedFreshTasks(3);
+    store.editAllDeadlinesBeforeSend = true;
+
+    const result = await runEvaluateReminders(new Date(Date.now() + 86_400_000));
+
+    expect(sendCalls).toHaveLength(0);
+    expect(result.emailsSent).toBe(0);
+    expect(store.staleDeleteCalls).toBe(1);
+    // All three stale email rows dropped; in_app confirmations untouched.
+    expect(
+      store.deliveries.filter((d) => d.channel === "email"),
+    ).toHaveLength(0);
+    expect(
+      store.deliveries.filter((d) => d.channel === "in_app"),
+    ).toHaveLength(3);
+  });
+
+  test("stale-delete failure is contained: run continues, rows stay pending", async () => {
+    seedFreshTasks(2);
+    store.editAllDeadlinesBeforeSend = true;
+    store.failStaleDeleteOnce = true;
+
+    const result = await runEvaluateReminders(new Date(Date.now() + 86_400_000));
+
+    expect(sendCalls).toHaveLength(0);
+    expect(result.rowErrors).toBe(1);
+    expect(store.runs[0]!.status).toBe("error");
+    // Best-effort preserved: rows remain for the next run.
+    expect(
+      store.deliveries.filter((d) => d.channel === "email"),
+    ).toHaveLength(2);
+  });
+
+  test("retry-claim statement failure aborts with a ledger error (batch-scope)", async () => {
+    seedTasksWithFailedDeliveries(1);
+    store.failRetryClaimBatchOnce = true;
+
+    await expect(
+      runEvaluateReminders(new Date(Date.now() + 86_400_000)),
+    ).rejects.toThrow("fake db: retry claim batch failed");
+
+    expect(store.runs).toHaveLength(1);
+    expect(store.runs[0]!.status).toBe("error");
   });
 });
 
