@@ -299,24 +299,9 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
 
       if (!row) throw ApiError.notFound("Attachment not found");
 
-      if (row.attachment.type === "file" && row.attachment.storagePath) {
-        const objectKey = row.attachment.storagePath.replace(
-          /^attachments\//,
-          "",
-        );
-        const supabase = createServiceClient();
-        const { error: removeError } = await storageRemove(supabase, [objectKey]);
-
-        if (removeError) {
-          console.error("[attachments] remove failed", removeError.message);
-          throw new ApiError({
-            status: 502,
-            code: "DEPENDENCY_FAILURE",
-            message: "Unable to remove attachment",
-          });
-        }
-      }
-
+      // I-03: DB-first. The row is deleted before storage is touched, so a
+      // DB failure leaves everything intact (storage untouched, row present)
+      // instead of a user-visible broken attachment with the file gone.
       const deleted = await getDb()
         .delete(attachments)
         .where(
@@ -337,8 +322,39 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
         .returning({ id: attachments.id });
       if (deleted.length === 0) {
         // Ownership changed (or row vanished) between lookup and delete.
-        // Same generic 404 as a missing attachment — no enumeration.
+        // Same generic 404 as a missing attachment — no enumeration. Reached
+        // before any storage call, so no wasted storage delete either.
         throw ApiError.notFound("Attachment not found");
+      }
+
+      // Best-effort storage removal: the row is already gone, so a failure
+      // here leaves only an invisible storage orphan for the periodic
+      // sweeper (sweepOrphanedAttachments) — never a broken row, never a
+      // 502 for an already-applied delete.
+      if (row.attachment.type === "file" && row.attachment.storagePath) {
+        const objectKey = row.attachment.storagePath.replace(
+          /^attachments\//,
+          "",
+        );
+        try {
+          const supabase = createServiceClient();
+          const { error: removeError } = await storageRemove(supabase, [
+            objectKey,
+          ]);
+          if (removeError) {
+            console.error(
+              "[attachments] post-delete storage remove failed (orphan, swept later)",
+              objectKey,
+              removeError.message,
+            );
+          }
+        } catch (error) {
+          console.error(
+            "[attachments] post-delete storage remove failed (orphan, swept later)",
+            objectKey,
+            error instanceof Error ? error.message : "unknown",
+          );
+        }
       }
 
       return { ok: true };
@@ -351,7 +367,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
         ...secured(),
         ...apiDoc({
           ok: envelope({ ok: { type: "boolean" } }, ["ok"]),
-          errors: [401, 403, 404, 429, 502],
+          errors: [401, 403, 404, 429],
         }),
       },
     },
