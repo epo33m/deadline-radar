@@ -7,6 +7,13 @@ import {
   type ApiErrorBody,
 } from "@/lib/api/errors";
 import { resolveApiOrigin } from "@/lib/api/origin";
+import {
+  createApiTimeout,
+  isAbortError,
+  resolveApiTimeoutMs,
+  ApiTimeoutError,
+  type ApiTimeoutOptions,
+} from "@/lib/api/timeout";
 
 export type { ApiErrorBody, ApiErrorDetail, ApiErrorObject } from "@/lib/api/errors";
 export { normalizeApiErrorBody } from "@/lib/api/errors";
@@ -113,6 +120,7 @@ export async function clearLocalAuthCookies(): Promise<void> {
 export async function apiFetch<T = unknown>(
   path: string,
   init: RequestInit = {},
+  options: ApiTimeoutOptions = {},
 ): Promise<{ data: T; response: Response }> {
   const headerStore = await headers();
   const cookie = await cookieHeader();
@@ -132,11 +140,28 @@ export async function apiFetch<T = unknown>(
   headersInit.set("x-forwarded-proto", fwdProto);
   headersInit.set("origin", process.env.WEB_ORIGIN ?? "http://127.0.0.1:3025");
 
-  const response = await fetch(`${API_ORIGIN}${path}`, {
-    ...init,
-    headers: headersInit,
-    cache: "no-store",
-  });
+  // I-04: every request is bounded — a stalled API can never hang the page.
+  // A caller signal (when provided) is combined, never replaced.
+  const callerSignal = init.signal ?? options.signal ?? null;
+  const { signal, didTimeout } = createApiTimeout(
+    callerSignal,
+    resolveApiTimeoutMs(init, options),
+  );
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_ORIGIN}${path}`, {
+      ...init,
+      signal,
+      headers: headersInit,
+      cache: "no-store",
+    });
+  } catch (error) {
+    // Our own timeout → classified application error (distinct from 5xx).
+    // Anything else (caller cancel, transport failure) propagates unchanged.
+    if (isAbortError(error) && didTimeout()) throw new ApiTimeoutError();
+    throw error;
+  }
 
   await applySetCookies(response);
 
@@ -152,10 +177,12 @@ export async function apiFetch<T = unknown>(
 export async function apiJson<T = unknown>(
   path: string,
   init: RequestInit = {},
+  options: ApiTimeoutOptions = {},
 ): Promise<T & ApiErrorBody> {
   const { data, response } = await apiFetch<T & Record<string, unknown>>(
     path,
     init,
+    options,
   );
   return normalizeApiErrorBody(data, response.status) as T & ApiErrorBody;
 }
