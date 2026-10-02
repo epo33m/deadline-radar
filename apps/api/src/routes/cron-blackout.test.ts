@@ -114,6 +114,12 @@ mock.module("resend", () => ({
   },
 }));
 
+// I-03: the orphan sweeper is covered in storage-sweep.test.ts; keep these
+// route-contract tests deterministic by stubbing it to a no-op find.
+mock.module("../lib/storage-sweep", () => ({
+  sweepOrphanedAttachments: async () => ({ examined: 0, removed: 0 }),
+}));
+
 const { resetRateLimitBuckets } = await import("../plugins/rate-limit");
 const { setVerifyAccessTokenOverride } = await import("../lib/auth-tokens");
 const {

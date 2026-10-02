@@ -68,6 +68,9 @@ type AttachmentRecord = {
 const idemStore = new Map<string, IdemRecord>();
 const attachmentsStore = new Map<string, AttachmentRecord>();
 let attachmentsInsertMode: "ok" | "fail" = "ok";
+// I-03: "fail" throws on delete (DB failure); "empty" returns zero rows
+// (ownership changed between lookup and delete — the IN-subquery race).
+let attachmentsDeleteMode: "ok" | "fail" | "empty" = "ok";
 let deleteExecutionCount = 0;
 const storageCalls: Array<{ op: "upload" | "remove"; key: string }> = [];
 let uploadMode: "ok" | "fail" = "ok";
@@ -156,6 +159,8 @@ function chain(op: "select" | "insert" | "update" | "delete", table?: unknown) {
       }
       if (op === "delete") {
         deleteExecutionCount++;
+        if (attachmentsDeleteMode === "fail") throw new Error("db delete failed");
+        if (attachmentsDeleteMode === "empty") return [];
         const id = extractIdFromWhere(state.where);
         if (id) {
           attachmentsStore.delete(id);
@@ -206,6 +211,8 @@ function chain(op: "select" | "insert" | "update" | "delete", table?: unknown) {
         }
         if (op === "delete") {
           deleteExecutionCount++;
+          if (attachmentsDeleteMode === "fail") throw new Error("db delete failed");
+          if (attachmentsDeleteMode === "empty") return [];
           const id = extractIdFromWhere(state.where);
           if (id) {
             attachmentsStore.delete(id);
@@ -379,6 +386,7 @@ describe("finding #5 — upload orphan cleanup", () => {
     storageCalls.length = 0;
     deleteExecutionCount = 0;
     attachmentsInsertMode = "ok";
+    attachmentsDeleteMode = "ok";
     uploadMode = "ok";
     removeMode = "ok";
     setVerifyAccessTokenOverride(null);
@@ -461,6 +469,7 @@ describe("finding #5 — upload idempotency fingerprint", () => {
     storageCalls.length = 0;
     deleteExecutionCount = 0;
     attachmentsInsertMode = "ok";
+    attachmentsDeleteMode = "ok";
     setVerifyAccessTokenOverride(null);
     setLoadAuthorizationContextOverride(null);
     setOwnershipOverrides(null);
@@ -536,7 +545,7 @@ describe("finding #5 — upload idempotency fingerprint", () => {
   });
 });
 
-describe("F-01 — storage delete failure handling", () => {
+describe("I-03 — DB-first delete ordering (was F-01 storage-first)", () => {
   beforeEach(() => {
     resetRateLimitBuckets();
     idemStore.clear();
@@ -544,6 +553,7 @@ describe("F-01 — storage delete failure handling", () => {
     storageCalls.length = 0;
     deleteExecutionCount = 0;
     attachmentsInsertMode = "ok";
+    attachmentsDeleteMode = "ok";
     uploadMode = "ok";
     removeMode = "ok";
     setVerifyAccessTokenOverride(null);
@@ -552,25 +562,28 @@ describe("F-01 — storage delete failure handling", () => {
     authed();
   });
 
-  test("storage delete sukses → HTTP 200 + DB row terhapus", async () => {
-    const attId = "11111111-1111-4111-8111-111111111111";
-    const storagePath = `attachments/${USER_A}/${TASK_A}/${attId}/doc.pdf`;
+  function seedFileAttachment(attId: string): void {
     attachmentsStore.set(attId, {
       id: attId,
       taskId: TASK_A,
       type: "file",
       notes: null,
-      storagePath,
+      storagePath: `attachments/${USER_A}/${TASK_A}/${attId}/doc.pdf`,
       url: null,
       createdAt: new Date(),
     });
+  }
+
+  test("happy path unchanged → HTTP 200 + DB row gone + storage removed", async () => {
+    const attId = "11111111-1111-4111-8111-111111111111";
+    seedFileAttachment(attId);
 
     const response = await deleteRequest(attId);
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body).toEqual({ ok: true });
 
-    // DB row is deleted
+    // DB row is deleted first
     expect(attachmentsStore.has(attId)).toBe(false);
     expect(deleteExecutionCount).toBe(1);
 
@@ -580,31 +593,64 @@ describe("F-01 — storage delete failure handling", () => {
     expect(removes[0].key).toBe(`${USER_A}/${TASK_A}/${attId}/doc.pdf`);
   });
 
-  test("storage delete gagal → HTTP 502 + DEPENDENCY_FAILURE, DB row tetap ada, no DB delete executed", async () => {
+  test("storage remove fails post-delete → still 200, row gone, orphan logged for the sweeper", async () => {
     removeMode = "fail";
     const attId = "22222222-2222-4222-8222-222222222222";
-    const storagePath = `attachments/${USER_A}/${TASK_A}/${attId}/doc.pdf`;
-    attachmentsStore.set(attId, {
-      id: attId,
-      taskId: TASK_A,
-      type: "file",
-      notes: null,
-      storagePath,
-      url: null,
-      createdAt: new Date(),
-    });
+    seedFileAttachment(attId);
+    const logged: unknown[][] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => {
+      logged.push(args);
+    };
+    try {
+      const response = await deleteRequest(attId);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true });
+    } finally {
+      console.error = originalError;
+    }
+
+    // The already-applied delete is NOT rolled back into a 502: the row is
+    // gone and the leftover object is an invisible orphan, not a broken row.
+    expect(attachmentsStore.has(attId)).toBe(false);
+    expect(deleteExecutionCount).toBe(1);
+    expect(storageCalls.filter((c) => c.op === "remove").length).toBe(1);
+    expect(
+      logged.some((args) =>
+        args.some((a) => String(a).includes("orphan, swept later")),
+      ),
+    ).toBe(true);
+  });
+
+  test("DB delete fails → generic 500, storage untouched, row intact", async () => {
+    attachmentsDeleteMode = "fail";
+    const attId = "33333333-3333-4333-8333-333333333333";
+    seedFileAttachment(attId);
 
     const response = await deleteRequest(attId);
-    expect(response.status).toBe(502);
+    expect(response.status).toBe(500);
     const body = (await response.json()) as {
       error?: { code?: string; message?: string } | string;
     };
     const err = body.error;
-    expect(typeof err === "string" ? err : err?.code).toBe("DEPENDENCY_FAILURE");
+    expect(typeof err === "string" ? err : err?.code).toBe("INTERNAL");
 
-    // DB delete MUST NOT have been executed
-    expect(deleteExecutionCount).toBe(0);
-    // DB row remains present
+    // DB-first: storage is never touched when the row delete fails.
+    expect(deleteExecutionCount).toBe(1);
+    expect(storageCalls.filter((c) => c.op === "remove").length).toBe(0);
+    expect(attachmentsStore.has(attId)).toBe(true);
+  });
+
+  test("ownership race (0 rows deleted) → generic 404, storage untouched", async () => {
+    attachmentsDeleteMode = "empty";
+    const attId = "44444444-4444-4444-8444-444444444444";
+    seedFileAttachment(attId);
+
+    const response = await deleteRequest(attId);
+    expect(response.status).toBe(404);
+
+    // Same generic 404 as a missing attachment, and no wasted storage call.
+    expect(storageCalls.filter((c) => c.op === "remove").length).toBe(0);
     expect(attachmentsStore.has(attId)).toBe(true);
   });
 });
@@ -617,6 +663,7 @@ describe("F-03 — unique storage key per attachment", () => {
     storageCalls.length = 0;
     deleteExecutionCount = 0;
     attachmentsInsertMode = "ok";
+    attachmentsDeleteMode = "ok";
     uploadMode = "ok";
     removeMode = "ok";
     setVerifyAccessTokenOverride(null);
@@ -686,6 +733,7 @@ describe("F-03 — unique storage key per attachment", () => {
       storageCalls.length = 0;
       deleteExecutionCount = 0;
       attachmentsInsertMode = "ok";
+    attachmentsDeleteMode = "ok";
       uploadMode = "ok";
       removeMode = "ok";
       setVerifyAccessTokenOverride(null);
@@ -778,6 +826,7 @@ describe("P2-3 — POST /link single-transaction create", () => {
     storageCalls.length = 0;
     deleteExecutionCount = 0;
     attachmentsInsertMode = "ok";
+    attachmentsDeleteMode = "ok";
     uploadMode = "ok";
     removeMode = "ok";
     setVerifyAccessTokenOverride(null);

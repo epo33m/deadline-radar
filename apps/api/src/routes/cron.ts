@@ -10,6 +10,7 @@ import { apiDoc, envelope } from "../lib/api";
 import { purgeExpiredIdempotencyKeys } from "../lib/api/idempotency";
 import { purgeExpiredAuthAuditEvents } from "../lib/auth-audit-retention";
 import { isSystemicReminderFailure } from "../lib/reminder-alert";
+import { sweepOrphanedAttachments } from "../lib/storage-sweep";
 
 function authorizeCron(request: Request): void {
   const secret = env.cronSecret();
@@ -70,6 +71,23 @@ export const cronRoutes = new Elysia({ prefix: "/api/v1/cron" }).get(
         error instanceof Error ? error.message : "unknown error",
       );
     });
+    // I-03: sweep invisible storage orphans left by DB-first deletes whose
+    // post-delete storage removal failed. Best-effort like the purges above;
+    // hourly cadence + per-run caps mop up gradually.
+    await sweepOrphanedAttachments()
+      .then(({ examined, removed }) => {
+        if (examined > 0 || removed > 0) {
+          console.log(
+            `[cron] storage sweep: ${examined} examined, ${removed} orphans removed`,
+          );
+        }
+      })
+      .catch((error) => {
+        console.error(
+          "[cron] storage sweep failed:",
+          error instanceof Error ? error.message : "unknown error",
+        );
+      });
     const startedAt = Date.now();
     // RF-12: cron runs bounded — MAX_TASKS_PER_RUN / MAX_RUN_DURATION_MS keep a
     // single invocation inside the host timeout; a truncated run records it on

@@ -68,6 +68,26 @@ export function storageRemove(
   );
 }
 
+/**
+ * I-03: list objects under a bucket prefix for the orphan sweeper.
+ * Read-only; retried like the other helpers. `prefix` omits the bucket
+ * name (e.g. "" for the root, "<userId>" for one owner's folder).
+ */
+export function storageList(
+  client: ServiceClient,
+  prefix?: string,
+  options?: { limit?: number; offset?: number },
+  attempts: number = STORAGE_RETRY_ATTEMPTS,
+): Promise<Awaited<ReturnType<StorageBucket["list"]>>> {
+  return withStorageRetry(
+    () =>
+      client.storage
+        .from("attachments")
+        .list(prefix, { limit: options?.limit, offset: options?.offset }),
+    attempts,
+  );
+}
+
 export function storageSignedUrl(
   client: ServiceClient,
   objectKey: string,
