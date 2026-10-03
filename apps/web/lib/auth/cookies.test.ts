@@ -109,7 +109,7 @@ describe("isSecureRequest", () => {
     ]) {
       expect(isSecureRequest({ host })).toBe(false);
     }
-    expect(isSecureRequest({ host: "deadline-radar-web.vercel.app" })).toBe(
+    expect(isSecureRequest({ host: "dr.rapm.space" })).toBe(
       true,
     );
     expect(isSecureRequest({ host: "192.168.18.135:3025" })).toBe(true);

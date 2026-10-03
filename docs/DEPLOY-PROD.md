@@ -152,7 +152,7 @@ panggilan kedua keluar `skipped` tanpa kerja.
 | Railway project / service | `deadline-radar-api` / `deadline-radar-api` (`6886d8eb-b917-4820-bc2e-74ac3c0b16c2`) |
 | Domain API | `https://deadline-radar-api-production.up.railway.app` |
 | Vercel project | `deadline-radar-web` (`prj_BT7yRuoU4Jw7MXggiQDenlfffovJ`), root `apps/web`, GitHub connected |
-| Domain Web | `https://deadline-radar-web.vercel.app` |
+| Domain Web | `https://dr.rapm.space` |
 | GitHub secrets | `PROD_API_URL`, `CRON_SECRET` |
 
 `API_ORIGIN` = domain API, `WEB_ORIGIN` = domain Web. `railway.json` masih

@@ -61,7 +61,7 @@ function localHead(): string {
 
 const EXPECTED_COMMIT = flag("--commit") ?? pick("EXPECT_COMMIT") ?? localHead();
 const API = (flag("--api") ?? pick("API_ORIGIN", "PROD_API_URL") ?? "https://deadline-radar-api-production.up.railway.app").replace(/\/$/, "");
-const WEB = (flag("--web") ?? pick("WEB_ORIGIN", "PROD_WEB_URL") ?? "https://deadline-radar-web.vercel.app").replace(/\/$/, "");
+const WEB = (flag("--web") ?? pick("WEB_ORIGIN", "PROD_WEB_URL") ?? "https://dr.rapm.space").replace(/\/$/, "");
 // Push-triggered runs race the platform builds: poll for the expected commit
 // instead of failing on the first mismatch (0 = check once).
 const WAIT_COMMIT_SECS = Number(flag("--wait-commit") ?? "600");

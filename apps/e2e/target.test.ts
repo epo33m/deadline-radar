@@ -24,7 +24,7 @@ import {
 const PROD_DB_URL =
   "postgresql://postgres.bhtfkuzsdxrdmvvcczse:not-a-real-password@aws-0-us-east-1.pooler.supabase.com:6543/postgres";
 const PROD_SUPABASE_URL = "https://bhtfkuzsdxrdmvvcczse.supabase.co";
-const PROD_WEB_ORIGIN = "https://deadline-radar-web.vercel.app";
+const PROD_WEB_ORIGIN = "https://dr.rapm.space";
 const PROD_API_ORIGIN = "https://deadline-radar-api-production.up.railway.app";
 
 const NON_PROD_DB_URL =
@@ -117,7 +117,7 @@ describe("resolveTarget: production is refused and the resolved host is printed"
       { NEXT_PUBLIC_SUPABASE_URL: PROD_SUPABASE_URL },
       "bhtfkuzsdxrdmvvcczse",
     ],
-    ["WEB_ORIGIN", { WEB_ORIGIN: PROD_WEB_ORIGIN }, "deadline-radar-web.vercel.app"],
+    ["WEB_ORIGIN", { WEB_ORIGIN: PROD_WEB_ORIGIN }, "dr.rapm.space"],
     ["API_ORIGIN", { API_ORIGIN: PROD_API_ORIGIN }, "deadline-radar-api-production.up.railway.app"],
   ];
 

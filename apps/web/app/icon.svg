@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none" stroke="currentColor" stroke-width="32" stroke-linecap="round" stroke-linejoin="round" width="100%" height="100%">
+  <!-- Outer Open Radar Arc (270 degrees) -->
+  <path d="M 256 56 A 200 200 0 1 0 456 256" />
+
+  <!-- Middle Open Radar Arc (270 degrees) -->
+  <path d="M 256 132 A 124 124 0 1 0 380 256" />
+
+  <!-- Center Radar Pulse Core -->
+  <circle cx="256" cy="256" r="38" />
+
+  <!-- Radar Sweep Ray Line (45-degree angle) -->
+  <path d="M 284 228 L 398 114" />
+</svg>

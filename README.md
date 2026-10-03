@@ -1,10 +1,10 @@
 # Deadline Radar
 
-[![beta](https://img.shields.io/badge/status-beta-yellow)](https://github.com/epo33m/deadline-radar/releases/tag/v0.1.0-beta.2) [![live](https://img.shields.io/badge/demo-live-brightgreen)](https://deadline-radar-web.vercel.app)
+[![beta](https://img.shields.io/badge/status-beta-yellow)](https://github.com/epo33m/deadline-radar/releases/tag/v0.1.0-beta.2) [![live](https://img.shields.io/badge/demo-live-brightgreen)](https://dr.rapm.space)
 
 Personal academic task tracker that helps students monitor coursework and meet deadlines through a centralized Summary and tiered reminders (email + in-app).
 
-> **Beta ([v0.1.0-beta.2](https://github.com/epo33m/deadline-radar/releases/tag/v0.1.0-beta.2))** — live at [deadline-radar-web.vercel.app](https://deadline-radar-web.vercel.app). Expect rough edges; bug reports with the `ref:` code shown under any error are gold. Your beta 1 account and data carry over — no re-registration needed.
+> **Beta ([v0.1.0-beta.2](https://github.com/epo33m/deadline-radar/releases/tag/v0.1.0-beta.2))** — live at [dr.rapm.space](https://dr.rapm.space). Expect rough edges; bug reports with the `ref:` code shown under any error are gold. Your beta 1 account and data carry over — no re-registration needed.
 
 ## Features
 

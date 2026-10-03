@@ -29,7 +29,7 @@ const REAL_APP_DIR = path.join(repoRoot, "apps/web");
 
 /** Real production identifiers, with fake credentials. */
 const PROD_SUPABASE_URL = "https://bhtfkuzsdxrdmvvcczse.supabase.co";
-const PROD_WEB_ORIGIN = "https://deadline-radar-web.vercel.app";
+const PROD_WEB_ORIGIN = "https://dr.rapm.space";
 const NON_PROD_SUPABASE_URL = "https://notprod1234567890ab.supabase.co";
 
 /** Distinctive enough that finding it in a message is unambiguous. */
@@ -102,7 +102,7 @@ describe("findAppEnvViolations: a Vercel credential in the app dir is a finding"
 
   test.each([
     ["production Supabase", { SUPABASE_URL: PROD_SUPABASE_URL }, "bhtfkuzsdxrdmvvcczse"],
-    ["production web origin", { WEB_ORIGIN: PROD_WEB_ORIGIN }, "deadline-radar-web.vercel.app"],
+    ["production web origin", { WEB_ORIGIN: PROD_WEB_ORIGIN }, "dr.rapm.space"],
   ])("reports a %s reference with the marker that matched", (_label, entries, marker) => {
     writeEnv(".env.local", entries);
 

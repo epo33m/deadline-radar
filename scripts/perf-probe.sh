@@ -14,7 +14,7 @@
 set -eu
 
 API_ORIGIN="${API_ORIGIN:-https://deadline-radar-api-production.up.railway.app}"
-WEB_ORIGIN="${WEB_ORIGIN:-https://deadline-radar-web.vercel.app}"
+WEB_ORIGIN="${WEB_ORIGIN:-https://dr.rapm.space}"
 
 LOGDIR="scripts/perf-logs"
 mkdir -p "$LOGDIR"
