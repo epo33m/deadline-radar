@@ -80,7 +80,7 @@ a spec. A CLI session transcript is not a regression test.
 
 - Drive loopback staging only: `http://127.0.0.1:3025` (web),
   `http://127.0.0.1:4025` (API), or hosts from an explicit `E2E_TARGET`.
-- NEVER production. The deny-list is `deadline-radar-web.vercel.app`,
+- NEVER production. The deny-list is `dr.rapm.space`,
   `deadline-radar-api-production.up.railway.app`, and the production Supabase
   project ref — see `PRODUCTION_MARKERS` in `apps/e2e/target.ts`. A CLI
   session pointed at any of these is a security incident, not a shortcut.

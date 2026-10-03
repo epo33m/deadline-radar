@@ -27,7 +27,7 @@ import { readFileSync } from "node:fs";
 export const PRODUCTION_MARKERS = [
   "bhtfkuzsdxrdmvvcczse", // production Supabase project ref
   "bhtfkuzsdxrdmvvcczse.supabase.co",
-  "deadline-radar-web.vercel.app",
+  "dr.rapm.space",
   "deadline-radar-api-production.up.railway.app",
 ] as const;
 

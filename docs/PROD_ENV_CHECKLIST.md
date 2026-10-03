@@ -36,7 +36,7 @@ Legenda lokasi:
 | `RESEND_API_KEY` | ENV-API | ☐ | **WAJIB prod (RF-13 fail-closed): API refusal boot kalau kosong / bukan format `re_`.** Tanpa ini semua delivery gagal di send-time (blackout) |
 | `RESEND_FROM_EMAIL` | ENV-API | ☐ | **WAJIB prod (RF-13): valid (bukan default sandbox).** Kosong/invalid = refusal boot; pakai domain terverifikasi di DASH-RE (domain `resend.dev` = warn, hanya preview) |
 | `SENTRY_DSN` | ENV-API **dan** ENV-WEB | ☐ | DSN project Sentry (bukan rahasia, tapi tetap via env); lihat §5 |
-| `WEB_ORIGIN` | ENV-API + ENV-WEB | ☐ | Origin publik web prod (cookie/CORS/redirect) |
+| `WEB_ORIGIN` | ENV-API + ENV-WEB | ☐ | Origin publik web prod = `https://dr.rapm.space` (metadata base, cookie/CORS/redirect) |
 | `API_ORIGIN` / `API_PORT` | ENV-WEB / ENV-API | ☐ | Alamat API yang di-rewrite Web |
 | `AUTH_AUDIT_RETENTION_DAYS` | ENV-API | ☐ | Sudah diputuskan **90**; template aktif 90 |
 | `REMINDER_CUTOFF_ISO` | ENV-API | ☐ | F-03 + sign-off N-2: WAJIB isi dengan instant aktivasi scheduler saat deploy (format ISO) + komunikasikan ke user. **WAJIB di production (RF-11 fail-closed): API refusal boot kalau kosong/format salah.** Kosong = run pertama PASTI burst (terbatas kuota 50/run/user — puluhan email per user, bukan nol). Nilai dipilih: `2026-09-26T04:07:00Z` (aktivasi scheduler 2026-09-26; naikkan kalau run pertama jauh lebih akhir, jangan turunkan) |
