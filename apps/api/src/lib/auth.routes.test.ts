@@ -134,8 +134,11 @@ mock.module("./db", () => ({
   }),
 }));
 
+const recordedAuthEvents: Array<Record<string, unknown>> = [];
 mock.module("./auth-audit", () => ({
-  recordAuthEvent: async () => undefined,
+  recordAuthEvent: async (input: Record<string, unknown>) => {
+    recordedAuthEvents.push(input);
+  },
 }));
 
 const { resetLoginAttemptStore } = await import("./auth-abuse");
@@ -533,6 +536,49 @@ describe("auth routes integration / security", () => {
     expect(response.status).toBe(202);
     const body = (await response.json()) as { message?: string };
     expect(body.message).toContain("Check your email");
+  });
+
+  test("register audit event is uniform for existing vs fresh email (#124)", async () => {
+    recordedAuthEvents.length = 0;
+    signUp.mockImplementationOnce(async () => ({
+      data: { session: null, user: null },
+      error: { message: "User already registered" },
+    }));
+    await app.handle(
+      new Request("http://localhost/api/v1/auth/register", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "existing@example.com", password: "secret12" }),
+      }),
+    );
+    const existingEvents = recordedAuthEvents.map((e) => ({
+      event: e.event,
+      result: e.result,
+      method: e.method,
+    }));
+
+    recordedAuthEvents.length = 0;
+    signUp.mockImplementationOnce(async () => ({
+      data: { session: null, user: { id: "u-new" } },
+      error: null,
+    }));
+    await app.handle(
+      new Request("http://localhost/api/v1/auth/register", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "new@example.com", password: "secret12" }),
+      }),
+    );
+    const freshEvents = recordedAuthEvents.map((e) => ({
+      event: e.event,
+      result: e.result,
+      method: e.method,
+    }));
+
+    expect(existingEvents).toEqual(freshEvents);
+    expect(existingEvents).toEqual([
+      { event: "register.pending_confirmation", result: "success", method: "password" },
+    ]);
   });
 
   test("register returns identical 202 when Supabase reports an existing user with empty identities", async () => {
