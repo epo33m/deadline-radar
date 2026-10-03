@@ -101,6 +101,13 @@ function readRefreshCookie(cookie: CookieBag): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+function pendingConfirmationBody() {
+  return {
+    message:
+      "Check your email to confirm your account before signing in. (Or disable email confirmation in Supabase Auth settings for local MVP.)",
+  };
+}
+
 function forgotPasswordSuccessBody() {
   return {
     success:
@@ -153,7 +160,8 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
           msg.includes("already exists") ||
           msg.includes("user already")
         ) {
-          throw ApiError.conflict(AUTH_ERRORS.accountAlreadyExists);
+          set.status = 202;
+          return pendingConfirmationBody();
         }
         throw ApiError.validation(AUTH_ERRORS.registrationFailed);
       }
@@ -169,7 +177,8 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
           method: "password",
           request,
         });
-        throw ApiError.conflict(AUTH_ERRORS.accountAlreadyExists);
+        set.status = 202;
+        return pendingConfirmationBody();
       }
 
       if (data.session && data.user) {
@@ -218,10 +227,7 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
       });
 
       set.status = 202;
-      return {
-        message:
-          "Check your email to confirm your account before signing in. (Or disable email confirmation in Supabase Auth settings for local MVP.)",
-      };
+      return pendingConfirmationBody();
     },
     {
       detail: {
@@ -246,7 +252,7 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
           description:
             "200 with a session when email confirmation is off; 202 " +
             "when a confirmation email was sent.",
-          errors: [400, 409, 429],
+          errors: [400, 429],
           extraResponses: {
             202: {
               description: "Confirmation email sent; no session yet.",

@@ -133,12 +133,16 @@ describe("finding #9 — rate-limit trust", () => {
   });
 
   test("C. rotating IPs does not escape the account login throttle", async () => {
+    // Exercises the legacy per-IP XFF path explicitly (opt-in only since #123);
+    // account throttle must still deny once the account budget is exhausted.
+    process.env.TRUST_PROXY_LEGACY = "1";
     const statuses: number[] = [];
     for (let i = 0; i < 10; i += 1) {
       const response = await loginAttempt("victim@example.com", `10.0.0.${i}`);
       statuses.push(response.status);
     }
     expect(statuses.every((s) => s === 401)).toBe(true);
+    delete process.env.TRUST_PROXY_LEGACY;
     // 11th attempt from a brand-new IP: account bucket (10 failures) denies.
     const denied = await loginAttempt("victim@example.com", "10.9.9.9");
     expect(denied.status).toBe(429);
@@ -201,8 +205,8 @@ describe("finding #9 — rate-limit trust", () => {
     expect(lastStatus).toBe(429);
   });
 
-  test("G. trusted mode still keys buckets per client IP", async () => {
-    // Same spoofed IP 21 times → 429 on the per-IP bucket.
+  test("G. rotating spoofed XFF shares one bucket (fail-closed, #123)", async () => {
+    // Same spoofed IP 21 times → 429 on the shared "local" bucket.
     let lastStatus = 0;
     for (let i = 0; i < 21; i += 1) {
       const response = await forgotAttempt(
@@ -212,11 +216,33 @@ describe("finding #9 — rate-limit trust", () => {
       lastStatus = response.status;
     }
     expect(lastStatus).toBe(429);
-    // A different client IP is unaffected.
+    // A different spoofed IP grants no fresh bucket without legacy opt-in.
     const fresh = await forgotAttempt(
       { "x-forwarded-for": "7.7.7.8" },
       "fresh@example.com",
     );
-    expect(fresh.status).toBe(200);
+    expect(fresh.status).toBe(429);
+  });
+
+  test("G2. legacy XFF per-IP buckets only with TRUST_PROXY_LEGACY=1", async () => {
+    process.env.TRUST_PROXY_LEGACY = "1";
+    try {
+      let lastStatus = 0;
+      for (let i = 0; i < 21; i += 1) {
+        const response = await forgotAttempt(
+          { "x-forwarded-for": "6.6.6.6" },
+          `user${i}@example.com`,
+        );
+        lastStatus = response.status;
+      }
+      expect(lastStatus).toBe(429);
+      const fresh = await forgotAttempt(
+        { "x-forwarded-for": "6.6.6.7" },
+        "fresh@example.com",
+      );
+      expect(fresh.status).toBe(200);
+    } finally {
+      delete process.env.TRUST_PROXY_LEGACY;
+    }
   });
 });

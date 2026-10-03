@@ -20,17 +20,26 @@ export const REFRESH_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
  * family as #58/#59, where an environment gate emitted TLS-only directives
  * from `next start` on plain-HTTP loopback.
  *
- * Precedence: the platform's forwarded proto first (Vercel sets it; proxy
- * chains append, so only the first entry is the client's), then the request
- * URL. Server Actions have no URL: there a loopback `Host` means a direct
+ * Precedence: the platform's forwarded proto first, then the request URL.
+ * Server Actions have no URL: there a loopback `Host` means a direct
  * plain-HTTP server and anything else fails closed to secure.
+ *
+ * Forwarded entries: proxies append, so the LAST entry is the one written by
+ * the edge closest to this server; the first entry is client-controllable
+ * (Finding: #123, web/secure-flag-xforwarded-proto-trust-gap). Trusting the
+ * first entry let a caller inject `X-Forwarded-Proto: http` and strip the
+ * `Secure` flag from freshly issued cookies.
  */
 export function isSecureRequest(input: {
   forwardedProto?: string | null;
   protocol?: string;
   host?: string | null;
 }): boolean {
-  const forwarded = input.forwardedProto?.split(",")[0]?.trim();
+  const forwardedEntries = input.forwardedProto
+    ?.split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  const forwarded = forwardedEntries?.[forwardedEntries.length - 1];
   if (forwarded) return forwarded.replace(/:$/, "") !== "http";
   if (input.protocol) return input.protocol.replace(/:$/, "") !== "http";
   const rawHost = (input.host ?? "").toLowerCase();
