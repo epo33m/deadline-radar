@@ -148,7 +148,13 @@ export async function ownedAttachmentInTx(
     })
     .from(attachments)
     .innerJoin(tasks, eq(attachments.taskId, tasks.id))
-    .where(and(eq(attachments.id, attachmentId), eq(tasks.userId, userId)))
+    .where(
+      and(
+        eq(attachments.id, attachmentId),
+        eq(tasks.userId, userId),
+        isNull(tasks.deletedAt),
+      ),
+    )
     .limit(1);
   return row ?? null;
 }
@@ -194,6 +200,7 @@ export async function ownedAttachmentByStoragePathInTx(
         eq(attachments.storagePath, storagePath),
         eq(tasks.userId, userId),
         eq(attachments.type, "file"),
+        isNull(tasks.deletedAt),
       ),
     )
     .limit(1);

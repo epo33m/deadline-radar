@@ -15,10 +15,11 @@
  *    peer means a direct connection: its address is the identity and the
  *    chain is ignored.
  * 3. `TRUST_PROXY=true` without peer info or without `TRUSTED_PROXIES` →
- *    legacy behavior (leftmost `X-Forwarded-For`, else `X-Real-IP`).
- *    ONLY safe behind an edge proxy that sanitizes/appends the chain;
- *    directly exposed, the identity is spoofable (documented, not fixed —
- *    deploy accordingly).
+ *    FAIL-CLOSED: identity is the peer when known, else the shared `"local"`
+ *    bucket. The legacy leftmost-XFF behavior remains available only behind
+ *    an explicit opt-in (`TRUST_PROXY_LEGACY=1`), because directly exposed
+ *    it lets a client rotate XFF and escape the rate-limit bucket
+ *    (Finding #123: request/legacy-xff-leftmost-spoof-rate-limit-bypass).
  *
  * The RFC 7239 `Forwarded` header is never read (ignoring it is safe).
  */
@@ -160,10 +161,15 @@ export function resolveClientIp(
     return chain[0] ?? peer;
   }
 
-  // Legacy path (no peer info or no allow-list configured).
-  if (chain.length > 0) return chain[0];
-  const realIp = request.headers.get("x-real-ip")?.trim();
-  if (realIp) return realIp;
+  // Legacy path (no peer info or no allow-list configured): spoofable when
+  // directly exposed, so it requires an explicit opt-in.
+  const legacyRaw = (process.env.TRUST_PROXY_LEGACY ?? "").trim().toLowerCase();
+  const legacy = legacyRaw === "1" || legacyRaw === "true";
+  if (legacy) {
+    if (chain.length > 0) return chain[0];
+    const realIp = request.headers.get("x-real-ip")?.trim();
+    if (realIp) return realIp;
+  }
   return peer ?? "local";
 }
 

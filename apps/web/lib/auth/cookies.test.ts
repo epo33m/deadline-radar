@@ -70,19 +70,26 @@ describe("auth cookie attributes", () => {
 });
 
 describe("isSecureRequest", () => {
-  test("trusts x-forwarded-proto first (proxy chains send lists)", () => {
+  test("trusts the LAST x-forwarded-proto entry (edge-written), not the client-controlled first", () => {
     expect(
       isSecureRequest({ forwardedProto: "https", protocol: "http:" }),
     ).toBe(true);
     expect(
       isSecureRequest({ forwardedProto: "http", protocol: "https:" }),
     ).toBe(false);
+    // Client-injected "http" in the first slot no longer strips Secure.
     expect(
       isSecureRequest({
-        forwardedProto: "https, http",
+        forwardedProto: "http, https",
         protocol: "http:",
       }),
     ).toBe(true);
+    expect(
+      isSecureRequest({
+        forwardedProto: "https, http",
+        protocol: "https:",
+      }),
+    ).toBe(false);
     expect(
       isSecureRequest({ forwardedProto: "https:", protocol: "http:" }),
     ).toBe(true);

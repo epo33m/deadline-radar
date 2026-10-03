@@ -19,12 +19,19 @@ import {
 
 const savedTrustProxy = process.env.TRUST_PROXY;
 const savedTrustedProxies = process.env.TRUSTED_PROXIES;
+const savedTrustProxyLegacy = process.env.TRUST_PROXY_LEGACY;
 
-function setProxyEnv(trustProxy?: string, trustedProxies?: string) {
+function setProxyEnv(
+  trustProxy?: string,
+  trustedProxies?: string,
+  trustProxyLegacy?: string,
+) {
   if (trustProxy === undefined) delete process.env.TRUST_PROXY;
   else process.env.TRUST_PROXY = trustProxy;
   if (trustedProxies === undefined) delete process.env.TRUSTED_PROXIES;
   else process.env.TRUSTED_PROXIES = trustedProxies;
+  if (trustProxyLegacy === undefined) delete process.env.TRUST_PROXY_LEGACY;
+  else process.env.TRUST_PROXY_LEGACY = trustProxyLegacy;
 }
 
 function requestWith(headers: Record<string, string>): Request {
@@ -40,6 +47,8 @@ afterEach(() => {
   else process.env.TRUST_PROXY = savedTrustProxy;
   if (savedTrustedProxies === undefined) delete process.env.TRUSTED_PROXIES;
   else process.env.TRUSTED_PROXIES = savedTrustedProxies;
+  if (savedTrustProxyLegacy === undefined) delete process.env.TRUST_PROXY_LEGACY;
+  else process.env.TRUST_PROXY_LEGACY = savedTrustProxyLegacy;
 });
 
 describe("finding #9 — proxy trust model", () => {
@@ -66,8 +75,21 @@ describe("finding #9 — proxy trust model", () => {
     expect(isProxyTrustEnabled()).toBe(false);
   });
 
-  test("B. trusted legacy mode uses the leftmost entry", () => {
+  test("legacy mode is opt-in: without TRUST_PROXY_LEGACY the chain is ignored", () => {
     setProxyEnv("true");
+    expect(
+      resolveClientIp(
+        requestWith({ "x-forwarded-for": "1.1.1.1, 2.2.2.2" }),
+        null,
+      ),
+    ).toBe("local");
+    expect(
+      resolveClientIp(requestWith({ "x-real-ip": "8.8.8.8" }), "10.0.0.1"),
+    ).toBe("10.0.0.1");
+  });
+
+  test("trusted legacy mode uses the leftmost entry when explicitly opted in", () => {
+    setProxyEnv("true", undefined, "1");
     expect(
       resolveClientIp(
         requestWith({ "x-forwarded-for": "1.1.1.1, 2.2.2.2" }),

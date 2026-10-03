@@ -18,10 +18,18 @@ const signInWithPassword = mock(
     },
 );
 
-const signUp = mock(async () => ({
-  data: { session: null, user: null },
-  error: { message: "User already registered" },
-}));
+const signUp = mock(
+  async (): Promise<{
+    data: {
+      session: unknown;
+      user: { id?: string; identities?: unknown[] } | null;
+    };
+    error: { message: string } | null;
+  }> => ({
+    data: { session: null, user: null },
+    error: { message: "User already registered" },
+  }),
+);
 
 const refreshSession = mock(
   async (): Promise<{
@@ -506,7 +514,7 @@ describe("auth routes integration / security", () => {
     expect(errMsg).toBe(AUTH_ERRORS.sessionExpired);
   });
 
-  test("register returns 409 conflict when account already exists", async () => {
+  test("register returns identical 202 for an already-registered email (no enumeration oracle)", async () => {
     signUp.mockImplementationOnce(async () => ({
       data: { session: null, user: null },
       error: { message: "User already registered" },
@@ -522,10 +530,30 @@ describe("auth routes integration / security", () => {
         }),
       }),
     );
-    expect(response.status).toBe(409);
-    const body = (await response.json()) as { error?: { code?: string; message?: string } | string };
-    const errMsg = typeof body.error === 'string' ? body.error : body.error?.message;
-    expect(errMsg).toBe(AUTH_ERRORS.accountAlreadyExists);
+    expect(response.status).toBe(202);
+    const body = (await response.json()) as { message?: string };
+    expect(body.message).toContain("Check your email");
+  });
+
+  test("register returns identical 202 when Supabase reports an existing user with empty identities", async () => {
+    signUp.mockImplementationOnce(async () => ({
+      data: { session: null, user: { id: "u-existing", identities: [] } },
+      error: null,
+    }));
+
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/auth/register", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: "student@example.com",
+          password: "secret12",
+        }),
+      }),
+    );
+    expect(response.status).toBe(202);
+    const body = (await response.json()) as { message?: string };
+    expect(body.message).toContain("Check your email");
   });
 
   test("register returns generic failure when provider fails without conflict", async () => {
