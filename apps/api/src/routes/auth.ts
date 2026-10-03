@@ -144,12 +144,6 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
 
       if (error) {
         logAuthProviderError("register", error);
-        await recordAuthEvent({
-          event: "register.failure",
-          result: "failure",
-          method: "password",
-          request,
-        });
         const msg = (error.message || "").toLowerCase();
         const code = (error as { code?: string }).code;
         if (
@@ -160,9 +154,23 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
           msg.includes("already exists") ||
           msg.includes("user already")
         ) {
+          // Audit-uniform with the novel-account pending path (Finding #124):
+          // an observer of auth-audit rows must not learn account existence.
+          await recordAuthEvent({
+            event: "register.pending_confirmation",
+            result: "success",
+            method: "password",
+            request,
+          });
           set.status = 202;
           return pendingConfirmationBody();
         }
+        await recordAuthEvent({
+          event: "register.failure",
+          result: "failure",
+          method: "password",
+          request,
+        });
         throw ApiError.validation(AUTH_ERRORS.registrationFailed);
       }
 
@@ -172,8 +180,9 @@ export const authRoutes = new Elysia({ prefix: "/api/v1/auth" })
         data.user.identities.length === 0
       ) {
         await recordAuthEvent({
-          event: "register.failure",
-          result: "failure",
+          event: "register.pending_confirmation",
+          result: "success",
+          userId: data.user?.id,
           method: "password",
           request,
         });
