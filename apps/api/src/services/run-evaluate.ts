@@ -759,6 +759,8 @@ export async function runEvaluateReminders(
         };
       });
 
+      const inputByTaskId = new Map(inputs.map((input) => [input.id, input]));
+
       const actions = evaluateReminders(inputs, now, { cutoff });
 
       const emailWork: {
@@ -1035,7 +1037,7 @@ export async function runEvaluateReminders(
             .delete(notificationDeliveries)
             .where(inArray(notificationDeliveries.id, deliveryIds));
           console.log(
-            `[reminders] skipped sends, tasks edited mid-run (${deliveryIds.length} cancelled)`,
+            `[reminders] cancelled ${deliveryIds.length} deliveries (stale mid-run or outside scheduling window)`,
           );
         } catch (error) {
           recordRowError(error, "cancel-stale-batch");
@@ -1124,6 +1126,7 @@ export async function runEvaluateReminders(
           !queuedIds.has(d.id),
       );
 
+      let sweptOutsideWindow = 0;
       for (const row of stuckPendingInBatch) {
         const task = taskById.get(row.taskId);
         if (!task || !isTaskLive(row.taskId)) continue;
@@ -1131,6 +1134,46 @@ export async function runEvaluateReminders(
           isDeliveryStale({ taskId: row.taskId, thresholdId: row.thresholdId })
         ) {
           staleDeliveryIds.push(row.id);
+          continue;
+        }
+        // RF-11/F-03 parity: the sweep must not send a row the normal
+        // evaluator would no longer schedule (deadline grace, cutoff,
+        // non-retroactive/F-01, not due). Re-run the domain decision with the
+        // target row and orphan/already-cancelled siblings removed so their
+        // `pending` status cannot mask the verdict; a matching create means
+        // the row is still schedulable now.
+        const input = inputByTaskId.get(row.taskId);
+        let dueAction: CreateDeliveryAction | undefined;
+        if (input) {
+          const liveThresholdIds = new Set(input.thresholds.map((t) => t.id));
+          dueAction = evaluateReminders(
+            [
+              {
+                ...input,
+                deliveries: input.deliveries.filter(
+                  (delivery) =>
+                    delivery.id !== row.id &&
+                    liveThresholdIds.has(delivery.threshold_id) &&
+                    !staleDeliveryIds.includes(delivery.id),
+                ),
+              },
+            ],
+            now,
+            { cutoff },
+          ).find(
+            (action): action is CreateDeliveryAction =>
+              action.action === "create" &&
+              action.channel === "email" &&
+              action.threshold_id === row.thresholdId &&
+              action.days_before === row.daysBefore,
+          );
+        }
+        if (!dueAction) {
+          // Cancel the row instead of sending a stale catch-up: same terminal
+          // disposition a fresh evaluation assigns (no delivery), and no
+          // quota is consumed.
+          staleDeliveryIds.push(row.id);
+          sweptOutsideWindow += 1;
           continue;
         }
         const profile = profileById.get(task.userId);
@@ -1189,6 +1232,7 @@ export async function runEvaluateReminders(
               failedRetryCount: (row.retryCount ?? 0) + 1,
               emailSnapshot: row.emailSnapshot,
               emailIdempotencyKey: row.emailIdempotencyKey,
+              late: dueAction.late,
             });
           } catch (error) {
             // I-01 row-level: a sweep-claim DB throw (or any unexpected send
@@ -1200,6 +1244,12 @@ export async function runEvaluateReminders(
             totalEmailsFailed += 1;
           }
         });
+      }
+
+      if (sweptOutsideWindow > 0) {
+        console.log(
+          `[reminders] sweep cancelled ${sweptOutsideWindow} deliveries outside the scheduling window`,
+        );
       }
 
       // I-06: one batched drop for every delivery cancelled as stale above.
