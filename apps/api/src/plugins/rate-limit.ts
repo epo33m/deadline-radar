@@ -78,6 +78,41 @@ export const memoryRateLimitStore: RateLimitStore = {
   },
 };
 
+type RedisRateLimitClient = NonNullable<Awaited<ReturnType<typeof getRedis>>>;
+
+/**
+ * Guarantees the Redis counter key will expire: re-applies the window TTL,
+ * or removes the key when that fails. Returns false only when neither is
+ * possible — the caller must then stop trusting the key and use the memory
+ * bucket, or a TTL-less counter would limit the client forever.
+ */
+async function ensureRateLimitKeyExpiry(
+  redis: RedisRateLimitClient,
+  redisKey: string,
+  windowMs: number,
+): Promise<boolean> {
+  try {
+    const pexpired = await withRedisTimeout(redis.pexpire(redisKey, windowMs));
+    // 1 = TTL applied; 0 = key already gone (nothing left to expire).
+    if (typeof pexpired === "number") return true;
+  } catch (error) {
+    console.warn(
+      "[redis] pexpire failed",
+      error instanceof Error ? error.message : "unknown",
+    );
+  }
+  try {
+    const deleted = await withRedisTimeout(redis.del(redisKey));
+    if (typeof deleted === "number") return true;
+  } catch (error) {
+    console.warn(
+      "[redis] del failed",
+      error instanceof Error ? error.message : "unknown",
+    );
+  }
+  return false;
+}
+
 /** Redis-backed store when REDIS_URL is available. */
 export const redisRateLimitStore: RateLimitStore = {
   async consume(key, max, windowMs) {
@@ -85,48 +120,56 @@ export const redisRateLimitStore: RateLimitStore = {
     if (!redis) {
       return memoryRateLimitStore.consume(key, max, windowMs);
     }
+    const fallbackToMemory = (reason: string, detail?: string) => {
+      if (detail === undefined) {
+        console.warn(`[redis] ${reason}, using memory bucket`);
+      } else {
+        console.warn(`[redis] ${reason}, using memory bucket`, detail);
+      }
+      return memoryRateLimitStore.consume(key, max, windowMs);
+    };
     const now = Date.now();
     const redisKey = `rl:${key}`;
     let count: number | null;
     try {
       count = await withRedisTimeout(redis.incr(redisKey));
     } catch (error) {
-      console.warn(
-        "[redis] incr failed, using memory bucket",
+      return fallbackToMemory(
+        "incr failed",
         error instanceof Error ? error.message : "unknown",
       );
-      return memoryRateLimitStore.consume(key, max, windowMs);
     }
     if (count === null) {
       // Slow Redis (wrong region / incident): fail open to the memory
       // bucket instead of taxing every request. Same posture as Redis
       // being down (Finding #9: process-local, single-replica budget).
-      console.warn("[redis] incr timeout, using memory bucket");
-      return memoryRateLimitStore.consume(key, max, windowMs);
+      return fallbackToMemory("incr timeout");
     }
     if (count === 1) {
-      // Best-effort expiry: a failed pexpire must not 500 the request.
-      try {
-        await withRedisTimeout(redis.pexpire(redisKey, windowMs));
-      } catch (error) {
-        console.warn(
-          "[redis] pexpire failed",
-          error instanceof Error ? error.message : "unknown",
-        );
+      if (!(await ensureRateLimitKeyExpiry(redis, redisKey, windowMs))) {
+        return fallbackToMemory("rate-limit key TTL not guaranteed");
       }
     }
     // Real window end when the server can tell us; a fresh incr fallback
     // would fabricate a full window on every hit near the boundary.
     let resetAt = now + windowMs;
+    let ttl: number | null | undefined;
     if (typeof redis.pttl === "function") {
       try {
-        const ttl = await withRedisTimeout(redis.pttl(redisKey));
-        if (typeof ttl === "number" && ttl > 0) resetAt = now + ttl;
+        ttl = await withRedisTimeout(redis.pttl(redisKey));
       } catch (error) {
         console.warn(
           "[redis] pttl failed",
           error instanceof Error ? error.message : "unknown",
         );
+        ttl = null;
+      }
+    }
+    if (typeof ttl === "number" && ttl > 0) {
+      resetAt = now + ttl;
+    } else if (ttl === -1 || ttl === null) {
+      if (!(await ensureRateLimitKeyExpiry(redis, redisKey, windowMs))) {
+        return fallbackToMemory("rate-limit key TTL not guaranteed");
       }
     }
     return {
