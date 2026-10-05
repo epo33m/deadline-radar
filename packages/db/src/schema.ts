@@ -379,5 +379,9 @@ export const attachments = pgTable(
   (table) => [
     // P3: task-scoped file lookups (detail view + ownership join).
     index("idx_attachments_task_id").on(table.taskId),
+    // Issue #133: exact storage-sweep membership lookups by storage_path.
+    index("idx_attachments_storage_path")
+      .on(table.storagePath)
+      .where(sql`storage_path is not null`),
   ],
 );

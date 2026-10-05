@@ -266,6 +266,8 @@ create table attachments (
 );
 
 create index idx_attachments_task_id on attachments(task_id);
+create index idx_attachments_storage_path on attachments(storage_path)
+  where storage_path is not null;
 ```
 
 ## 4. Triggers / Functions (sketch)
