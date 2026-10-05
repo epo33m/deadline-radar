@@ -67,7 +67,7 @@ Langkah dashboard:
 | `CRON_SECRET` | acak panjang; sama dengan `CRON_SECRET` GitHub secret |
 | `AUTH_BRIDGE_SECRET` | **harus identik** dengan nilai di Vercel |
 | `REDIS_URL` | wajib (SEC-007). **Region US East** (satu region dengan API; perf plan §R4 — INCR jauh = ~180ms per request) |
-| `REDIS_TIMEOUT_MS` | opsional, default **250** (fallback memory + warn bila Redis lebih lambat) |
+| `REDIS_TIMEOUT_MS` | opsional, default **250** (fallback memory + warn bila Redis lebih lambat; juga batas per-command di transport: ioredis `commandTimeout`/`connectTimeout` + abort signal REST Upstash, termasuk throttle login auth-abuse) |
 | `RESEND_API_KEY` / `RESEND_FROM_EMAIL` | domain terverifikasi di Resend |
 | `WEB_ORIGIN` | origin publik Vercel (cookie/CORS) |
 | `AUTH_AUDIT_RETENTION_DAYS` | `90` (keputusan audit ROUND 1) |

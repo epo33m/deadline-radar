@@ -10,7 +10,7 @@
  */
 
 import { resolveClientIp } from "./proxy-trust";
-import { getRedis } from "./redis";
+import { getRedis, withRedisTimeout } from "./redis";
 
 type AttemptBucket = {
   failures: number;
@@ -60,6 +60,61 @@ async function resolveRedis() {
   return getRedis();
 }
 
+type AbuseRedisClient = NonNullable<Awaited<ReturnType<typeof getRedis>>>;
+
+type RedisOutcome<T> = { ok: true; value: T } | { ok: false };
+
+function redisFailure(label: string, error: unknown): void {
+  console.warn(
+    `[redis] auth-abuse ${label} failed, using memory bucket`,
+    error instanceof Error ? error.message : "unknown",
+  );
+}
+
+/**
+ * Bounded, throw-free wrapper for the throttle's authoritative Redis ops
+ * (lock read, failure counter, clear). A timeout or error degrades that
+ * call to the in-memory bucket instead of hanging or 500ing the login —
+ * same posture as `rate-limit.ts`. The value is boxed so a legitimate
+ * `null` (missing key) is never confused with a timeout.
+ */
+async function guardedRedis<T>(
+  label: string,
+  op: (redis: AbuseRedisClient) => Promise<T>,
+): Promise<RedisOutcome<T>> {
+  const redis = await resolveRedis();
+  if (!redis) return { ok: false };
+  try {
+    const outcome = await withRedisTimeout(op(redis).then((value) => ({ value })));
+    if (outcome === null) {
+      console.warn(`[redis] auth-abuse ${label} timeout, using memory bucket`);
+      return { ok: false };
+    }
+    return { ok: true, value: outcome.value };
+  } catch (error) {
+    redisFailure(label, error);
+    return { ok: false };
+  }
+}
+
+/** Best-effort Redis op (TTL, lock write): a failure only warns. */
+async function bestEffortRedis(
+  label: string,
+  op: () => Promise<unknown>,
+): Promise<void> {
+  try {
+    const value = await withRedisTimeout(op());
+    if (value === null) {
+      console.warn(`[redis] auth-abuse ${label} timeout, continuing`);
+    }
+  } catch (error) {
+    console.warn(
+      `[redis] auth-abuse ${label} failed, continuing`,
+      error instanceof Error ? error.message : "unknown",
+    );
+  }
+}
+
 function getAccountBucket(key: string, now: number): AttemptBucket {
   let bucket = accountAttempts.get(key);
   if (!bucket || bucket.windowResetAt <= now) {
@@ -78,9 +133,11 @@ export async function getAccountDelayMs(
   key: string,
   now = Date.now(),
 ): Promise<number> {
-  const redis = await resolveRedis();
-  if (redis) {
-    const raw = await redis.get(`auth:lock:acct:${key}`);
+  const result = await guardedRedis("get account lock", (redis) =>
+    redis.get(`auth:lock:acct:${key}`),
+  );
+  if (result.ok) {
+    const raw = result.value;
     if (raw) {
       const lockedUntil = Number(raw);
       if (Number.isFinite(lockedUntil)) {
@@ -103,24 +160,25 @@ export async function recordAccountFailure(
   key: string,
   now = Date.now(),
 ): Promise<number> {
-  const redis = await resolveRedis();
-  if (redis) {
-    const failKey = `auth:fail:acct:${key}`;
+  const failKey = `auth:fail:acct:${key}`;
+  const result = await guardedRedis("incr account failures", async (redis) => {
     const count = await redis.incr(failKey);
     if (count === 1) {
-      await redis.pexpire(failKey, ACCOUNT_WINDOW_MS);
+      await bestEffortRedis("pexpire account failures", () =>
+        redis.pexpire(failKey, ACCOUNT_WINDOW_MS),
+      );
     }
     if (count >= MAX_ACCOUNT_FAILURES_BEFORE_DELAY) {
       const over = count - MAX_ACCOUNT_FAILURES_BEFORE_DELAY + 1;
       const delay = Math.min(MAX_DELAY_MS, BASE_DELAY_MS * 2 ** (over - 1));
-      const lockedUntil = now + delay;
-      await redis.set(`auth:lock:acct:${key}`, String(lockedUntil), {
-        px: delay,
-      });
+      await bestEffortRedis("set account lock", () =>
+        redis.set(`auth:lock:acct:${key}`, String(now + delay), { px: delay }),
+      );
       return delay;
     }
     return 0;
-  }
+  });
+  if (result.ok) return result.value;
 
   const bucket = getAccountBucket(key, now);
   bucket.failures += 1;
@@ -135,13 +193,11 @@ export async function recordAccountFailure(
 }
 
 export async function clearAccountFailures(key: string): Promise<void> {
-  const redis = await resolveRedis();
-  if (redis) {
+  accountAttempts.delete(key);
+  await guardedRedis("clear account failures", async (redis) => {
     await redis.del(`auth:fail:acct:${key}`);
     await redis.del(`auth:lock:acct:${key}`);
-    return;
-  }
-  accountAttempts.delete(key);
+  });
 }
 
 function getBucket(key: string, now: number): AttemptBucket {
@@ -162,9 +218,11 @@ export async function getLoginDelayMs(
   key: string,
   now = Date.now(),
 ): Promise<number> {
-  const redis = await resolveRedis();
-  if (redis) {
-    const raw = await redis.get(`auth:lock:login:${key}`);
+  const result = await guardedRedis("get login lock", (redis) =>
+    redis.get(`auth:lock:login:${key}`),
+  );
+  if (result.ok) {
+    const raw = result.value;
     if (raw) {
       const lockedUntil = Number(raw);
       if (Number.isFinite(lockedUntil)) {
@@ -187,24 +245,25 @@ export async function recordLoginFailure(
   key: string,
   now = Date.now(),
 ): Promise<number> {
-  const redis = await resolveRedis();
-  if (redis) {
-    const failKey = `auth:fail:login:${key}`;
+  const failKey = `auth:fail:login:${key}`;
+  const result = await guardedRedis("incr login failures", async (redis) => {
     const count = await redis.incr(failKey);
     if (count === 1) {
-      await redis.pexpire(failKey, WINDOW_MS);
+      await bestEffortRedis("pexpire login failures", () =>
+        redis.pexpire(failKey, WINDOW_MS),
+      );
     }
     if (count >= MAX_FAILURES_BEFORE_DELAY) {
       const over = count - MAX_FAILURES_BEFORE_DELAY + 1;
       const delay = Math.min(MAX_DELAY_MS, BASE_DELAY_MS * 2 ** (over - 1));
-      const lockedUntil = now + delay;
-      await redis.set(`auth:lock:login:${key}`, String(lockedUntil), {
-        px: delay,
-      });
+      await bestEffortRedis("set login lock", () =>
+        redis.set(`auth:lock:login:${key}`, String(now + delay), { px: delay }),
+      );
       return delay;
     }
     return 0;
-  }
+  });
+  if (result.ok) return result.value;
 
   const bucket = getBucket(key, now);
   bucket.failures += 1;
@@ -219,13 +278,11 @@ export async function recordLoginFailure(
 }
 
 export async function clearLoginFailures(key: string): Promise<void> {
-  const redis = await resolveRedis();
-  if (redis) {
+  loginAttempts.delete(key);
+  await guardedRedis("clear login failures", async (redis) => {
     await redis.del(`auth:fail:login:${key}`);
     await redis.del(`auth:lock:login:${key}`);
-    return;
-  }
-  loginAttempts.delete(key);
+  });
 }
 
 /** Test helper — clears all in-memory buckets. */

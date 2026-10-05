@@ -26,7 +26,7 @@ Legenda lokasi:
 | `AUTH_BRIDGE_SECRET` | ENV-API **dan** ENV-WEB (sama) | ☐ | Acak panjang; tidak pernah literal `"1"` |
 | `REDIS_URL` | ENV-API | ☐ | Wajib prod (SEC-007). Legacy TCP — dipakai hanya bila REST unset |
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | ENV-API | ☐ | Transport utama (HTTP, tanpa connection management). REST menang atas `REDIS_URL` agar accounting tak split-brain. Region **US East** |
-| `REDIS_TIMEOUT_MS` | ENV-API | ☐ | Opsional: batas satu round trip Redis (ms). Kosong = **250**. Lambat/lebih dari ini = fallback bucket memory + warn (bukan 500); samakan region Upstash dengan region API agar jarang terpicu |
+| `REDIS_TIMEOUT_MS` | ENV-API | ☐ | Opsional: batas satu round trip Redis (ms). Kosong = **250**. Lambat/lebih dari ini = fallback bucket memory + warn (bukan 500); juga batas per-command di transport (ioredis `commandTimeout`/`connectTimeout`, abort signal REST Upstash) untuk rate-limit dan throttle login; samakan region Upstash dengan region API agar jarang terpicu |
 | `BOOTSTRAP_CACHE_TTL_MS` | ENV-API | ☐ | Opsional: TTL cache `GET /api/v1/bootstrap` per-user (ms). Kosong = **30000**. `0` = matikan. Eviksi otomatis tiap mutasi 2xx (hook global); over-evict hanya buang refetch |
 
 ## 2. Fungsional (degradasi bila kosong)

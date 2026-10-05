@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 const signInWithPassword = mock(
   async (_args: { email: string; password: string }) =>
@@ -141,7 +141,11 @@ mock.module("./auth-audit", () => ({
   },
 }));
 
-const { resetLoginAttemptStore } = await import("./auth-abuse");
+const {
+  resetAccountAttemptStore,
+  resetLoginAttemptStore,
+  setAbuseRedisForTests,
+} = await import("./auth-abuse");
 process.env.AUTH_BRIDGE_SECRET ??= "test-auth-bridge-secret";
 process.env.NODE_ENV = "test";
 process.env.TRUST_PROXY = "true";
@@ -1395,5 +1399,65 @@ describe("auth routes integration / security", () => {
       user?: { pendingEmail?: string | null };
     };
     expect(body.user?.pendingEmail).toBe("new@example.com");
+  });
+});
+
+describe("login throttle with degraded redis (issue #132)", () => {
+  function loginRequest(email: string): Request {
+    return new Request("http://localhost/api/v1/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, password: "secret12" }),
+    });
+  }
+
+  function stalledClient() {
+    const never = () => new Promise<never>(() => {});
+    return { incr: never, pexpire: never, get: never, set: never, del: never };
+  }
+
+  function throwingClient() {
+    const boom = async (): Promise<never> => {
+      throw new Error("boom");
+    };
+    return { incr: boom, pexpire: boom, get: boom, set: boom, del: boom };
+  }
+
+  beforeEach(() => {
+    resetLoginAttemptStore();
+    resetAccountAttemptStore();
+    process.env.REDIS_TIMEOUT_MS = "50";
+  });
+
+  afterEach(() => {
+    setAbuseRedisForTests(undefined);
+    delete process.env.REDIS_TIMEOUT_MS;
+  });
+
+  test("stalled redis answers 401 within the bound instead of hanging or 500ing", async () => {
+    setAbuseRedisForTests(stalledClient());
+    const started = Date.now();
+    const response = await app.handle(loginRequest("stall@example.com"));
+    const elapsed = Date.now() - started;
+    expect(response.status).toBe(401);
+    const body = (await response.json()) as {
+      error?: { code?: string; message?: string } | string;
+    };
+    const err = body.error;
+    expect(typeof err === "string" ? err : err?.code).toBe("UNAUTHORIZED");
+    expect(elapsed).toBeLessThan(2000);
+  });
+
+  test("throwing redis degrades to the in-memory bucket: 401s then 429", async () => {
+    setAbuseRedisForTests(throwingClient());
+    const email = "degrade@example.com";
+
+    for (let i = 0; i < 3; i += 1) {
+      const response = await app.handle(loginRequest(email));
+      expect(response.status).toBe(401);
+    }
+
+    const throttled = await app.handle(loginRequest(email));
+    expect(throttled.status).toBe(429);
   });
 });

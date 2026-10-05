@@ -51,6 +51,28 @@ describe("getRedis transport selection", () => {
     expect(typeof client!.incr).toBe("function");
   });
 
+  test("REST commands are bounded by the client-level abort signal", async () => {
+    saved = clearEnv();
+    const savedTimeout = process.env.REDIS_TIMEOUT_MS;
+    process.env.UPSTASH_REDIS_REST_TOKEN = "bogus";
+    process.env.REDIS_TIMEOUT_MS = "100";
+    const server = Bun.serve({
+      port: 0,
+      fetch: () => new Promise<Response>(() => {}),
+    });
+    process.env.UPSTASH_REDIS_REST_URL = `http://127.0.0.1:${server.port}`;
+    try {
+      const client = await getRedis();
+      const started = Date.now();
+      await expect(client!.get("bounded:key")).rejects.toThrow();
+      expect(Date.now() - started).toBeLessThan(2000);
+    } finally {
+      server.stop(true);
+      if (savedTimeout === undefined) delete process.env.REDIS_TIMEOUT_MS;
+      else process.env.REDIS_TIMEOUT_MS = savedTimeout;
+    }
+  });
+
   test("injected client wins over env (memoized)", async () => {
     saved = clearEnv();
     process.env.UPSTASH_REDIS_REST_URL = "https://127.0.0.1:1";
