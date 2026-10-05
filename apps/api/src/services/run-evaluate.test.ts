@@ -1560,21 +1560,21 @@ describe("M-4: threshold offset changes and delivery snapshots", () => {
     expect(h3EmailDelivery?.status).toBe("sent");
   });
 
-  test("pending H-3 delivery delivers with its own snapshot daysBefore even after threshold changed to H-5", async () => {
+  test("pending delivery whose threshold offset moved is dropped, not sent", async () => {
     const now = Date.now();
     store.taskRows = [
       {
         id: TASK,
         userId: USER,
         status: "todo",
-        deadline: new Date(now + 10 * 86_400_000), // deadline 10 days ahead, so H-5 not due yet
+        deadline: new Date(now + 10 * 86_400_000),
         createdAt: new Date(now - 86_400_000),
-        title: "Pending snapshot task",
+        title: "Pending orphan task",
       },
     ];
     store.profileRows = [{ id: USER, email: "user@example.com", timezone: "UTC" }];
 
-    // Pending delivery exists for H-3
+    // Orphan pending row for H-3 left behind after the live threshold moved to H-5.
     store.deliveries = [
       {
         id: "dlv-pending-h3",
@@ -1588,20 +1588,14 @@ describe("M-4: threshold offset changes and delivery snapshots", () => {
       },
     ];
 
-    // Threshold in table was modified to H-5
     store.thresholdRows = [{ id: THRESHOLD, taskId: TASK, daysBefore: 5 }];
 
-    // Evaluator runs stuck pending sweep at now (10 days ahead, H-5 not due)
     await runEvaluateReminders(new Date(now));
 
-    expect(sendCalls).toHaveLength(1);
-    // Email body subject should have H-3 label based on snapshot, not H-5
-    const sentBody = sendCalls[0].body as { subject?: string };
-    expect(sentBody.subject).toContain("[H-3]");
-
-    const row = store.deliveries.find((d) => d.id === "dlv-pending-h3");
-    expect(row?.status).toBe("sent");
-    expect(row?.daysBefore).toBe(3);
+    // The normal evaluator would never schedule H-3 now (no live offset, and
+    // H-3's trigger is days away): the sweep must cancel, not send, the row.
+    expect(sendCalls).toHaveLength(0);
+    expect(store.deliveries.find((d) => d.id === "dlv-pending-h3")).toBeUndefined();
   });
 
   test("two overlapping runs creating same (thresholdId, daysBefore, channel) deduplicate to one delivery", async () => {
@@ -2966,6 +2960,148 @@ describe("RF-11: catch-up sends and deadline suppression", () => {
     expect(result.created).toBe(0);
     expect(result.emailsSent).toBe(0);
     expect(sendCalls).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F-10/RF-11: stuck-pending sweep re-applies the domain scheduling guards
+// ---------------------------------------------------------------------------
+
+describe("F-10/RF-11: sweep re-applies scheduling guards", () => {
+  test("pending delivery past the deadline grace is cancelled, not sent", async () => {
+    const now = Date.now();
+    store.profileRows = [{ id: USER, email: "user@example.com", timezone: "UTC" }];
+    store.taskRows = [
+      {
+        id: TASK,
+        userId: USER,
+        status: "todo",
+        deadline: new Date(now - 3 * 86_400_000),
+        createdAt: new Date(now - 10 * 86_400_000),
+        title: "Long overdue",
+      },
+    ];
+    store.thresholdRows = [{ id: THRESHOLD, taskId: TASK, daysBefore: 1 }];
+    seedPendingDelivery();
+
+    const result = await runEvaluateReminders(new Date(now));
+
+    expect(sendCalls).toHaveLength(0);
+    expect(result.emailsSent).toBe(0);
+    expect(result.emailsFailed).toBe(0);
+    expect(result.emailsSkippedQuota).toBe(0);
+    expect(store.deliveries.find((d) => d.id === "dlv-seed")).toBeUndefined();
+  });
+
+  test("pending delivery triggered before the F-03 cutoff is cancelled, not sent", async () => {
+    const now = Date.now();
+    store.profileRows = [{ id: USER, email: "user@example.com", timezone: "UTC" }];
+    store.taskRows = [
+      {
+        id: TASK,
+        userId: USER,
+        status: "todo",
+        deadline: new Date(now + 12 * 3_600_000),
+        createdAt: new Date(now - 10 * 86_400_000),
+        title: "Cutoff task",
+      },
+    ];
+    store.thresholdRows = [{ id: THRESHOLD, taskId: TASK, daysBefore: 1 }];
+    seedPendingDelivery();
+
+    const result = await runEvaluateReminders(new Date(now), {
+      cutoff: new Date(now - 30 * 60_000),
+    });
+
+    expect(sendCalls).toHaveLength(0);
+    expect(result.emailsSent).toBe(0);
+    expect(store.deliveries.find((d) => d.id === "dlv-seed")).toBeUndefined();
+  });
+
+  test("pending delivery whose trigger is still in the future is cancelled, not sent", async () => {
+    const now = Date.now();
+    store.profileRows = [{ id: USER, email: "user@example.com", timezone: "UTC" }];
+    store.taskRows = [
+      {
+        id: TASK,
+        userId: USER,
+        status: "todo",
+        deadline: new Date(now + 10 * 86_400_000),
+        createdAt: new Date(now - 10 * 86_400_000),
+        title: "Future trigger",
+      },
+    ];
+    store.thresholdRows = [{ id: THRESHOLD, taskId: TASK, daysBefore: 1 }];
+    seedPendingDelivery();
+
+    const result = await runEvaluateReminders(new Date(now));
+
+    expect(sendCalls).toHaveLength(0);
+    expect(result.emailsSent).toBe(0);
+    expect(store.deliveries.find((d) => d.id === "dlv-seed")).toBeUndefined();
+  });
+
+  test("in-window pending delivery is still sent and keeps the late label", async () => {
+    const now = Date.now();
+    store.profileRows = [{ id: USER, email: "user@example.com", timezone: "UTC" }];
+    store.taskRows = [
+      {
+        id: TASK,
+        userId: USER,
+        status: "todo",
+        deadline: new Date(now + 30 * 60_000),
+        createdAt: new Date(now - 10 * 86_400_000),
+        title: "Task A",
+      },
+    ];
+    store.thresholdRows = [{ id: THRESHOLD, taskId: TASK, daysBefore: 1 }];
+    seedPendingDelivery();
+
+    const result = await runEvaluateReminders(new Date(now));
+
+    expect(result.emailsSent).toBe(1);
+    expect(sendCalls).toHaveLength(1);
+    const sent = sendCalls[0]?.body as ReminderEmailBody;
+    expect(sent.subject).toBe("[H-1] [LATE] Reminder: Task A");
+    expect(store.deliveries.find((d) => d.id === "dlv-seed")?.status).toBe("sent");
+  });
+
+  test("orphan sibling row does not cancel the live threshold's pending delivery", async () => {
+    seedOpenTaskWithThreshold();
+    const readded = "44444444-4444-4444-8444-444444444444";
+    store.thresholdRows = [
+      { id: THRESHOLD, taskId: TASK, daysBefore: 1, deletedAt: new Date() },
+      { id: readded, taskId: TASK, daysBefore: 1 },
+    ];
+    store.deliveries = [
+      {
+        id: "dlv-archived",
+        taskId: TASK,
+        thresholdId: THRESHOLD,
+        daysBefore: 1,
+        channel: "email",
+        status: "pending",
+        retryCount: 0,
+        sentAt: null,
+      },
+      {
+        id: "dlv-live",
+        taskId: TASK,
+        thresholdId: readded,
+        daysBefore: 1,
+        channel: "email",
+        status: "pending",
+        retryCount: 0,
+        sentAt: null,
+      },
+    ];
+
+    const result = await runEvaluateReminders(new Date(Date.now() + 86_400_000));
+
+    expect(result.emailsSent).toBe(1);
+    expect(sendCalls).toHaveLength(1);
+    expect(store.deliveries.find((d) => d.id === "dlv-live")?.status).toBe("sent");
+    expect(store.deliveries.find((d) => d.id === "dlv-archived")).toBeUndefined();
   });
 });
 
