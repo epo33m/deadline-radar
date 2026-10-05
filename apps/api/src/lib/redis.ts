@@ -19,6 +19,10 @@ let redisClient: RedisLike | null | undefined;
  * in-region Redis answers in single-digit ms; anything beyond the bound is
  * treated like Redis being down (memory fallback + warn) instead of
  * stalling the request. Overridable via `REDIS_TIMEOUT_MS`.
+ *
+ * Also wired into the transports themselves (ioredis `commandTimeout` /
+ * `connectTimeout`, Upstash REST per-request abort signal) so a command
+ * cannot outlive the bound even on callers that forget `withRedisTimeout`.
  */
 export function redisTimeoutMs(): number {
   const raw = Number(process.env.REDIS_TIMEOUT_MS ?? "");
@@ -71,7 +75,10 @@ export async function getRedis(): Promise<RedisLike | null> {
     try {
       // Dynamic import keeps the transport optional for local/dev.
       const { Redis } = await import("@upstash/redis");
-      redisClient = new Redis(rest) as unknown as RedisLike;
+      redisClient = new Redis({
+        ...rest,
+        signal: () => AbortSignal.timeout(redisTimeoutMs()),
+      }) as unknown as RedisLike;
       return redisClient;
     } catch (err) {
       console.warn(
@@ -94,6 +101,8 @@ export async function getRedis(): Promise<RedisLike | null> {
       maxRetriesPerRequest: 1,
       enableReadyCheck: true,
       lazyConnect: true,
+      commandTimeout: redisTimeoutMs(),
+      connectTimeout: redisTimeoutMs(),
     });
     // Issue #89, same class (found while investigating, not in the issue):
     // without an 'error' listener, an EventEmitter 'error' from a Redis
