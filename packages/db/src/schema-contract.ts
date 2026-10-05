@@ -419,6 +419,12 @@ export const AUTHORITATIVE_SCHEMA_CONTRACT: SchemaContract = {
       isPartial: false,
     },
     {
+      table: "attachments",
+      indexName: "idx_attachments_storage_path",
+      isUnique: false,
+      isPartial: true,
+    },
+    {
       table: "tasks",
       indexName: "idx_tasks_user_course_deadline_active",
       isUnique: false,

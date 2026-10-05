@@ -52,13 +52,13 @@ describe("M-13 Database Schema & Drift Protection", () => {
     expect(result.summary.triggersVerified).toBe(6);
   });
 
-  test("migration history table tracks all 42 migrations", async () => {
+  test("migration history table tracks all 43 migrations", async () => {
     const rows = await sql<{ version: string; name: string }[]>`
       SELECT version, name FROM supabase_migrations.schema_migrations ORDER BY version;
     `;
-    expect(rows.length).toBe(42);
+    expect(rows.length).toBe(43);
     expect(rows[0].version).toBe("20260901000000");
-    expect(rows[rows.length - 1].version).toBe("20260922010000");
+    expect(rows[rows.length - 1].version).toBe("20261005000000");
   });
 
   describe("drift detector failure cases (adversarial simulation)", () => {

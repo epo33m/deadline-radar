@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  attachments,
   courses,
   notificationDeliveries,
   profiles,
@@ -94,6 +95,16 @@ describe("M-9 query list indexes", () => {
     );
     expect(idx).toBeDefined();
     expect(idx!.config.name).toBe("idx_tasks_user_deadline_id_active");
+  });
+
+  test("#133: attachments has partial idx_attachments_storage_path index", () => {
+    const config = getTableConfig(attachments);
+    const idx = config.indexes.find(
+      (i) => i.config.name === "idx_attachments_storage_path",
+    );
+    expect(idx).toBeDefined();
+    expect(idx!.config.unique).toBe(false);
+    expect(idx!.config.where).toBeDefined();
   });
 
   test("courses has idx_courses_user_created_id_active composite partial index", () => {
