@@ -43,6 +43,7 @@ import {
   R,
   readIdempotencyKey,
   readJsonBody,
+  releaseIdempotentOnClientError,
   secured,
   serializeAttachment,
   serializeCourse,
@@ -323,21 +324,9 @@ export const taskRoutes = new Elysia({ prefix: "/api/v1/tasks" })
       const ctx = await requireAuthz("task.create");
       const body = await readJsonBody(request);
       assertNoForbiddenMutationKeys(body);
-      const idemKey = readIdempotencyKey(request);
-      if (idemKey) {
-        const { replay } = await beginIdempotent({
-          userId: ctx.subject.id,
-          key: idemKey,
-          method: "POST",
-          path: "/api/v1/tasks",
-          body,
-        });
-        if (replay) {
-          set.status = replay.statusCode;
-          return replay.body;
-        }
-      }
 
+      // #136: everything that can answer 4xx runs BEFORE the claim, so a
+      // rejected request never poisons the key (mirrors admin.ts ordering).
       const parsed = taskSchema.safeParse(body);
       if (!parsed.success) {
         throw validationFromZod(
@@ -369,20 +358,45 @@ export const taskRoutes = new Elysia({ prefix: "/api/v1/tasks" })
         );
       }
 
-      const [row] = await getDb()
-        .insert(tasks)
-        .values({
+      const idemKey = readIdempotencyKey(request);
+      if (idemKey) {
+        const { replay } = await beginIdempotent({
           userId: ctx.subject.id,
-          courseId: parsed.data.course_id,
-          title: parsed.data.title,
-          description: parsed.data.description,
-          deadline: new Date(parsed.data.deadline),
-          status: parsed.data.status,
-          // Terminal Done: creation accepts only active statuses, so a new
-          // task is never completed at birth (DOMAIN.md §2.3).
-          completedAt: null,
-        })
-        .returning();
+          key: idemKey,
+          method: "POST",
+          path: "/api/v1/tasks",
+          body,
+        });
+        if (replay) {
+          set.status = replay.statusCode;
+          return replay.body;
+        }
+      }
+
+      let row;
+      try {
+        [row] = await getDb()
+          .insert(tasks)
+          .values({
+            userId: ctx.subject.id,
+            courseId: parsed.data.course_id,
+            title: parsed.data.title,
+            description: parsed.data.description,
+            deadline: new Date(parsed.data.deadline),
+            status: parsed.data.status,
+            // Terminal Done: creation accepts only active statuses, so a new
+            // task is never completed at birth (DOMAIN.md §2.3).
+            completedAt: null,
+          })
+          .returning();
+      } catch (error) {
+        // #136: a 4xx after the claim frees it for a corrected same-key retry.
+        await releaseIdempotentOnClientError(error, {
+          userId: ctx.subject.id,
+          key: idemKey,
+        });
+        throw error;
+      }
 
       const response = {
         task: serializeTask(row),
@@ -599,6 +613,25 @@ export const taskRoutes = new Elysia({ prefix: "/api/v1/tasks" })
       const ctx = await requireAuthz("threshold.manage");
       const body = await readJsonBody(request);
       assertNoForbiddenMutationKeys(body);
+
+      // #136: parse before claiming so an invalid body never poisons the key.
+      const parsed = reminderThresholdSchema.safeParse(body);
+      if (!parsed.success) {
+        throw validationFromZod(
+          "Invalid threshold",
+          parsed.error.flatten().fieldErrors,
+        );
+      }
+
+      const taskId = params.id;
+      const daysBefore = parsed.data.days_before;
+
+      // I-07: loop-invariant profile read once, outside the write tx.
+      // Default offsets skip the lookup entirely (unchanged behavior).
+      const timezone = DEFAULT_REMINDER_OFFSETS.includes(daysBefore)
+        ? null
+        : await resolveTaskTimezone(ctx.subject.id);
+
       // RF-06: threshold POST is replayable with an Idempotency-Key, matching
       // task create. A double submit then returns the original response
       // instead of a bare 409.
@@ -616,23 +649,6 @@ export const taskRoutes = new Elysia({ prefix: "/api/v1/tasks" })
           return replay.body;
         }
       }
-
-      const parsed = reminderThresholdSchema.safeParse(body);
-      if (!parsed.success) {
-        throw validationFromZod(
-          "Invalid threshold",
-          parsed.error.flatten().fieldErrors,
-        );
-      }
-
-      const taskId = params.id;
-      const daysBefore = parsed.data.days_before;
-
-      // I-07: loop-invariant profile read once, outside the write tx.
-      // Default offsets skip the lookup entirely (unchanged behavior).
-      const timezone = DEFAULT_REMINDER_OFFSETS.includes(daysBefore)
-        ? null
-        : await resolveTaskTimezone(ctx.subject.id);
 
       let response: { threshold: ReturnType<typeof serializeThreshold> };
       try {
@@ -668,7 +684,14 @@ export const taskRoutes = new Elysia({ prefix: "/api/v1/tasks" })
           return { threshold: serializeThreshold(row) };
         });
       } catch (error) {
-        if (!isUniqueViolation(error)) throw error;
+        if (!isUniqueViolation(error)) {
+          // #136: 404/400/429 from the tx free the claim for a corrected retry.
+          await releaseIdempotentOnClientError(error, {
+            userId: ctx.subject.id,
+            key: idemKey,
+          });
+          throw error;
+        }
         // RF-06: the offset already exists — the request's intent is already
         // satisfied, so return the existing threshold as success. The failed
         // transaction rolled back, so re-read on a fresh connection.
@@ -684,7 +707,14 @@ export const taskRoutes = new Elysia({ prefix: "/api/v1/tasks" })
           )
           .limit(1);
         if (!existing) {
-          throw ApiError.conflict("Threshold already exists for this day offset");
+          const conflict = ApiError.conflict(
+            "Threshold already exists for this day offset",
+          );
+          await releaseIdempotentOnClientError(conflict, {
+            userId: ctx.subject.id,
+            key: idemKey,
+          });
+          throw conflict;
         }
         response = { threshold: serializeThreshold(existing) };
       }

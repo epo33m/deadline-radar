@@ -24,7 +24,7 @@ import { Input } from "@/components/ui/input";
 import { LoadingDialog } from "@/components/ui/loading-dialog";
 import { SelectMenu } from "@/components/ui/select-menu";
 import { StatusPicker } from "@/components/tasks/status-picker";
-import { generateIdempotencyKey } from "@/lib/api/idempotency";
+import { useFormIdempotencyKey } from "@/lib/api/use-form-idempotency-key";
 import { toDatetimeLocalValue, zonedWallToIso } from "@/lib/datetime";
 import { cn } from "@/lib/utils";
 import type { TaskStatus } from "@/lib/validation/task";
@@ -97,8 +97,12 @@ export function TaskForm({
   timeZone = "UTC",
 }: TaskFormProps) {
   const action = task ? updateTask : createTask;
-  const [idempotencyKey] = useState(() => generateIdempotencyKey());
   const [state, formAction, pending] = useActionState(action, initialState);
+  const idempotencyKey = useFormIdempotencyKey({
+    pending,
+    error: state.error,
+    renewKey: state.renewKey,
+  });
   const [title, setTitle] = useState(task?.title ?? "");
   const [courseId, setCourseId] = useState(
     lockedCourseId ?? task?.course_id ?? courses[0]?.id ?? "",

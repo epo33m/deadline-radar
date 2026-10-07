@@ -26,7 +26,7 @@ import { Input } from "@/components/ui/input";
 import { LoadingDialog } from "@/components/ui/loading-dialog";
 import { normalizeCourseColorForStorage } from "@/lib/courses/colors";
 import { normalizeCourseIconForStorage } from "@/lib/courses/icons";
-import { generateIdempotencyKey } from "@/lib/api/idempotency";
+import { useFormIdempotencyKey } from "@/lib/api/use-form-idempotency-key";
 import { cn } from "@/lib/utils";
 import type { CourseListItem } from "@/types/course";
 
@@ -47,8 +47,12 @@ export function CourseForm({
 }: CourseFormProps) {
   const formId = useId();
   const action = course ? updateCourse : createCourse;
-  const [idempotencyKey] = useState(() => generateIdempotencyKey());
   const [state, formAction, pending] = useActionState(action, initialState);
+  const idempotencyKey = useFormIdempotencyKey({
+    pending,
+    error: state.error,
+    renewKey: state.renewKey,
+  });
   const [name, setName] = useState(course?.name ?? "");
   const [code, setCode] = useState(course?.code ?? "");
   const [description, setDescription] = useState(course?.description ?? "");

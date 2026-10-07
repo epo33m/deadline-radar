@@ -43,7 +43,7 @@ mock.module("@/lib/api/server", () => ({
   },
 }));
 
-const { createTask } = await import("./tasks");
+const { createTask, addReminderThreshold } = await import("./tasks");
 const { createCourse } = await import("./courses");
 const { addLinkAttachment, addFileAttachment } = await import("./attachments");
 
@@ -281,5 +281,61 @@ describe("F-04 Server Actions Idempotency-Key", () => {
 
     expect(result.error).toBe("Validation failed");
     expect(result.fieldErrors?.title).toEqual(["Title is required"]);
+  });
+
+  test("10. definitive client failure asks for a fresh key; retryable does not", async () => {
+    mockApiJsonResult = { error: "Invalid task details", isRetryable: false };
+    const first = new FormData();
+    first.set("title", "Task");
+    expect((await createTask({}, first)).renewKey).toBe(true);
+
+    mockApiJsonResult = { error: "Service unavailable", isRetryable: true };
+    const second = new FormData();
+    second.set("title", "Task");
+    expect((await createTask({}, second)).renewKey).toBe(false);
+
+    mockApiJsonResult = { error: "network" };
+    const third = new FormData();
+    third.set("title", "Task");
+    expect((await createTask({}, third)).renewKey).toBe(false);
+  });
+
+  test("11. course create and link attachment propagate the renewal signal", async () => {
+    mockApiJsonResult = { error: "Invalid course details", isRetryable: false };
+    const courseForm = new FormData();
+    courseForm.set("name", "");
+    expect((await createCourse({}, courseForm)).renewKey).toBe(true);
+
+    mockApiJsonResult = { error: "Invalid link attachment", isRetryable: false };
+    const linkForm = new FormData();
+    linkForm.set("task_id", "task-1");
+    linkForm.set("url", "not-a-url");
+    expect((await addLinkAttachment({}, linkForm)).renewKey).toBe(true);
+  });
+
+  test("12. multi-file failure never renews the base key; single file may", async () => {
+    mockApiJsonResult = { error: "duplicate", isRetryable: false };
+
+    const single = new FormData();
+    single.set("task_id", "task-1");
+    single.set("file", new File(["a"], "a.pdf", { type: "application/pdf" }));
+    expect((await addFileAttachment({}, single)).renewKey).toBe(true);
+
+    const multi = new FormData();
+    multi.set("task_id", "task-1");
+    multi.append("file", new File(["a"], "a.pdf", { type: "application/pdf" }));
+    multi.append("file", new File(["b"], "b.pdf", { type: "application/pdf" }));
+    expect((await addFileAttachment({}, multi)).renewKey).toBe(false);
+  });
+
+  test("13. threshold add propagates the renewal signal", async () => {
+    mockApiJsonResult = {
+      error: "Reminder time has already passed",
+      isRetryable: false,
+    };
+    const formData = new FormData();
+    formData.set("task_id", "task-1");
+    formData.set("days_before", "5");
+    expect((await addReminderThreshold({}, formData)).renewKey).toBe(true);
   });
 });

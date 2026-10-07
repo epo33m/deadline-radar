@@ -242,6 +242,52 @@ export async function beginIdempotent(options: {
   throw ApiError.conflict("Idempotent request already in progress");
 }
 
+/**
+ * #136: free our own uncompleted claim after a definitive client error (4xx)
+ * so the same key can be retried immediately — with a corrected body — instead
+ * of being answered 409 until the 2-minute stale reclaim. Scoped to the
+ * caller's key AND `response_status IS NULL`, so a completed row (replay) is
+ * never touched. Never throws: a failed release only logs; the stale reclaim
+ * remains the backstop.
+ */
+export async function releaseIdempotent(options: {
+  userId: string;
+  key: string;
+}): Promise<void> {
+  try {
+    await getDb()
+      .delete(idempotencyKeys)
+      .where(
+        and(
+          eq(idempotencyKeys.userId, options.userId),
+          eq(idempotencyKeys.key, options.key),
+          isNull(idempotencyKeys.responseStatus),
+        ),
+      );
+  } catch (error) {
+    console.error(
+      "[idempotency] release failed",
+      `userId=${options.userId} key=${options.key}`,
+      error instanceof Error ? error.message : "unknown error",
+    );
+  }
+}
+
+/**
+ * Release the claim when the request failed with a definitive client error
+ * (4xx): the protected side effect did not commit, so the key must be free.
+ * 5xx/transport failures keep the claim — a lost response must still replay.
+ */
+export async function releaseIdempotentOnClientError(
+  error: unknown,
+  options: { userId: string; key: string | null },
+): Promise<void> {
+  if (!options.key) return;
+  if (!(error instanceof ApiError)) return;
+  if (error.status < 400 || error.status >= 500) return;
+  await releaseIdempotent({ userId: options.userId, key: options.key });
+}
+
 /** I-02: bounded attempts for post-commit completion. The business row is
  * already committed when this runs, so a transient write failure must be
  * retried here rather than surfaced — a persistently failing completion must

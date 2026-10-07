@@ -21,6 +21,7 @@ import {
   R,
   readIdempotencyKey,
   readJsonBody,
+  releaseIdempotentOnClientError,
   secured,
   serializeAuditEvent,
   validationFromZod,
@@ -58,26 +59,36 @@ export const adminRoutes = new Elysia({ prefix: "/api/v1/admin" })
         }
       }
 
-      const result = await assignRole({
-        actorId: ctx.subject.id,
-        targetUserId: parsed.data.user_id,
-        roleSlug: parsed.data.role_slug,
-        request,
-      });
-      if (!result.ok) {
-        if (result.error === "user_not_found") {
-          throw ApiError.notFound("User not found");
+      let response: { ok: true; userId: string; roleSlug: string };
+      try {
+        const result = await assignRole({
+          actorId: ctx.subject.id,
+          targetUserId: parsed.data.user_id,
+          roleSlug: parsed.data.role_slug,
+          request,
+        });
+        if (!result.ok) {
+          if (result.error === "user_not_found") {
+            throw ApiError.notFound("User not found");
+          }
+          if (result.error === "already_assigned") {
+            throw ApiError.conflict("Role already assigned");
+          }
+          throw ApiError.validation("Invalid role");
         }
-        if (result.error === "already_assigned") {
-          throw ApiError.conflict("Role already assigned");
-        }
-        throw ApiError.validation("Invalid role");
+        response = {
+          ok: true as const,
+          userId: result.userId,
+          roleSlug: result.roleSlug,
+        };
+      } catch (error) {
+        // #136: a 4xx frees the claim for a corrected same-key retry.
+        await releaseIdempotentOnClientError(error, {
+          userId: ctx.subject.id,
+          key: idemKey,
+        });
+        throw error;
       }
-      const response = {
-        ok: true as const,
-        userId: result.userId,
-        roleSlug: result.roleSlug,
-      };
       if (idemKey) {
         await completeIdempotent({
           userId: ctx.subject.id,
@@ -136,19 +147,29 @@ export const adminRoutes = new Elysia({ prefix: "/api/v1/admin" })
           return replay.body;
         }
       }
-      const result = await revokeRole({
-        actorId: ctx.subject.id,
-        targetUserId: parsed.data.user_id,
-        roleSlug: parsed.data.role_slug,
-        request,
-      });
-      if (!result.ok) {
-        if (result.error === "not_assigned") {
-          throw ApiError.notFound("Role not assigned");
+      let response: { ok: true; userId: string; roleSlug: string };
+      try {
+        const result = await revokeRole({
+          actorId: ctx.subject.id,
+          targetUserId: parsed.data.user_id,
+          roleSlug: parsed.data.role_slug,
+          request,
+        });
+        if (!result.ok) {
+          if (result.error === "not_assigned") {
+            throw ApiError.notFound("Role not assigned");
+          }
+          throw ApiError.validation("Invalid role");
         }
-        throw ApiError.validation("Invalid role");
+        response = { ok: true as const, userId: result.userId, roleSlug: result.roleSlug };
+      } catch (error) {
+        // #136: a 4xx frees the claim for a corrected same-key retry.
+        await releaseIdempotentOnClientError(error, {
+          userId: ctx.subject.id,
+          key: idemKey,
+        });
+        throw error;
       }
-      const response = { ok: true as const, userId: result.userId, roleSlug: result.roleSlug };
       if (idemKey) {
         await completeIdempotent({
           userId: ctx.subject.id,

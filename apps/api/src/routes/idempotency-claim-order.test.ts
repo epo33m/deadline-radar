@@ -1,7 +1,16 @@
+/**
+ * #136 regression tests: the idempotency key is claimed only AFTER the body
+ * and its semantic preconditions validate, so a 400 never poisons the key.
+ *
+ * Route-level through `app.handle` with a recording mock DB (same strategy as
+ * `tasks.thresholds-idempotency.test.ts`). The fake stores the claim so a
+ * poisoned key is observable: before the fix the failed request leaves an
+ * uncompleted row and the corrected same-key retry gets 409 instead of 200.
+ */
 process.env.NODE_ENV = "test";
 process.env.AUTH_BRIDGE_SECRET ??= "test-auth-bridge-secret";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { idempotencyKeys, reminderThresholds } from "@deadline-radar/db";
+import { courses, idempotencyKeys, tasks } from "@deadline-radar/db";
 
 import { resetRateLimitBuckets } from "../plugins/rate-limit";
 import { setVerifyAccessTokenOverride } from "../lib/auth-tokens";
@@ -11,13 +20,27 @@ import {
   setOwnershipOverrides,
 } from "../lib/authorization";
 import { DOMAIN_CAPABILITIES } from "../lib/authorization/capabilities";
-import { hashRequestFingerprint } from "../lib/api";
 
 const USER_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-const TASK_A = "11111111-1111-4111-8111-111111111111";
-const THRESHOLD_1 = "33333333-3333-4333-8333-333333333331";
-const PATH = `/api/v1/tasks/${TASK_A}/thresholds`;
-const BODY = { days_before: 5 };
+const COURSE_A = "11111111-1111-4111-8111-111111111111";
+const COURSE_MISSING = "99999999-9999-4999-8999-999999999999";
+const TASK_NEW = "22222222-2222-4222-8222-222222222222";
+const TASK_PATH = "/api/v1/tasks";
+const COURSE_PATH = "/api/v1/courses";
+const DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
+
+const COURSE_ROW = {
+  id: COURSE_A,
+  userId: USER_A,
+  name: "Course",
+  code: null,
+  color: null,
+  icon: null,
+  description: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  deletedAt: null,
+};
 
 type IdemRow = {
   id: string;
@@ -33,8 +56,9 @@ type IdemRow = {
 };
 
 let idemRow: IdemRow | null = null;
-let thresholdInserts = 0;
 let idemInserts = 0;
+let taskInserts = 0;
+let courseInserts = 0;
 let completedStatus: number | undefined;
 let completedBody: unknown;
 
@@ -48,14 +72,18 @@ mock.module("../lib/db", () => {
             if (fields !== undefined) return [];
             return idemRow ? [idemRow] : [];
           }
-          return [{ timezone: "UTC", value: 0 }];
+          // SEC-003 quota count for task create.
+          if (table === tasks) return [{ value: 0 }];
+          return [];
         };
         const chain: any = {
           where: () => chain,
           orderBy: () => chain,
           limit: async () => rows(),
-          then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
-            Promise.resolve(rows()).then(resolve, reject),
+          then: (
+            resolve: (v: unknown) => unknown,
+            reject?: (e: unknown) => unknown,
+          ) => Promise.resolve(rows()).then(resolve, reject),
         };
         return chain;
       },
@@ -81,15 +109,38 @@ mock.module("../lib/db", () => {
               };
               return [idemRow];
             }
-            if (table === reminderThresholds) {
-              thresholdInserts += 1;
+            if (table === tasks) {
+              taskInserts += 1;
               return [
                 {
-                  id: THRESHOLD_1,
-                  taskId: TASK_A,
-                  daysBefore: v.daysBefore,
-                  isDefault: false,
+                  id: TASK_NEW,
+                  userId: v.userId,
+                  courseId: v.courseId,
+                  title: v.title,
+                  description: v.description ?? null,
+                  deadline: v.deadline,
+                  status: v.status,
+                  completedAt: v.completedAt ?? null,
                   createdAt: new Date(),
+                  updatedAt: new Date(),
+                  deletedAt: null,
+                },
+              ];
+            }
+            if (table === courses) {
+              courseInserts += 1;
+              return [
+                {
+                  id: "course-new",
+                  userId: v.userId,
+                  name: v.name,
+                  code: v.code ?? null,
+                  color: v.color ?? null,
+                  icon: v.icon ?? null,
+                  description: v.description ?? null,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                  deletedAt: null,
                 },
               ];
             }
@@ -117,7 +168,6 @@ mock.module("../lib/db", () => {
       where: () => ({
         returning: async () => [],
         then: (resolve: (v: unknown) => unknown) => {
-          // #136: release deletes our own uncompleted claim.
           if (table === idempotencyKeys && idemRow?.responseStatus == null) {
             idemRow = null;
           }
@@ -137,9 +187,17 @@ mock.module("../lib/auth-audit", () => ({
 
 const { app } = await import("../app");
 
-function thresholdRequest(key?: string, body: unknown = BODY) {
+function taskRequest(
+  key: string | undefined,
+  body: unknown = {
+    title: "Task",
+    course_id: COURSE_A,
+    deadline: DEADLINE,
+    status: "todo",
+  },
+) {
   return app.handle(
-    new Request(`http://localhost${PATH}`, {
+    new Request(`http://localhost${TASK_PATH}`, {
       method: "POST",
       headers: {
         authorization: "Bearer token-user-a",
@@ -151,12 +209,30 @@ function thresholdRequest(key?: string, body: unknown = BODY) {
   );
 }
 
-describe("RF-06: threshold POST idempotency wiring", () => {
+function courseRequest(
+  key: string | undefined,
+  body: unknown = { name: "CS 101" },
+) {
+  return app.handle(
+    new Request(`http://localhost${COURSE_PATH}`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer token-user-a",
+        "content-type": "application/json",
+        ...(key ? { "idempotency-key": key } : {}),
+      },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+describe("#136: idempotency claim happens after validation", () => {
   beforeEach(() => {
     resetRateLimitBuckets();
     idemRow = null;
-    thresholdInserts = 0;
     idemInserts = 0;
+    taskInserts = 0;
+    courseInserts = 0;
     completedStatus = undefined;
     completedBody = undefined;
 
@@ -173,102 +249,59 @@ describe("RF-06: threshold POST idempotency wiring", () => {
       }),
     );
     setOwnershipOverrides({
-      ownedTask: async (userId, id) =>
-        userId === USER_A && id === TASK_A
-          ? {
-              id: TASK_A,
-              userId: USER_A,
-              courseId: "course-1",
-              title: "Task A",
-              deadline: new Date(Date.now() + 30 * 86400000),
-              status: "todo",
-              deletedAt: null,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-              completedAt: null,
-            } as any
-          : null,
+      ownedCourse: async (userId, courseId) =>
+        userId === USER_A && courseId === COURSE_A ? { ...COURSE_ROW } : null,
     });
   });
 
-  test("claims the key, creates the threshold, and completes with the response", async () => {
-    const res = await thresholdRequest("threshold-key-1");
+  test("task create: semantic 400 never claims; corrected retry with same key succeeds", async () => {
+    const bad = await taskRequest("task-key-release", {
+      title: "Task",
+      course_id: COURSE_MISSING,
+      deadline: DEADLINE,
+      status: "todo",
+    });
+    expect(bad.status).toBe(400);
+    expect(taskInserts).toBe(0);
+    expect(idemInserts).toBe(0);
+    expect(idemRow).toBeNull();
 
-    expect(res.status).toBe(200);
-    expect(thresholdInserts).toBe(1);
+    const retry = await taskRequest("task-key-release", {
+      title: "Task",
+      course_id: COURSE_A,
+      deadline: DEADLINE,
+      status: "todo",
+    });
+    expect(retry.status).toBe(200);
+    expect(taskInserts).toBe(1);
     expect(idemInserts).toBe(1);
     expect(completedStatus).toBe(200);
-    expect((completedBody as any).threshold.id).toBe(THRESHOLD_1);
   });
 
-  test("replays a stored response without inserting a threshold", async () => {
-    const stored = {
-      threshold: {
-        id: THRESHOLD_1,
-        taskId: TASK_A,
-        daysBefore: 5,
-        isDefault: false,
-        createdAt: new Date().toISOString(),
-      },
-    };
-    idemRow = {
-      id: "idem-seed",
-      userId: USER_A,
-      key: "threshold-key-replay",
-      method: "POST",
-      path: PATH,
-      requestHash: hashRequestFingerprint("POST", PATH, BODY),
-      responseStatus: 200,
-      responseBody: stored,
-      createdAt: new Date(),
-      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-    };
-
-    const res = await thresholdRequest("threshold-key-replay");
-
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual(stored);
-    expect(thresholdInserts).toBe(0);
-    expect(idemInserts).toBe(0);
-    expect(completedStatus).toBeUndefined();
-  });
-
-  test("no key sent → no idempotency record, threshold still created", async () => {
-    const res = await thresholdRequest();
-
-    expect(res.status).toBe(200);
-    expect(thresholdInserts).toBe(1);
-    expect(idemInserts).toBe(0);
-    expect(completedStatus).toBeUndefined();
-  });
-
-  test("invalid body never claims the key", async () => {
-    const res = await thresholdRequest("threshold-key-invalid", {
-      days_before: -1,
+  test("task create: invalid body never claims the key", async () => {
+    const res = await taskRequest("task-key-invalid", {
+      title: "",
+      course_id: COURSE_A,
+      deadline: DEADLINE,
+      status: "todo",
     });
-
     expect(res.status).toBe(400);
+    expect(taskInserts).toBe(0);
     expect(idemInserts).toBe(0);
     expect(idemRow).toBeNull();
-    expect(thresholdInserts).toBe(0);
   });
 
-  test("past-trigger 400 releases the claim; corrected retry with same key succeeds", async () => {
-    const bad = await thresholdRequest("threshold-key-past", {
-      days_before: 60,
-    });
-
+  test("course create: invalid body never claims; corrected retry with same key succeeds", async () => {
+    const bad = await courseRequest("course-key-release", { name: "" });
     expect(bad.status).toBe(400);
-    expect(thresholdInserts).toBe(0);
-    // The claim is freed, so the corrected retry is not a 409.
+    expect(courseInserts).toBe(0);
+    expect(idemInserts).toBe(0);
     expect(idemRow).toBeNull();
 
-    const retry = await thresholdRequest("threshold-key-past", {
-      days_before: 0,
-    });
-
+    const retry = await courseRequest("course-key-release", { name: "CS 101" });
     expect(retry.status).toBe(200);
-    expect(thresholdInserts).toBe(1);
+    expect(courseInserts).toBe(1);
+    expect(idemInserts).toBe(1);
     expect(completedStatus).toBe(200);
   });
 });

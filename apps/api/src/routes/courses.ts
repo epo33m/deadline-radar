@@ -25,6 +25,7 @@ import {
   R,
   readIdempotencyKey,
   readJsonBody,
+  releaseIdempotentOnClientError,
   secured,
   serializeCourse,
   validationFromZod,
@@ -172,6 +173,20 @@ export const courseRoutes = new Elysia({ prefix: "/api/v1/courses" })
         description?: string | null;
       };
       assertNoForbiddenMutationKeys(body);
+
+      // #136: parse before claiming so an invalid body never poisons the key.
+      const parsed = courseSchema.safeParse({
+        ...body,
+        color: normalizeCourseColor(body.color ?? null),
+        icon: normalizeCourseIcon(body.icon ?? null),
+      });
+      if (!parsed.success) {
+        throw validationFromZod(
+          "Invalid course details",
+          parsed.error.flatten().fieldErrors,
+        );
+      }
+
       const idemKey = readIdempotencyKey(request);
       if (idemKey) {
         const { replay } = await beginIdempotent({
@@ -187,28 +202,27 @@ export const courseRoutes = new Elysia({ prefix: "/api/v1/courses" })
         }
       }
 
-      const parsed = courseSchema.safeParse({
-        ...body,
-        color: normalizeCourseColor(body.color ?? null),
-        icon: normalizeCourseIcon(body.icon ?? null),
-      });
-      if (!parsed.success) {
-        throw validationFromZod(
-          "Invalid course details",
-          parsed.error.flatten().fieldErrors,
-        );
-      }
-      const [row] = await getDb()
-        .insert(courses)
-        .values({
+      let row;
+      try {
+        [row] = await getDb()
+          .insert(courses)
+          .values({
+            userId: ctx.subject.id,
+            name: parsed.data.name,
+            code: parsed.data.code,
+            color: parsed.data.color,
+            icon: parsed.data.icon,
+            description: parsed.data.description,
+          })
+          .returning();
+      } catch (error) {
+        // #136: a 4xx after the claim frees it for a corrected same-key retry.
+        await releaseIdempotentOnClientError(error, {
           userId: ctx.subject.id,
-          name: parsed.data.name,
-          code: parsed.data.code,
-          color: parsed.data.color,
-          icon: parsed.data.icon,
-          description: parsed.data.description,
-        })
-        .returning();
+          key: idemKey,
+        });
+        throw error;
+      }
       const response = { course: serializeCourse(row) };
       if (idemKey) {
         await completeIdempotent({

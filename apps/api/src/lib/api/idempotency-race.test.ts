@@ -27,6 +27,8 @@ import {
   beginIdempotent,
   completeIdempotent,
   purgeExpiredIdempotencyKeys,
+  releaseIdempotent,
+  releaseIdempotentOnClientError,
   DEFAULT_IN_FLIGHT_TIMEOUT_MS,
   getInFlightTimeoutMs,
 } from "./idempotency";
@@ -54,6 +56,8 @@ let storageUploads = 0;
 // I-02: fail the next N idempotencyKeys UPDATEs (complete path) once each.
 let failCompleteCount = 0;
 let completeUpdateCalls = 0;
+// #136: fail the next N idempotencyKeys DELETEs (release path) once each.
+let failIdemDeleteCount = 0;
 
 // Select gate: holds the first lookup until the second arrives so both
 // contenders deterministically observe the pre-insert state together.
@@ -323,6 +327,10 @@ function chain(op: "select" | "insert" | "update" | "delete", table?: unknown) {
         ];
       }
       if (op === "delete" && table === idempotencyKeys) {
+        if (failIdemDeleteCount > 0) {
+          failIdemDeleteCount -= 1;
+          throw new Error("fake db: idem delete failed");
+        }
         const matched =
           state.where === undefined ? [] : matchingRows(state.where);
         for (const row of matched) {
@@ -371,6 +379,18 @@ function chain(op: "select" | "insert" | "update" | "delete", table?: unknown) {
           };
           idemStore.set(mapKey, row);
           return [row];
+        }
+        if (op === "delete" && table === idempotencyKeys) {
+          if (failIdemDeleteCount > 0) {
+            failIdemDeleteCount -= 1;
+            throw new Error("fake db: idem delete failed");
+          }
+          const matched =
+            state.where === undefined ? [] : matchingRows(state.where);
+          for (const row of matched) {
+            idemStore.delete(`${row.userId}:${row.key}`);
+          }
+          return [];
         }
         if (op === "update" && table === idempotencyKeys) {
           completeUpdateCalls += 1;
@@ -970,6 +990,130 @@ describe("I-02 — complete-after-commit gap", () => {
         API_ERROR_CODES.IDEMPOTENCY_CONFLICT,
       );
     }
+    expect(idemStore.size).toBe(1);
+  });
+});
+
+describe("#136 — release our own uncompleted claim on 4xx", () => {
+  beforeEach(() => {
+    resetRateLimitBuckets();
+    idemStore.clear();
+    attachmentInserts = 0;
+    storageUploads = 0;
+    failCompleteCount = 0;
+    completeUpdateCalls = 0;
+    failIdemDeleteCount = 0;
+    gateArmed = false;
+    selectArrivals = 0;
+    releaseFirstSelect = null;
+    setVerifyAccessTokenOverride(null);
+    setLoadAuthorizationContextOverride(null);
+    setOwnershipOverrides(null);
+  });
+
+  const OPTS = {
+    userId: USER_A,
+    key: "release-key",
+    method: "POST",
+    path: "/api/v1/attachments/file",
+    body: { task_id: TASK_A, size: 10 },
+  };
+
+  test("deletes the uncompleted claim so the same key can be retried", async () => {
+    await beginIdempotent(OPTS);
+    expect(idemStore.size).toBe(1);
+
+    await releaseIdempotent({ userId: USER_A, key: OPTS.key });
+
+    expect(idemStore.size).toBe(0);
+    const retry = await tryBegin(USER_A, OPTS.key, { corrected: true });
+    expect(retry.ok).toBe(true);
+    expect(idemStore.size).toBe(1);
+  });
+
+  test("completed claim survives release (replay still governs)", async () => {
+    await beginIdempotent(OPTS);
+    await completeIdempotent({
+      userId: USER_A,
+      key: OPTS.key,
+      statusCode: 200,
+      body: { ok: true },
+    });
+
+    await releaseIdempotent({ userId: USER_A, key: OPTS.key });
+
+    expect(idemStore.get(`${USER_A}:${OPTS.key}`)?.responseStatus).toBe(200);
+    const replay = await tryBegin(USER_A, OPTS.key, OPTS.body);
+    expect(replay.ok).toBe(true);
+    if (replay.ok) {
+      expect(replay.replay).toEqual({ statusCode: 200, body: { ok: true } });
+    }
+  });
+
+  test("release is scoped to the caller's own key", async () => {
+    await beginIdempotent({ ...OPTS, userId: USER_B });
+
+    await releaseIdempotent({ userId: USER_A, key: OPTS.key });
+
+    expect(idemStore.size).toBe(1);
+  });
+
+  test("release failures are contained (never throw)", async () => {
+    await beginIdempotent(OPTS);
+    failIdemDeleteCount = 1;
+    const logged: unknown[][] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => {
+      logged.push(args);
+    };
+    try {
+      await releaseIdempotent({ userId: USER_A, key: OPTS.key });
+    } finally {
+      console.error = original;
+    }
+
+    expect(idemStore.size).toBe(1);
+    expect(logged.length).toBe(1);
+  });
+
+  test("releaseIdempotentOnClientError frees only definitive 4xx claims", async () => {
+    await beginIdempotent(OPTS);
+
+    await releaseIdempotentOnClientError(
+      new ApiError({
+        status: 500,
+        code: API_ERROR_CODES.INTERNAL,
+        message: "boom",
+      }),
+      { userId: USER_A, key: OPTS.key },
+    );
+    expect(idemStore.size).toBe(1);
+
+    await releaseIdempotentOnClientError(new Error("transport"), {
+      userId: USER_A,
+      key: OPTS.key,
+    });
+    await releaseIdempotentOnClientError(null, {
+      userId: USER_A,
+      key: OPTS.key,
+    });
+    expect(idemStore.size).toBe(1);
+
+    await releaseIdempotentOnClientError(ApiError.validation("bad body"), {
+      userId: USER_A,
+      key: OPTS.key,
+    });
+    expect(idemStore.size).toBe(0);
+  });
+
+  test("releaseIdempotentOnClientError is a no-op without a key", async () => {
+    await beginIdempotent(OPTS);
+
+    await releaseIdempotentOnClientError(ApiError.validation("bad body"), {
+      userId: USER_A,
+      key: null,
+    });
+
     expect(idemStore.size).toBe(1);
   });
 });

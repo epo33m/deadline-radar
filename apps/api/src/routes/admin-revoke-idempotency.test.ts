@@ -64,7 +64,19 @@ mock.module("../lib/db", () => {
           onConflictDoNothing: () => builder,
           returning: async () => {
             if (table === idempotencyKeys) {
-              return [{ id: "idem-1", ...v }];
+              idemRow = {
+                id: "idem-1",
+                userId: v.userId as string,
+                key: v.key as string,
+                method: v.method as string,
+                path: v.path as string,
+                requestHash: v.requestHash as string,
+                responseStatus: null,
+                responseBody: null,
+                createdAt: new Date(),
+                expiresAt: v.expiresAt as Date,
+              };
+              return [idemRow];
             }
             return [];
           },
@@ -80,6 +92,10 @@ mock.module("../lib/db", () => {
           if (table === idempotencyKeys) {
             completedStatus = s.responseStatus as number;
             completedBody = s.responseBody;
+            if (idemRow) {
+              idemRow.responseStatus = s.responseStatus as number;
+              idemRow.responseBody = s.responseBody;
+            }
           }
         },
       }),
@@ -87,10 +103,20 @@ mock.module("../lib/db", () => {
     delete: (table: unknown) => ({
       where: () => ({
         returning: async () => {
+          if (table === idempotencyKeys) {
+            if (idemRow?.responseStatus == null) idemRow = null;
+            return [];
+          }
           deleteCalls += 1;
           return userRolesDeleteReturns;
         },
-        then: (resolve: (v: unknown) => unknown) => Promise.resolve([]).then(resolve),
+        then: (resolve: (v: unknown) => unknown) => {
+          // #136: release drops our own uncompleted claim.
+          if (table === idempotencyKeys && idemRow?.responseStatus == null) {
+            idemRow = null;
+          }
+          return Promise.resolve([]).then(resolve);
+        },
       }),
     }),
     execute: async () => [],
@@ -204,5 +230,21 @@ describe("I-10A: role revoke idempotency", () => {
     const res = await revokeRequest(undefined);
     expect(res.status).toBe(404);
     expect(deleteCalls).toBe(1);
+  });
+
+  test("#136: not_assigned 404 releases the claim; corrected retry with same key succeeds", async () => {
+    userRolesDeleteReturns = [];
+    const bad = await revokeRequest("revoke-key-release");
+    expect(bad.status).toBe(404);
+    // The claim is freed, so the corrected retry is not a 409.
+    expect(idemRow).toBeNull();
+
+    userRolesDeleteReturns = [{ id: "ur-1" }];
+    const retry = await revokeRequest("revoke-key-release", {
+      user_id: TARGET,
+      role_slug: "user",
+    });
+    expect(retry.status).toBe(200);
+    expect(completedStatus).toBe(200);
   });
 });
