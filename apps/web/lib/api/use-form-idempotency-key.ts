@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 import { generateIdempotencyKey } from "./idempotency";
 
@@ -30,18 +30,22 @@ export function useFormIdempotencyKey(
   renewOnSuccess = false,
 ): string {
   const [key, setKey] = useState(() => generateIdempotencyKey());
-  const wasPending = useRef(false);
+  const [prevPending, setPrevPending] = useState(state.pending);
 
-  useEffect(() => {
-    const settled = wasPending.current && !state.pending;
-    wasPending.current = state.pending;
-    if (!settled) return;
-    if (state.error) {
-      if (state.renewKey === true) setKey(generateIdempotencyKey());
-      return;
+  // Render-phase adjustment (no effect): when the action settles, decide
+  // once per attempt whether the next attempt needs a fresh key. This is
+  // the React-sanctioned "adjust state during render" pattern, so it never
+  // triggers cascading renders the way setState-in-effect does.
+  if (prevPending !== state.pending) {
+    setPrevPending(state.pending);
+    if (prevPending && !state.pending) {
+      if (state.error) {
+        if (state.renewKey === true) setKey(generateIdempotencyKey());
+      } else if (renewOnSuccess) {
+        setKey(generateIdempotencyKey());
+      }
     }
-    if (renewOnSuccess) setKey(generateIdempotencyKey());
-  }, [state, renewOnSuccess]);
+  }
 
   return key;
 }
