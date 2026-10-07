@@ -9,7 +9,7 @@ import { perfTimingPlugin } from "./plugins/perf-timing";
 import { bootstrapCachePlugin } from "./plugins/bootstrap-cache";import { errorHandlerPlugin } from "./plugins/error-handler";
 import { rateLimitPlugin } from "./plugins/rate-limit";
 import { httpPolicyPlugin } from "./plugins/http-policy";
-import { bodyLimitPlugin } from "./plugins/body-limit";
+import { bodyLimitPlugin, MAX_REQUEST_BODY_BYTES } from "./plugins/body-limit";
 import { authRoutes } from "./routes/auth";
 import { bootstrapRoutes } from "./routes/bootstrap";
 import { courseRoutes } from "./routes/courses";
@@ -21,7 +21,11 @@ import { adminRoutes } from "./routes/admin";
 import { cronRoutes } from "./routes/cron";
 import { healthCronRoutes } from "./routes/health-cron";
 
-export const app = new Elysia()
+export const app = new Elysia({
+  // #138: socket-level backstop so Bun rejects absurd bodies before
+  // buffering (~128 MiB default). Per-route caps stay authoritative.
+  serve: { maxRequestBodySize: MAX_REQUEST_BODY_BYTES },
+})
   // First: bracket every other plugin/handler in the [perf] wall time.
   .use(perfTimingPlugin)
   .use(bootstrapCachePlugin)

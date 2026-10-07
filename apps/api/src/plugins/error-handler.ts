@@ -23,6 +23,25 @@ function requestIdFromContext(ctx: {
 }
 
 /**
+ * Detect an Elysia file-size validation failure (#138).
+ * `t.File({ maxSize })` violations surface as `code: "VALIDATION"` with the
+ * file schema (carrying `maxSize`) at `valueError`. Wrong-MIME failures use
+ * `INVALID_FILE_TYPE` and must stay 400 — only size maps to 413.
+ */
+function isFileSizeValidationError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const record = error as Record<string, unknown>;
+  // Only the failing property's own schema counts: the upload route always
+  // declares `file.maxSize`, so inspecting the route schema would misclassify
+  // unrelated failures (e.g. notes maxLength) as 413.
+  const valueError = record["valueError"] as
+    | { path?: unknown; schema?: unknown }
+    | undefined;
+  const schema = valueError?.schema as { maxSize?: unknown } | undefined;
+  return !!schema && typeof schema.maxSize !== "undefined";
+}
+
+/**
  * Maps all failures to the stable API error envelope.
  * Never leaks stack traces, SQL, or provider internals.
  */
@@ -53,6 +72,21 @@ export const errorHandlerPlugin = new Elysia({
       ]),
       rid,
     );
+  }
+
+  // #138: Bun/Elysia surface oversized bodies without our ApiError.
+  // A 413 status, or a VALIDATION failure against a `t.File({ maxSize })`
+  // schema, must use the standard 413 envelope (not 400/422).
+  if (
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    (((error as { code?: string }).code === "VALIDATION" &&
+      isFileSizeValidationError(error)) ||
+      (error as { status?: number }).status === 413)
+  ) {
+    set.status = 413;
+    return toErrorBody(ApiError.payloadTooLarge(), rid);
   }
 
   // Elysia validation (TypeBox)
