@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { idempotencyKeys } from "@deadline-radar/db";
 
 import { getDb } from "../db";
+import type { UserTx } from "../authorization/rls-context";
 import { ApiError, API_ERROR_CODES } from "./errors";
 
 export const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
@@ -289,11 +290,20 @@ export async function releaseIdempotentOnClientError(
 }
 
 /** I-02: bounded attempts for post-commit completion. The business row is
- * already committed when this runs, so a transient write failure must be
- * retried here rather than surfaced — a persistently failing completion must
- * never turn an already-applied side effect into a 500. */
+  * already committed when this runs, so a transient write failure must be
+  * retried here rather than surfaced — a persistently failing completion must
+  * never turn an already-applied side effect into a 500. */
 const MAX_COMPLETE_ATTEMPTS = 3;
 const COMPLETE_RETRY_BACKOFF_MS = 100;
+
+/** #137: bounded whole-transaction attempts for the atomic
+  * insert-plus-completion path. Only unexpected (non-ApiError) failures
+  * retry — a rolled-back transaction committed nothing, so re-running it
+  * cannot duplicate a side effect. ApiError (validation/ownership/quota and
+  * other definitive answers) throws immediately so #136 release-on-4xx
+  * semantics are preserved. */
+const MAX_TX_ATTEMPTS = 3;
+const TX_RETRY_BACKOFF_MS = 100;
 
 /**
  * Record the completed response for an idempotency key. Never throws for
@@ -336,4 +346,95 @@ export async function completeIdempotent(options: {
     }
   }
   return false;
+}
+
+/**
+ * Postgres unique-violation detector (SQLSTATE 23505), shared by the
+ * idempotent mutation paths for the #137 Layer-B dedupe replay.
+ */
+export function isUniqueViolation(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as Record<string, unknown>;
+  if (e.code === "23505") return true;
+  if (
+    e.cause &&
+    typeof e.cause === "object" &&
+    (e.cause as Record<string, unknown>).code === "23505"
+  ) {
+    return true;
+  }
+  const message = typeof e.message === "string" ? e.message : "";
+  return (
+    message.includes("23505") ||
+    message.includes("duplicate key value violates unique constraint")
+  );
+}
+
+/**
+ * #137: record the completed response inside the caller's mutation
+ * transaction. Unlike `completeIdempotent` (best-effort, post-commit), a
+ * failure here aborts the whole transaction — the business row and the
+ * completion commit atomically, so a persistently failing completion can
+ * never leave a committed-but-uncompletable row behind. Throws on failure
+ * so the caller can retry the transaction or propagate the error.
+ */
+export async function completeIdempotentInTx(
+  tx: UserTx,
+  options: {
+    userId: string;
+    key: string;
+    statusCode: number;
+    body: unknown;
+  },
+): Promise<void> {
+  await tx
+    .update(idempotencyKeys)
+    .set({
+      responseStatus: options.statusCode,
+      responseBody: options.body as Record<string, unknown>,
+    })
+    .where(
+      and(
+        eq(idempotencyKeys.userId, options.userId),
+        eq(idempotencyKeys.key, options.key),
+      ),
+    );
+}
+
+/**
+ * #137: run a business insert-plus-completion transaction with bounded
+ * retries on unexpected failures. A rolled-back transaction committed
+ * nothing, so re-running it cannot duplicate a side effect; this preserves
+ * the I-02 guarantee (a transient DB blip still yields success) while the
+ * atomic commit removes the committed-but-uncompleted window entirely.
+ * ApiError is never retried — it is a definitive answer from the
+ * transaction body (validation, ownership, quota, …).
+ */
+export async function runTxWithCompletionRetry<T>(
+  fn: () => Promise<T>,
+  options?: { key?: string | null },
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= MAX_TX_ATTEMPTS; attempt += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      // Definitive answers never retry: ApiError (validation, ownership,
+      // quota, …) and unique violations (a re-run would conflict again —
+      // the caller handles the #137 dedupe replay instead).
+      if (error instanceof ApiError || isUniqueViolation(error)) throw error;
+      lastError = error;
+      console.error(
+        `[idempotency] tx attempt ${attempt}/${MAX_TX_ATTEMPTS} failed`,
+        options?.key ? `key=${options.key}` : "no key",
+        error instanceof Error ? error.message : "unknown error",
+      );
+      if (attempt < MAX_TX_ATTEMPTS) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, TX_RETRY_BACKOFF_MS * attempt),
+        );
+      }
+    }
+  }
+  throw lastError;
 }

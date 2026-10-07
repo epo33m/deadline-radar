@@ -53,6 +53,7 @@ type StoredTask = {
   deadline: Date;
   status: "todo" | "in_progress" | "done";
   deletedAt: Date | null;
+  idempotencyKey: string | null;
 };
 
 let tasksStore: StoredTask[] = [];
@@ -225,6 +226,7 @@ describe("M-10 Concurrent PUT /api/v1/tasks/:id/thresholds Serialization", () =>
         deadline: new Date(Date.now() + 100 * 86400000),
         status: "todo",
         deletedAt: null,
+        idempotencyKey: null,
       },
       {
         id: TASK_B,
@@ -234,6 +236,7 @@ describe("M-10 Concurrent PUT /api/v1/tasks/:id/thresholds Serialization", () =>
         deadline: new Date(Date.now() + 100 * 86400000),
         status: "todo",
         deletedAt: null,
+        idempotencyKey: null,
       },
     ];
     // Start with default thresholds [7, 3]
@@ -275,6 +278,7 @@ describe("M-10 Concurrent PUT /api/v1/tasks/:id/thresholds Serialization", () =>
           deadlineUpdatedAt: found.deadline,
           completedAt: null,
           deletedAt: found.deletedAt,
+          idempotencyKey: found.idempotencyKey,
         };
       },
       ownedCourse: async (userId, courseId) => ({
@@ -288,6 +292,7 @@ describe("M-10 Concurrent PUT /api/v1/tasks/:id/thresholds Serialization", () =>
         createdAt: new Date(0),
         updatedAt: new Date(0),
         deletedAt: null,
+        idempotencyKey: null,
       }),
     });
   });

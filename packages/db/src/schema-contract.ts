@@ -107,6 +107,7 @@ export const AUTHORITATIVE_SCHEMA_CONTRACT: SchemaContract = {
       { name: "created_at", type: "timestamp with time zone", nullable: false },
       { name: "updated_at", type: "timestamp with time zone", nullable: false },
       { name: "deleted_at", type: "timestamp with time zone", nullable: true },
+      { name: "idempotency_key", type: "text", nullable: true },
     ],
     tasks: [
       { name: "id", type: "uuid", nullable: false },
@@ -121,6 +122,7 @@ export const AUTHORITATIVE_SCHEMA_CONTRACT: SchemaContract = {
       { name: "deadline_updated_at", type: "timestamp with time zone", nullable: false },
       { name: "completed_at", type: "timestamp with time zone", nullable: true },
       { name: "deleted_at", type: "timestamp with time zone", nullable: true },
+      { name: "idempotency_key", type: "text", nullable: true },
     ],
     reminder_thresholds: [
       { name: "id", type: "uuid", nullable: false },
@@ -130,6 +132,7 @@ export const AUTHORITATIVE_SCHEMA_CONTRACT: SchemaContract = {
       { name: "created_at", type: "timestamp with time zone", nullable: false },
       { name: "updated_at", type: "timestamp with time zone", nullable: false },
       { name: "deleted_at", type: "timestamp with time zone", nullable: true },
+      { name: "idempotency_key", type: "text", nullable: true },
     ],
     notification_deliveries: [
       { name: "id", type: "uuid", nullable: false },
@@ -171,6 +174,7 @@ export const AUTHORITATIVE_SCHEMA_CONTRACT: SchemaContract = {
       { name: "url", type: "text", nullable: true },
       { name: "created_at", type: "timestamp with time zone", nullable: false },
       { name: "notes", type: "text", nullable: true },
+      { name: "idempotency_key", type: "text", nullable: true },
     ],
     auth_audit_events: [
       { name: "id", type: "uuid", nullable: false },
@@ -451,6 +455,30 @@ export const AUTHORITATIVE_SCHEMA_CONTRACT: SchemaContract = {
     {
       table: "reminder_thresholds",
       indexName: "reminder_thresholds_task_days_before_active_key",
+      isUnique: true,
+      isPartial: true,
+    },
+    {
+      table: "courses",
+      indexName: "courses_user_idempotency_key",
+      isUnique: true,
+      isPartial: true,
+    },
+    {
+      table: "tasks",
+      indexName: "tasks_user_idempotency_key",
+      isUnique: true,
+      isPartial: true,
+    },
+    {
+      table: "reminder_thresholds",
+      indexName: "reminder_thresholds_task_idempotency_key",
+      isUnique: true,
+      isPartial: true,
+    },
+    {
+      table: "attachments",
+      indexName: "attachments_task_idempotency_key",
       isUnique: true,
       isPartial: true,
     },

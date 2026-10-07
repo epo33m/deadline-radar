@@ -24,14 +24,17 @@ import {
   apiDoc,
   beginIdempotent,
   completeIdempotent,
+  completeIdempotentInTx,
   envelope,
   idempotent,
+  isUniqueViolation,
   jsonBodyDetail,
   openApiBodies,
   R,
   readIdempotencyKey,
   readJsonBody,
   releaseIdempotentOnClientError,
+  runTxWithCompletionRetry,
   secured,
   serializeAttachment,
   sha256Hex,
@@ -81,37 +84,73 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
         }
       }
 
-      // Check + insert in one transaction (P2-3). Idempotency bookkeeping
-      // keeps its own protocol outside the data tx. A 4xx from the tx (e.g.
-      // unknown task) frees the claim for a corrected same-key retry.
-      const response = await withUserRls(ctx.subject.id, async (tx) => {
-        const task = await ownedTaskInTx(tx, ctx.subject.id, parsed.data.task_id);
-        if (!task) throw ApiError.notFound("Task not found");
-        const [row] = await tx
-          .insert(attachments)
-          .values({
-            taskId: task.id,
-            type: "link",
-            notes: parsed.data.notes,
-            url: parsed.data.url,
-            storagePath: null,
-          })
-          .returning();
-        return { attachment: serializeAttachment(row) };
-      }).catch(async (error: unknown) => {
+      // Check + insert + idempotency completion in one transaction (P2-3,
+      // #137). A 4xx from the tx (e.g. unknown task) frees the claim for a
+      // corrected same-key retry.
+      let response: { attachment: ReturnType<typeof serializeAttachment> };
+      try {
+        response = await runTxWithCompletionRetry(
+          () =>
+            withUserRls(ctx.subject.id, async (tx) => {
+              const task = await ownedTaskInTx(
+                tx,
+                ctx.subject.id,
+                parsed.data.task_id,
+              );
+              if (!task) throw ApiError.notFound("Task not found");
+              const [row] = await tx
+                .insert(attachments)
+                .values({
+                  taskId: task.id,
+                  type: "link",
+                  notes: parsed.data.notes,
+                  url: parsed.data.url,
+                  storagePath: null,
+                  idempotencyKey: idemKey,
+                })
+                .returning();
+              const res = { attachment: serializeAttachment(row) };
+              if (idemKey) {
+                await completeIdempotentInTx(tx, {
+                  userId: ctx.subject.id,
+                  key: idemKey,
+                  statusCode: 200,
+                  body: res,
+                });
+              }
+              return res;
+            }),
+          { key: idemKey },
+        );
+      } catch (error: unknown) {
+        if (idemKey && isUniqueViolation(error)) {
+          // #137 Layer B: stale-reclaim re-execution replays the committed row.
+          const [existing] = await getDb()
+            .select()
+            .from(attachments)
+            .where(
+              and(
+                eq(attachments.taskId, parsed.data.task_id),
+                eq(attachments.idempotencyKey, idemKey),
+              ),
+            )
+            .limit(1);
+          if (existing) {
+            const replay = { attachment: serializeAttachment(existing) };
+            await completeIdempotent({
+              userId: ctx.subject.id,
+              key: idemKey,
+              statusCode: 200,
+              body: replay,
+            });
+            return replay;
+          }
+        }
         await releaseIdempotentOnClientError(error, {
           userId: ctx.subject.id,
           key: idemKey,
         });
         throw error;
-      });
-      if (idemKey) {
-        await completeIdempotent({
-          userId: ctx.subject.id,
-          key: idemKey,
-          statusCode: 200,
-          body: response,
-        });
       }
       return response;
     },
@@ -218,24 +257,11 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
           });
         }
 
-        let row;
-        try {
-          [row] = await getDb()
-            .insert(attachments)
-            .values({
-              id: attachmentId,
-              taskId: task.id,
-              type: "file",
-              notes,
-              storagePath: dbPath,
-              url: null,
-            })
-            .returning();
-        } catch (dbError) {
-          // Best-effort compensation: remove only the object this request just
-          // uploaded so a DB failure cannot leave an orphan in storage. A
-          // cleanup failure is logged for operations and never replaces the
-          // original (generic) error contract.
+        // Best-effort compensation: remove only the object this request just
+        // uploaded so a DB failure cannot leave an orphan in storage. A
+        // cleanup failure is logged for operations and never replaces the
+        // original (generic) error contract.
+        const compensateOrphan = async () => {
           try {
             const { error: cleanupError } = await supabase.storage
               .from("attachments")
@@ -256,10 +282,70 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
                 : "unknown",
             );
           }
+        };
+
+        try {
+          // #137: DB insert + completion commit atomically. The storage
+          // upload above stays outside the tx (external side effect); the
+          // bounded retry only re-runs the rolled-back DB work.
+          response = await runTxWithCompletionRetry(
+            () =>
+              withUserRls(ctx.subject.id, async (tx) => {
+                const [row] = await tx
+                  .insert(attachments)
+                  .values({
+                    id: attachmentId,
+                    taskId: task.id,
+                    type: "file",
+                    notes,
+                    storagePath: dbPath,
+                    url: null,
+                    idempotencyKey: idemKey,
+                  })
+                  .returning();
+                const res = { attachment: serializeAttachment(row) };
+                if (idemKey) {
+                  await completeIdempotentInTx(tx, {
+                    userId: ctx.subject.id,
+                    key: idemKey,
+                    statusCode: 200,
+                    body: res,
+                  });
+                }
+                return res;
+              }),
+            { key: idemKey },
+          );
+        } catch (dbError) {
+          if (idemKey && isUniqueViolation(dbError)) {
+            // #137 Layer B: a stale-reclaim re-execution found the committed
+            // row via the dedupe key — clean up this attempt's object (a fresh
+            // attachmentId means a different path) and replay the row.
+            const [existing] = await getDb()
+              .select()
+              .from(attachments)
+              .where(
+                and(
+                  eq(attachments.taskId, task.id),
+                  eq(attachments.idempotencyKey, idemKey),
+                ),
+              )
+              .limit(1);
+            if (existing) {
+              await compensateOrphan();
+              const replay = { attachment: serializeAttachment(existing) };
+              await completeIdempotent({
+                userId: ctx.subject.id,
+                key: idemKey,
+                statusCode: 200,
+                body: replay,
+              });
+              return replay;
+            }
+          }
+          await compensateOrphan();
           throw dbError;
         }
-
-        response = { attachment: serializeAttachment(row) };
       } catch (error) {
         // #136: 404/409 free the claim for a corrected same-key retry; 5xx
         // (e.g. the 502 storage failure) keeps it so a lost response replays.
@@ -268,15 +354,6 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
           key: idemKey,
         });
         throw error;
-      }
-
-      if (idemKey) {
-        await completeIdempotent({
-          userId: ctx.subject.id,
-          key: idemKey,
-          statusCode: 200,
-          body: response,
-        });
       }
       return response;
     },

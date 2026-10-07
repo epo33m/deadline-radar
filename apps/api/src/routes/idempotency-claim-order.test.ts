@@ -40,6 +40,7 @@ const COURSE_ROW = {
   createdAt: new Date(),
   updatedAt: new Date(),
   deletedAt: null,
+  idempotencyKey: null,
 };
 
 type IdemRow = {
