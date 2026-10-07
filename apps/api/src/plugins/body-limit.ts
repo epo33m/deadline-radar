@@ -6,6 +6,13 @@ import { env } from "../env";
 /** Default JSON body limit (1 MiB). Multipart uploads use a separate cap. */
 export const MAX_JSON_BODY_BYTES = 1_048_576;
 export const MAX_UPLOAD_BYTES = 10 * 1_048_576; // 10 MiB
+/**
+ * Socket-level backstop for `serve.maxRequestBodySize` (#138).
+ * Must fit the largest legitimate route (10 MiB file) plus multipart
+ * framing/fields, so it carries slack over MAX_UPLOAD_BYTES.
+ * Per-route caps stay authoritative; this only bounds total buffering.
+ */
+export const MAX_REQUEST_BODY_BYTES = 12 * 1_048_576; // 12 MiB
 
 const ALLOWED_UPLOAD_MIME = new Set([
   "application/pdf",
