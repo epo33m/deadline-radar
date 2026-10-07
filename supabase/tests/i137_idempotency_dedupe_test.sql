@@ -135,12 +135,14 @@ begin
     raise exception 'I137 ASSERTION FAILED: duplicate tasks idempotency_key was not rejected';
   end if;
 
-  -- reminder_thresholds: same (task_id, key) rejected
+  -- reminder_thresholds: same (task_id, key) rejected. Offsets 5/6 are
+  -- outside the trigger-generated defaults [7,3,1,0], so only the dedupe
+  -- index can fire here (the days_before unique cannot collide).
   insert into public.reminder_thresholds (task_id, days_before, idempotency_key)
-    values (v_task, 3, 'key-threshold-1');
+    values (v_task, 5, 'key-threshold-1');
   begin
     insert into public.reminder_thresholds (task_id, days_before, idempotency_key)
-      values (v_task, 5, 'key-threshold-1');
+      values (v_task, 6, 'key-threshold-1');
     v_dup_rejected := false;
   exception when unique_violation then
     v_dup_rejected := true;
