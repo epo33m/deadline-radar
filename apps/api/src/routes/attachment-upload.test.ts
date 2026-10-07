@@ -39,6 +39,7 @@ const TASK_ROW = {
   updatedAt: new Date(),
   deadlineUpdatedAt: new Date(),
   deletedAt: null,
+  idempotencyKey: null,
 };
 
 // ---------------------------------------------------------------------------
@@ -63,6 +64,7 @@ type AttachmentRecord = {
   storagePath: string | null;
   url: string | null;
   createdAt: Date;
+  idempotencyKey: string | null;
 };
 
 const idemStore = new Map<string, IdemRecord>();
@@ -153,6 +155,7 @@ function chain(op: "select" | "insert" | "update" | "delete", table?: unknown) {
           storagePath: (val.storagePath as string | null) ?? null,
           url: (val.url as string | null) ?? null,
           createdAt: new Date(),
+          idempotencyKey: (val.idempotencyKey as string | null) ?? null,
         };
         attachmentsStore.set(id, row);
         return [row];
@@ -212,6 +215,7 @@ function chain(op: "select" | "insert" | "update" | "delete", table?: unknown) {
             storagePath: (val.storagePath as string | null) ?? null,
             url: (val.url as string | null) ?? null,
             createdAt: new Date(),
+            idempotencyKey: (val.idempotencyKey as string | null) ?? null,
           };
           attachmentsStore.set(id, row);
           return [row];
@@ -605,6 +609,7 @@ describe("I-03 — DB-first delete ordering (was F-01 storage-first)", () => {
       storagePath: `attachments/${USER_A}/${TASK_A}/${attId}/doc.pdf`,
       url: null,
       createdAt: new Date(),
+      idempotencyKey: null,
     });
   }
 

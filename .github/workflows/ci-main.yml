@@ -78,8 +78,9 @@ jobs:
           bun run scripts/migrate.ts status
           bun run scripts/migrate.ts verify
 
-      - name: Run SQL Database Regression Tests (11/11 files)
+      - name: Run SQL Database Regression Tests (12/12 files)
         run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/i137_idempotency_dedupe_test.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/c1_delivery_read_at_only.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/h2_task_course_owner_invariant.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/m8_database_integrity_test.sql

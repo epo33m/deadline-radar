@@ -16,16 +16,19 @@ import {
   apiDoc,
   beginIdempotent,
   completeIdempotent,
+  completeIdempotentInTx,
   decodeCursor,
   encodeCursor,
   envelope,
   idempotent,
+  isUniqueViolation,
   pageMeta,
   parsePaginationQuery,
   R,
   readIdempotencyKey,
   readJsonBody,
   releaseIdempotentOnClientError,
+  runTxWithCompletionRetry,
   secured,
   serializeCourse,
   validationFromZod,
@@ -202,35 +205,67 @@ export const courseRoutes = new Elysia({ prefix: "/api/v1/courses" })
         }
       }
 
-      let row;
+      // #137: insert + completion commit atomically (see task create).
+      let response: { course: ReturnType<typeof serializeCourse> };
       try {
-        [row] = await getDb()
-          .insert(courses)
-          .values({
-            userId: ctx.subject.id,
-            name: parsed.data.name,
-            code: parsed.data.code,
-            color: parsed.data.color,
-            icon: parsed.data.icon,
-            description: parsed.data.description,
-          })
-          .returning();
+        response = await runTxWithCompletionRetry(
+          () =>
+            withUserRls(ctx.subject.id, async (tx) => {
+              const [row] = await tx
+                .insert(courses)
+                .values({
+                  userId: ctx.subject.id,
+                  name: parsed.data.name,
+                  code: parsed.data.code,
+                  color: parsed.data.color,
+                  icon: parsed.data.icon,
+                  description: parsed.data.description,
+                  idempotencyKey: idemKey,
+                })
+                .returning();
+              const res = { course: serializeCourse(row) };
+              if (idemKey) {
+                await completeIdempotentInTx(tx, {
+                  userId: ctx.subject.id,
+                  key: idemKey,
+                  statusCode: 200,
+                  body: res,
+                });
+              }
+              return res;
+            }),
+          { key: idemKey },
+        );
       } catch (error) {
+        if (idemKey && isUniqueViolation(error)) {
+          // #137 Layer B: stale-reclaim re-execution replays the committed row.
+          const [existing] = await getDb()
+            .select()
+            .from(courses)
+            .where(
+              and(
+                eq(courses.userId, ctx.subject.id),
+                eq(courses.idempotencyKey, idemKey),
+              ),
+            )
+            .limit(1);
+          if (existing) {
+            const replay = { course: serializeCourse(existing) };
+            await completeIdempotent({
+              userId: ctx.subject.id,
+              key: idemKey,
+              statusCode: 200,
+              body: replay,
+            });
+            return replay;
+          }
+        }
         // #136: a 4xx after the claim frees it for a corrected same-key retry.
         await releaseIdempotentOnClientError(error, {
           userId: ctx.subject.id,
           key: idemKey,
         });
         throw error;
-      }
-      const response = { course: serializeCourse(row) };
-      if (idemKey) {
-        await completeIdempotent({
-          userId: ctx.subject.id,
-          key: idemKey,
-          statusCode: 200,
-          body: response,
-        });
       }
       return response;
     },

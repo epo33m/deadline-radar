@@ -34,6 +34,7 @@ import {
   apiDoc,
   beginIdempotent,
   completeIdempotent,
+  completeIdempotentInTx,
   decodeCursor,
   encodeCursor,
   envelope,
@@ -44,6 +45,7 @@ import {
   readIdempotencyKey,
   readJsonBody,
   releaseIdempotentOnClientError,
+  runTxWithCompletionRetry,
   secured,
   serializeAttachment,
   serializeCourse,
@@ -373,42 +375,83 @@ export const taskRoutes = new Elysia({ prefix: "/api/v1/tasks" })
         }
       }
 
-      let row;
+      // #137: insert + completion commit atomically, so a failing
+      // completion can never leave a committed-but-uncompletable row behind.
+      // A rolled-back transaction committed nothing, so the bounded retry on
+      // unexpected failures cannot duplicate the task (I-02 preserved).
+      let response: {
+        task: ReturnType<typeof serializeTask>;
+        redirectTo: string;
+      };
       try {
-        [row] = await getDb()
-          .insert(tasks)
-          .values({
-            userId: ctx.subject.id,
-            courseId: parsed.data.course_id,
-            title: parsed.data.title,
-            description: parsed.data.description,
-            deadline: new Date(parsed.data.deadline),
-            status: parsed.data.status,
-            // Terminal Done: creation accepts only active statuses, so a new
-            // task is never completed at birth (DOMAIN.md §2.3).
-            completedAt: null,
-          })
-          .returning();
+        response = await runTxWithCompletionRetry(
+          () =>
+            withUserRls(ctx.subject.id, async (tx) => {
+              const [row] = await tx
+                .insert(tasks)
+                .values({
+                  userId: ctx.subject.id,
+                  courseId: parsed.data.course_id,
+                  title: parsed.data.title,
+                  description: parsed.data.description,
+                  deadline: new Date(parsed.data.deadline),
+                  status: parsed.data.status,
+                  // Terminal Done: creation accepts only active statuses, so a new
+                  // task is never completed at birth (DOMAIN.md §2.3).
+                  completedAt: null,
+                  idempotencyKey: idemKey,
+                })
+                .returning();
+              const res = {
+                task: serializeTask(row),
+                redirectTo: `/tasks/${row.id}`,
+              };
+              if (idemKey) {
+                await completeIdempotentInTx(tx, {
+                  userId: ctx.subject.id,
+                  key: idemKey,
+                  statusCode: 200,
+                  body: res,
+                });
+              }
+              return res;
+            }),
+          { key: idemKey },
+        );
       } catch (error) {
+        if (isUniqueViolation(error) && idemKey) {
+          // #137 Layer B: a stale-reclaim re-execution found the committed
+          // row via the dedupe key — replay it instead of duplicating.
+          const [existing] = await getDb()
+            .select()
+            .from(tasks)
+            .where(
+              and(
+                eq(tasks.userId, ctx.subject.id),
+                eq(tasks.idempotencyKey, idemKey),
+              ),
+            )
+            .limit(1);
+          if (existing) {
+            const replay = {
+              task: serializeTask(existing),
+              redirectTo: `/tasks/${existing.id}`,
+            };
+            await completeIdempotent({
+              userId: ctx.subject.id,
+              key: idemKey,
+              statusCode: 200,
+              body: replay,
+            });
+            return replay;
+          }
+        }
         // #136: a 4xx after the claim frees it for a corrected same-key retry.
         await releaseIdempotentOnClientError(error, {
           userId: ctx.subject.id,
           key: idemKey,
         });
         throw error;
-      }
-
-      const response = {
-        task: serializeTask(row),
-        redirectTo: `/tasks/${row.id}`,
-      };
-      if (idemKey) {
-        await completeIdempotent({
-          userId: ctx.subject.id,
-          key: idemKey,
-          statusCode: 200,
-          body: response,
-        });
       }
       return response;
     },
@@ -652,37 +695,54 @@ export const taskRoutes = new Elysia({ prefix: "/api/v1/tasks" })
 
       let response: { threshold: ReturnType<typeof serializeThreshold> };
       try {
-        // Check + guard + count + insert in one transaction (P2-3).
-        response = await withUserRls(ctx.subject.id, async (tx) => {
-          const task = await ownedTaskInTx(tx, ctx.subject.id, taskId);
-          if (!task) throw ApiError.notFound("Task not found");
-          await assertThresholdNotInPast(task, daysBefore, timezone);
-          // SEC-003: bound thresholds per task (each due threshold is an email).
-          const [thresholdQuota] = await tx
-            .select({ value: count() })
-            .from(reminderThresholds)
-            .where(
-              and(
-                eq(reminderThresholds.taskId, task.id),
-                isNull(reminderThresholds.deletedAt),
-              ),
-            )
-            .limit(1);
-          if ((thresholdQuota?.value ?? 0) >= MAX_THRESHOLDS_PER_TASK) {
-            throw ApiError.rateLimited(
-              `Reminder limit reached (${MAX_THRESHOLDS_PER_TASK} per task).`,
-            );
-          }
-          const [row] = await tx
-            .insert(reminderThresholds)
-            .values({
-              taskId: task.id,
-              daysBefore,
-              isDefault: false,
-            })
-            .returning();
-          return { threshold: serializeThreshold(row) };
-        });
+        // Check + guard + count + insert + idempotency completion in one
+        // transaction (P2-3, #137). A rolled-back transaction committed
+        // nothing, so the bounded retry on unexpected failures cannot
+        // duplicate the threshold (I-02 preserved).
+        response = await runTxWithCompletionRetry(
+          () =>
+            withUserRls(ctx.subject.id, async (tx) => {
+              const task = await ownedTaskInTx(tx, ctx.subject.id, taskId);
+              if (!task) throw ApiError.notFound("Task not found");
+              await assertThresholdNotInPast(task, daysBefore, timezone);
+              // SEC-003: bound thresholds per task (each due threshold is an email).
+              const [thresholdQuota] = await tx
+                .select({ value: count() })
+                .from(reminderThresholds)
+                .where(
+                  and(
+                    eq(reminderThresholds.taskId, task.id),
+                    isNull(reminderThresholds.deletedAt),
+                  ),
+                )
+                .limit(1);
+              if ((thresholdQuota?.value ?? 0) >= MAX_THRESHOLDS_PER_TASK) {
+                throw ApiError.rateLimited(
+                  `Reminder limit reached (${MAX_THRESHOLDS_PER_TASK} per task).`,
+                );
+              }
+              const [row] = await tx
+                .insert(reminderThresholds)
+                .values({
+                  taskId: task.id,
+                  daysBefore,
+                  isDefault: false,
+                  idempotencyKey: idemKey,
+                })
+                .returning();
+              const res = { threshold: serializeThreshold(row) };
+              if (idemKey) {
+                await completeIdempotentInTx(tx, {
+                  userId: ctx.subject.id,
+                  key: idemKey,
+                  statusCode: 200,
+                  body: res,
+                });
+              }
+              return res;
+            }),
+          { key: idemKey },
+        );
       } catch (error) {
         if (!isUniqueViolation(error)) {
           // #136: 404/400/429 from the tx free the claim for a corrected retry.
@@ -694,19 +754,37 @@ export const taskRoutes = new Elysia({ prefix: "/api/v1/tasks" })
         }
         // RF-06: the offset already exists — the request's intent is already
         // satisfied, so return the existing threshold as success. The failed
-        // transaction rolled back, so re-read on a fresh connection.
-        const [existing] = await getDb()
-          .select()
-          .from(reminderThresholds)
-          .where(
-            and(
-              eq(reminderThresholds.taskId, taskId),
-              eq(reminderThresholds.daysBefore, daysBefore),
-              isNull(reminderThresholds.deletedAt),
-            ),
-          )
-          .limit(1);
-        if (!existing) {
+        // transaction rolled back, so re-read on a fresh connection. #137:
+        // prefer the dedupe-key lookup so a stale-reclaim re-execution
+        // replays its own committed row even if the offset collides.
+        const [existing] = idemKey
+          ? await getDb()
+              .select()
+              .from(reminderThresholds)
+              .where(
+                and(
+                  eq(reminderThresholds.taskId, taskId),
+                  eq(reminderThresholds.idempotencyKey, idemKey),
+                  isNull(reminderThresholds.deletedAt),
+                ),
+              )
+              .limit(1)
+          : [undefined];
+        const [byOffset] =
+          existing
+            ? [existing]
+            : await getDb()
+                .select()
+                .from(reminderThresholds)
+                .where(
+                  and(
+                    eq(reminderThresholds.taskId, taskId),
+                    eq(reminderThresholds.daysBefore, daysBefore),
+                    isNull(reminderThresholds.deletedAt),
+                  ),
+                )
+                .limit(1);
+        if (!byOffset) {
           const conflict = ApiError.conflict(
             "Threshold already exists for this day offset",
           );
@@ -716,16 +794,16 @@ export const taskRoutes = new Elysia({ prefix: "/api/v1/tasks" })
           });
           throw conflict;
         }
-        response = { threshold: serializeThreshold(existing) };
-      }
-
-      if (idemKey) {
-        await completeIdempotent({
-          userId: ctx.subject.id,
-          key: idemKey,
-          statusCode: 200,
-          body: response,
-        });
+        response = { threshold: serializeThreshold(byOffset) };
+        // The rolled-back tx never recorded the completion — do it here.
+        if (idemKey) {
+          await completeIdempotent({
+            userId: ctx.subject.id,
+            key: idemKey,
+            statusCode: 200,
+            body: response,
+          });
+        }
       }
       return response;
     },

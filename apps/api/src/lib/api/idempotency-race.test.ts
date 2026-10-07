@@ -435,12 +435,18 @@ function chain(op: "select" | "insert" | "update" | "delete", table?: unknown) {
 }
 
 mock.module("../db", () => ({
-  getDb: () => ({
-    select: () => chain("select"),
-    insert: (table: unknown) => chain("insert", table),
-    update: (table: unknown) => chain("update", table),
-    delete: (table: unknown) => chain("delete", table),
-  }),
+  getDb: () => {
+    const db: any = {
+      select: () => chain("select"),
+      insert: (table: unknown) => chain("insert", table),
+      update: (table: unknown) => chain("update", table),
+      delete: (table: unknown) => chain("delete", table),
+      // #137: the upload route now runs insert+completion inside withUserRls.
+      execute: async () => [],
+      transaction: (cb: (tx: unknown) => unknown) => cb(db),
+    };
+    return db;
+  },
 }));
 
 mock.module("../auth-audit", () => ({
@@ -480,6 +486,7 @@ const TASK_ROW = {
   updatedAt: new Date(),
   deadlineUpdatedAt: new Date(),
   deletedAt: null,
+  idempotencyKey: null,
 };
 
 function authed(userId: string, capabilities: Capability[]) {

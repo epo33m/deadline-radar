@@ -257,6 +257,7 @@ function linkAttachmentRow(id: string) {
       storagePath: null,
       url: "https://example.com/x",
       createdAt: new Date(),
+      idempotencyKey: null,
     },
     taskUserId: USER_A,
   };

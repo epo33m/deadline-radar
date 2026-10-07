@@ -135,6 +135,7 @@ describe("authorization routes — adversarial", () => {
             createdAt: new Date(),
             updatedAt: new Date(),
             deletedAt: null,
+            idempotencyKey: null,
           };
         }
         return null;
@@ -151,6 +152,7 @@ describe("authorization routes — adversarial", () => {
             notes: null,
             url: null,
             createdAt: new Date(),
+            idempotencyKey: null,
           },
           taskUserId: userId,
         };
@@ -418,6 +420,7 @@ describe("authorization routes — adversarial", () => {
                 updatedAt: new Date(),
                 deadlineUpdatedAt: new Date(),
                 deletedAt: null,
+                idempotencyKey: null,
               }
             : null,
       });
@@ -487,6 +490,7 @@ describe("authorization routes — adversarial", () => {
                 updatedAt: updatedAtDate,
                 deadlineUpdatedAt: new Date(),
                 deletedAt: null,
+                idempotencyKey: null,
               }
             : null,
         ownedCourse: async (userId, courseId) => {
@@ -502,6 +506,7 @@ describe("authorization routes — adversarial", () => {
               createdAt: new Date(),
               updatedAt: new Date(),
               deletedAt: null,
+              idempotencyKey: null,
             };
           }
           return null;
@@ -602,6 +607,7 @@ describe("authorization routes — adversarial", () => {
                 updatedAt: updatedAtDate,
                 deadlineUpdatedAt: new Date(),
                 deletedAt: null,
+                idempotencyKey: null,
               }
             : null,
       });

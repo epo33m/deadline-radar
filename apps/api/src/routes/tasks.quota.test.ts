@@ -104,6 +104,7 @@ const COURSE_ROW = {
   deletedAt: null,
   createdAt: new Date(),
   updatedAt: new Date(),
+  idempotencyKey: null,
 };
 
 const TASK_ROW = {
@@ -119,6 +120,7 @@ const TASK_ROW = {
   createdAt: new Date(),
   updatedAt: new Date(),
   deadlineUpdatedAt: new Date(),
+  idempotencyKey: null,
 };
 
 function fullTaskRow() {

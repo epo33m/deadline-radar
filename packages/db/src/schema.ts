@@ -146,12 +146,23 @@ export const courses = pgTable(
       .notNull()
       .defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true, mode: "date" }),
+    /**
+     * #137: idempotency dedupe key. Copies the request's Idempotency-Key when
+     * the row is created under a claim; NULL for rows created without one.
+     * The partial unique index below makes a stale-reclaim re-execution hit
+     * a conflict instead of duplicating the row, so the retry can replay the
+     * already-committed row. NULLs never conflict with each other.
+     */
+    idempotencyKey: text("idempotency_key"),
   },
   (table) => [
     unique("courses_id_user_id_key").on(table.id, table.userId),
     index("idx_courses_user_created_id_active")
       .on(table.userId, table.createdAt.desc(), table.id.desc())
       .where(sql`deleted_at IS NULL`),
+    uniqueIndex("courses_user_idempotency_key")
+      .on(table.userId, table.idempotencyKey)
+      .where(sql`idempotency_key is not null`),
   ],
 );
 
@@ -210,6 +221,11 @@ export const tasks = pgTable(
       .defaultNow(),
     completedAt: timestamp("completed_at", { withTimezone: true, mode: "date" }),
     deletedAt: timestamp("deleted_at", { withTimezone: true, mode: "date" }),
+    /**
+     * #137: idempotency dedupe key (see courses.idempotencyKey). A
+     * stale-reclaim re-execution conflicts here instead of duplicating.
+     */
+    idempotencyKey: text("idempotency_key"),
   },
   (table) => [
     foreignKey({
@@ -224,6 +240,9 @@ export const tasks = pgTable(
     index("idx_tasks_user_course_deadline_active")
       .on(table.userId, table.courseId, table.deadline.asc())
       .where(sql`deleted_at IS NULL`),
+    uniqueIndex("tasks_user_idempotency_key")
+      .on(table.userId, table.idempotencyKey)
+      .where(sql`idempotency_key is not null`),
   ],
 );
 
@@ -239,9 +258,14 @@ export const reminderThresholds = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
       .notNull()
       .defaultNow(),
+    /**
+     * #137: idempotency dedupe key (see courses.idempotencyKey). A
+     * stale-reclaim re-execution conflicts here instead of duplicating.
+     */
+    idempotencyKey: text("idempotency_key"),
     /** Last time the offset changed. Bumped on PATCH; lets the evaluator
-     * skip default thresholds whose new trigger was already past at edit
-     * time (DOMAIN.md §4). */
+      * skip default thresholds whose new trigger was already past at edit
+      * time (DOMAIN.md §4). */
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
       .notNull()
       .defaultNow(),
@@ -255,6 +279,9 @@ export const reminderThresholds = pgTable(
     uniqueIndex("reminder_thresholds_task_days_before_active_key")
       .on(table.taskId, table.daysBefore)
       .where(sql`deleted_at IS NULL`),
+    uniqueIndex("reminder_thresholds_task_idempotency_key")
+      .on(table.taskId, table.idempotencyKey)
+      .where(sql`idempotency_key is not null`),
   ],
 );
 
@@ -375,6 +402,12 @@ export const attachments = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
       .notNull()
       .defaultNow(),
+    /**
+     * #137: idempotency dedupe key (see courses.idempotencyKey). Scoped by
+     * task (attachments carry no user_id of their own). A stale-reclaim
+     * re-execution conflicts here instead of duplicating.
+     */
+    idempotencyKey: text("idempotency_key"),
   },
   (table) => [
     // P3: task-scoped file lookups (detail view + ownership join).
@@ -383,5 +416,8 @@ export const attachments = pgTable(
     index("idx_attachments_storage_path")
       .on(table.storagePath)
       .where(sql`storage_path is not null`),
+    uniqueIndex("attachments_task_idempotency_key")
+      .on(table.taskId, table.idempotencyKey)
+      .where(sql`idempotency_key is not null`),
   ],
 );

@@ -191,4 +191,42 @@ describe("RF-09 reminder_thresholds archive", () => {
   });
 });
 
+describe("#137 idempotency dedupe keys", () => {
+  test("dedupe columns are nullable text with no default (existing rows stay NULL)", () => {
+    for (const col of [
+      courses.idempotencyKey,
+      tasks.idempotencyKey,
+      reminderThresholds.idempotencyKey,
+      attachments.idempotencyKey,
+    ]) {
+      expect(col.notNull).toBe(false);
+      expect(col.default).toBeUndefined();
+    }
+  });
+
+  test("each table has a partial unique dedupe index over non-null keys", () => {
+    const cases: Array<{ table: unknown; name: string; cols: string[] }> = [
+      { table: courses, name: "courses_user_idempotency_key", cols: ["user_id", "idempotency_key"] },
+      { table: tasks, name: "tasks_user_idempotency_key", cols: ["user_id", "idempotency_key"] },
+      {
+        table: reminderThresholds,
+        name: "reminder_thresholds_task_idempotency_key",
+        cols: ["task_id", "idempotency_key"],
+      },
+      {
+        table: attachments,
+        name: "attachments_task_idempotency_key",
+        cols: ["task_id", "idempotency_key"],
+      },
+    ];
+    for (const { table, name, cols } of cases) {
+      const config = getTableConfig(table as typeof tasks);
+      const idx = config.indexes.find((i) => i.config.name === name);
+      expect(idx).toBeDefined();
+      expect(idx!.config.unique).toBe(true);
+      expect(idx!.config.columns.map((c) => (c as { name: string }).name)).toEqual(cols);
+    }
+  });
+});
+
 
