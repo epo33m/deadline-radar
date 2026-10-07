@@ -87,12 +87,17 @@ $assert$;
 
 do $assert$
 declare
-  v_user uuid := gen_random_uuid();
+  v_user uuid;
   v_course uuid := gen_random_uuid();
   v_task uuid := gen_random_uuid();
   v_dup_rejected boolean;
 begin
-  insert into public.profiles (id, email) values (v_user, 'i137@example.com');
+  -- profiles.id references auth.users: seed the auth user first (like
+  -- sec003_quota.sql). Everything rolls back at the end, so no residue.
+  insert into auth.users (email)
+    values ('i137@example.invalid')
+    returning id into v_user;
+  insert into public.profiles (id, email) values (v_user, 'i137@example.invalid');
   insert into public.courses (id, user_id, name, idempotency_key)
     values (v_course, v_user, 'I137', 'key-course-1');
 
