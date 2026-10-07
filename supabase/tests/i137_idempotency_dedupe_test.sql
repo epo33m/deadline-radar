@@ -97,7 +97,11 @@ begin
   insert into auth.users (email)
     values ('i137@example.invalid')
     returning id into v_user;
-  insert into public.profiles (id, email) values (v_user, 'i137@example.invalid');
+  -- The handle_new_user trigger usually creates the profile; insert only
+  -- as a fallback so this works with or without the trigger.
+  insert into public.profiles (id, email)
+    values (v_user, 'i137@example.invalid')
+    on conflict do nothing;
   insert into public.courses (id, user_id, name, idempotency_key)
     values (v_course, v_user, 'I137', 'key-course-1');
 
