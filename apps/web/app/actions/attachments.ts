@@ -13,6 +13,8 @@ import { mapWithConcurrency } from "@/lib/concurrency";
 export type AttachmentActionState = {
   error?: string;
   fieldErrors?: Partial<Record<string, string[]>>;
+  /** #136: definitive 4xx → the form regenerates its idempotency key. */
+  renewKey?: boolean;
 };
 
 function revalidateTask(taskId: string) {
@@ -45,7 +47,11 @@ export async function addLinkAttachment(
     }),
   });
   if (result.error) {
-    return { error: result.error, fieldErrors: result.fieldErrors };
+    return {
+      error: result.error,
+      fieldErrors: result.fieldErrors,
+      renewKey: result.isRetryable === false,
+    };
   }
   revalidateTask(taskId);
   return {};
@@ -97,7 +103,14 @@ export async function addFileAttachment(
   );
   if (failureIndex !== undefined) {
     const failed = results[failureIndex];
-    return { error: failed.error, fieldErrors: failed.fieldErrors };
+    // #136: only a single-file submit may regenerate the base key — a batch
+    // retry under a fresh key would re-upload the files that already
+    // succeeded. Multi-file failures keep the key so successes replay.
+    return {
+      error: failed.error,
+      fieldErrors: failed.fieldErrors,
+      renewKey: failed.isRetryable === false && pickedFiles.length === 1,
+    };
   }
   revalidateTask(taskId);
   return {};

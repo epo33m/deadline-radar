@@ -157,6 +157,13 @@ function chain(op: "select" | "insert" | "update" | "delete", table?: unknown) {
         attachmentsStore.set(id, row);
         return [row];
       }
+      if (op === "delete" && table === idempotencyKeys) {
+        // #136: release drops our own uncompleted claim.
+        for (const [mapKey, record] of [...idemStore]) {
+          if (record.responseStatus == null) idemStore.delete(mapKey);
+        }
+        return [];
+      }
       if (op === "delete") {
         deleteExecutionCount++;
         if (attachmentsDeleteMode === "fail") throw new Error("db delete failed");
@@ -209,6 +216,12 @@ function chain(op: "select" | "insert" | "update" | "delete", table?: unknown) {
           attachmentsStore.set(id, row);
           return [row];
         }
+        if (op === "delete" && table === idempotencyKeys) {
+          for (const [mapKey, record] of [...idemStore]) {
+            if (record.responseStatus == null) idemStore.delete(mapKey);
+          }
+          return [];
+        }
         if (op === "delete") {
           deleteExecutionCount++;
           if (attachmentsDeleteMode === "fail") throw new Error("db delete failed");
@@ -239,7 +252,7 @@ mock.module("../lib/db", () => ({
       select: () => chain("select"),
       insert: (table: unknown) => chain("insert", table),
       update: (table: unknown) => chain("update", table),
-      delete: () => chain("delete", attachments),
+      delete: (table: unknown) => chain("delete", table),
       // withUserRls single-tx handlers (P2-3): GUC setup is a no-op here.
       execute: async () => [],
       transaction: (cb: (tx: unknown) => unknown) => cb(db),
@@ -365,6 +378,7 @@ function deleteRequest(attachmentId: string, token: string = "user-a") {
 function linkRequest(
   body: Record<string, unknown>,
   token: string = "user-a",
+  key?: string,
 ) {
   return app.handle(
     new Request("http://localhost/api/v1/attachments/link", {
@@ -372,6 +386,7 @@ function linkRequest(
       headers: {
         authorization: `Bearer ${token}`,
         "content-type": "application/json",
+        ...(key ? { "idempotency-key": key } : {}),
       },
       body: JSON.stringify(body),
     }),
@@ -542,6 +557,25 @@ describe("finding #5 — upload idempotency fingerprint", () => {
     expect(typeof err === "string" ? err : err?.code).toBe(
       "IDEMPOTENCY_CONFLICT",
     );
+  });
+
+  test("#136: upload 404 releases the claim; corrected retry with same key succeeds", async () => {
+    const missingTask = "00000000-0000-4000-8000-000000000000";
+    const bad = await uploadRequest("%PDF-1.4\nretry-bytes", {
+      key: "file-key-release",
+      taskId: missingTask,
+    });
+    expect(bad.status).toBe(404);
+    expect(attachmentsStore.size).toBe(0);
+    expect(idemStore.size).toBe(0);
+
+    const retry = await uploadRequest("%PDF-1.4\nretry-bytes", {
+      key: "file-key-release",
+      taskId: TASK_A,
+    });
+    expect(retry.status).toBe(200);
+    expect(attachmentsStore.size).toBe(1);
+    expect(idemStore.get(`${USER_A}:file-key-release`)?.responseStatus).toBe(200);
   });
 });
 
@@ -858,5 +892,26 @@ describe("P2-3 — POST /link single-transaction create", () => {
     });
     expect(res.status).toBe(404);
     expect(attachmentsStore.size).toBe(0);
+  });
+
+  test("#136: link 404 releases the claim; corrected retry with same key succeeds", async () => {
+    const missingTask = "00000000-0000-4000-8000-000000000000";
+    const bad = await linkRequest(
+      { task_id: missingTask, url: "https://example.com/spec" },
+      "user-a",
+      "link-key-release",
+    );
+    expect(bad.status).toBe(404);
+    expect(attachmentsStore.size).toBe(0);
+    expect(idemStore.size).toBe(0);
+
+    const retry = await linkRequest(
+      { task_id: TASK_A, url: "https://example.com/spec" },
+      "user-a",
+      "link-key-release",
+    );
+    expect(retry.status).toBe(200);
+    expect(attachmentsStore.size).toBe(1);
+    expect(idemStore.get(`${USER_A}:link-key-release`)?.responseStatus).toBe(200);
   });
 });

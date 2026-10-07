@@ -13,6 +13,8 @@ import { resolveSafeReturnTo } from "@deadline-radar/validation";
 export type TaskActionState = {
   error?: string;
   fieldErrors?: Partial<Record<string, string[]>>;
+  /** #136: definitive 4xx → the form regenerates its idempotency key. */
+  renewKey?: boolean;
 };
 
 function taskBody(formData: FormData) {
@@ -56,7 +58,11 @@ export async function createTask(
     },
   );
   if (result.error) {
-    return { error: result.error, fieldErrors: result.fieldErrors };
+    return {
+      error: result.error,
+      fieldErrors: result.fieldErrors,
+      renewKey: result.isRetryable === false,
+    };
   }
   const returnTo = formData.get("return_to");
   const courseId = formData.get("course_id");
@@ -140,7 +146,11 @@ export async function addReminderThreshold(
     body: JSON.stringify({ days_before: days }),
   });
   if (result.error) {
-    return { error: result.error, fieldErrors: result.fieldErrors };
+    return {
+      error: result.error,
+      fieldErrors: result.fieldErrors,
+      renewKey: result.isRetryable === false,
+    };
   }
   revalidateTask(taskId);
   return {};

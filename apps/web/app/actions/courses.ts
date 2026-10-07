@@ -30,6 +30,8 @@ import { normalizeCourseIconForStorage } from "@/lib/courses/icons";
 export type CourseActionState = {
   error?: string;
   fieldErrors?: Partial<Record<string, string[]>>;
+  /** #136: definitive 4xx → the form regenerates its idempotency key. */
+  renewKey?: boolean;
 };
 
 function courseBody(formData: FormData) {
@@ -66,7 +68,11 @@ export async function createCourse(
     body: JSON.stringify(courseBody(formData)),
   });
   if (result.error) {
-    return { error: result.error, fieldErrors: result.fieldErrors };
+    return {
+      error: result.error,
+      fieldErrors: result.fieldErrors,
+      renewKey: result.isRetryable === false,
+    };
   }
   revalidateCourseContent();
   return {};

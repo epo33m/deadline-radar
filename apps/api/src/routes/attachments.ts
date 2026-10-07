@@ -31,6 +31,7 @@ import {
   R,
   readIdempotencyKey,
   readJsonBody,
+  releaseIdempotentOnClientError,
   secured,
   serializeAttachment,
   sha256Hex,
@@ -56,6 +57,15 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
       const body = await readJsonBody(request);
       assertNoForbiddenMutationKeys(body);
 
+      // #136: parse before claiming so an invalid body never poisons the key.
+      const parsed = linkAttachmentRequestSchema.safeParse(body);
+      if (!parsed.success) {
+        throw validationFromZod(
+          "Invalid link attachment",
+          parsed.error.flatten().fieldErrors,
+        );
+      }
+
       const idemKey = readIdempotencyKey(request);
       if (idemKey) {
         const { replay } = await beginIdempotent({
@@ -71,15 +81,9 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
         }
       }
 
-      const parsed = linkAttachmentRequestSchema.safeParse(body);
-      if (!parsed.success) {
-        throw validationFromZod(
-          "Invalid link attachment",
-          parsed.error.flatten().fieldErrors,
-        );
-      }
       // Check + insert in one transaction (P2-3). Idempotency bookkeeping
-      // keeps its own protocol outside the data tx.
+      // keeps its own protocol outside the data tx. A 4xx from the tx (e.g.
+      // unknown task) frees the claim for a corrected same-key retry.
       const response = await withUserRls(ctx.subject.id, async (tx) => {
         const task = await ownedTaskInTx(tx, ctx.subject.id, parsed.data.task_id);
         if (!task) throw ApiError.notFound("Task not found");
@@ -94,6 +98,12 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
           })
           .returning();
         return { attachment: serializeAttachment(row) };
+      }).catch(async (error: unknown) => {
+        await releaseIdempotentOnClientError(error, {
+          userId: ctx.subject.id,
+          key: idemKey,
+        });
+        throw error;
       });
       if (idemKey) {
         await completeIdempotent({
@@ -169,85 +179,97 @@ export const attachmentRoutes = new Elysia({ prefix: "/api/v1/attachments" })
         }
       }
 
-      const task = await ownedTask(ctx.subject.id, taskId);
-      if (!task) throw ApiError.notFound("Task not found");
-
-      const attachmentId = crypto.randomUUID();
-      const dbPath = buildAttachmentStoragePath(
-        ctx.subject.id,
-        task.id,
-        attachmentId,
-        filename,
-      );
-      const objectKey = attachmentObjectKey(dbPath);
-
-      const supabase = createServiceClient();
-      // Transport timeout via the service client fetch; bounded retries on
-      // thrown transport failures only (upsert:false makes duplicates
-      // impossible, and returned errors are definitive answers).
-      const { error: uploadError } = await storageUpload(
-        supabase,
-        objectKey,
-        bytes,
-        file.type || "application/octet-stream",
-      );
-
-      if (uploadError) {
-        if (isStorageDuplicateError(uploadError)) {
-          throw ApiError.conflict(
-            "An attachment with this file name already exists for this task",
-          );
-        }
-        console.error("[attachments] upload failed", uploadError.message);
-        throw new ApiError({
-          status: 502,
-          code: "DEPENDENCY_FAILURE",
-          message: "Unable to store attachment",
-        });
-      }
-
-      let row;
+      let response: { attachment: ReturnType<typeof serializeAttachment> };
       try {
-        [row] = await getDb()
-          .insert(attachments)
-          .values({
-            id: attachmentId,
-            taskId: task.id,
-            type: "file",
-            notes,
-            storagePath: dbPath,
-            url: null,
-          })
-          .returning();
-      } catch (dbError) {
-        // Best-effort compensation: remove only the object this request just
-        // uploaded so a DB failure cannot leave an orphan in storage. A
-        // cleanup failure is logged for operations and never replaces the
-        // original (generic) error contract.
+        const task = await ownedTask(ctx.subject.id, taskId);
+        if (!task) throw ApiError.notFound("Task not found");
+
+        const attachmentId = crypto.randomUUID();
+        const dbPath = buildAttachmentStoragePath(
+          ctx.subject.id,
+          task.id,
+          attachmentId,
+          filename,
+        );
+        const objectKey = attachmentObjectKey(dbPath);
+
+        const supabase = createServiceClient();
+        // Transport timeout via the service client fetch; bounded retries on
+        // thrown transport failures only (upsert:false makes duplicates
+        // impossible, and returned errors are definitive answers).
+        const { error: uploadError } = await storageUpload(
+          supabase,
+          objectKey,
+          bytes,
+          file.type || "application/octet-stream",
+        );
+
+        if (uploadError) {
+          if (isStorageDuplicateError(uploadError)) {
+            throw ApiError.conflict(
+              "An attachment with this file name already exists for this task",
+            );
+          }
+          console.error("[attachments] upload failed", uploadError.message);
+          throw new ApiError({
+            status: 502,
+            code: "DEPENDENCY_FAILURE",
+            message: "Unable to store attachment",
+          });
+        }
+
+        let row;
         try {
-          const { error: cleanupError } = await supabase.storage
-            .from("attachments")
-            .remove([objectKey]);
-          if (cleanupError) {
+          [row] = await getDb()
+            .insert(attachments)
+            .values({
+              id: attachmentId,
+              taskId: task.id,
+              type: "file",
+              notes,
+              storagePath: dbPath,
+              url: null,
+            })
+            .returning();
+        } catch (dbError) {
+          // Best-effort compensation: remove only the object this request just
+          // uploaded so a DB failure cannot leave an orphan in storage. A
+          // cleanup failure is logged for operations and never replaces the
+          // original (generic) error contract.
+          try {
+            const { error: cleanupError } = await supabase.storage
+              .from("attachments")
+              .remove([objectKey]);
+            if (cleanupError) {
+              console.error(
+                "[attachments] orphan cleanup failed",
+                objectKey,
+                cleanupError.message,
+              );
+            }
+          } catch (cleanupError) {
             console.error(
               "[attachments] orphan cleanup failed",
               objectKey,
-              cleanupError.message,
+              cleanupError instanceof Error
+                ? cleanupError.message
+                : "unknown",
             );
           }
-        } catch (cleanupError) {
-          console.error(
-            "[attachments] orphan cleanup failed",
-            objectKey,
-            cleanupError instanceof Error
-              ? cleanupError.message
-              : "unknown",
-          );
+          throw dbError;
         }
-        throw dbError;
+
+        response = { attachment: serializeAttachment(row) };
+      } catch (error) {
+        // #136: 404/409 free the claim for a corrected same-key retry; 5xx
+        // (e.g. the 502 storage failure) keeps it so a lost response replays.
+        await releaseIdempotentOnClientError(error, {
+          userId: ctx.subject.id,
+          key: idemKey,
+        });
+        throw error;
       }
 
-      const response = { attachment: serializeAttachment(row) };
       if (idemKey) {
         await completeIdempotent({
           userId: ctx.subject.id,

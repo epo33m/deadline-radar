@@ -10,7 +10,7 @@ import {
   updateReminderThreshold,
   type TaskActionState,
 } from "@/app/actions/tasks";
-import { generateIdempotencyKey } from "@/lib/api/idempotency";
+import { useFormIdempotencyKey } from "@/lib/api/use-form-idempotency-key";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import {
@@ -275,15 +275,17 @@ function AddThresholdForm({
   const [daysBefore, setDaysBefore] = useState("");
   // RF-06: stable key per add attempt; regenerated after each success so a
   // different offset is never mistaken for a replay of the previous request.
-  const [idempotencyKey, setIdempotencyKey] = useState(() =>
-    generateIdempotencyKey(),
+  // #136: a definitive 4xx also regenerates so a corrected offset can be
+  // resubmitted immediately.
+  const idempotencyKey = useFormIdempotencyKey(
+    { pending, error: state.error, renewKey: state.renewKey },
+    true,
   );
   const wasPending = useRef(false);
 
   useEffect(() => {
     if (wasPending.current && !pending && !state.error) {
       setDaysBefore("");
-      setIdempotencyKey(generateIdempotencyKey());
     }
     wasPending.current = pending;
   }, [pending, state.error]);

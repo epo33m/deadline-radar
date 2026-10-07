@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start --port 3025",
     "lint": "eslint .",
-    "test": "bun test",
+    "test": "bun test --path-ignore-patterns '**/*.dom.test.tsx' && bun test ./lib/api/use-form-idempotency-key.dom.test.tsx",
     "typecheck": "tsc --noEmit -p .",
     "generate-api": "openapi-typescript http://127.0.0.1:4025/openapi/json -o lib/api/schema.d.ts"
   },
@@ -31,11 +31,15 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@happy-dom/global-registrator": "^20.14.5",
     "@tailwindcss/postcss": "^4.3.3",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",
     "eslint": "9",
     "eslint-config-next": "^16.3.4",
+    "happy-dom": "^20.14.5",
     "openapi-typescript": "^7.10.1",
     "postcss": "^8.5.26",
     "tailwindcss": "^4.3.3",

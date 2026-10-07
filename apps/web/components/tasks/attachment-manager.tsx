@@ -32,7 +32,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { LoadingDialog } from "@/components/ui/loading-dialog";
 import { cn } from "@/lib/utils";
-import { generateIdempotencyKey } from "@/lib/api/idempotency";
+import { useFormIdempotencyKey } from "@/lib/api/use-form-idempotency-key";
 import { isSafeExternalHttpUrl } from "@deadline-radar/validation";
 import type { Attachment } from "@/types/task";
 
@@ -46,11 +46,15 @@ type AddFormProps = {
 
 function AddAttachmentForm({ taskId, onSuccess, onCancel }: AddFormProps) {
   const formId = useId();
-  const [idempotencyKey] = useState(() => generateIdempotencyKey());
   const [state, formAction, pending] = useActionState(
     addAttachment,
     initialState,
   );
+  const idempotencyKey = useFormIdempotencyKey({
+    pending,
+    error: state.error,
+    renewKey: state.renewKey,
+  });
   const [notes, setNotes] = useState("");
   const [url, setUrl] = useState("");
   const [files, setFiles] = useState<File[]>([]);
