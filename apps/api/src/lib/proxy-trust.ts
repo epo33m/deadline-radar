@@ -23,6 +23,7 @@
  *
  * The RFC 7239 `Forwarded` header is never read (ignoring it is safe).
  */
+import { Elysia } from "elysia";
 
 function warnOnce(message: string): void {
   if ((warnOnce as { done?: boolean }).done) return;
@@ -190,3 +191,63 @@ export function peerAddressOf(
     return null;
   }
 }
+
+/**
+ * #142: the direct peer address of an in-flight request.
+ *
+ * The peer is only reachable from the Elysia context, but the auth-audit writers
+ * are plain functions that receive a bare `Request`. Rather than thread the
+ * server handle through every audit call site (easy to forget, and a forgotten
+ * site silently degrades to "unknown"), the global derive below records it once
+ * per request and the audit writers read it from here. A `WeakMap` keeps it
+ * scoped to the request's lifetime with no cleanup.
+ */
+const peerAddresses = new WeakMap<Request, string | null>();
+
+/** Record the direct peer for this request. Called once per request. */
+export function rememberPeerAddress(request: Request, peer: string | null): void {
+  peerAddresses.set(request, peer);
+}
+
+/** The remembered peer, or null when the request never went through the derive. */
+export function knownPeerAddress(request: Request): string | null {
+  return peerAddresses.get(request) ?? null;
+}
+
+/**
+ * #142: the client IP to record on an auth-audit row.
+ *
+ * Same derivation the rate limiter and the auth-abuse throttle enforce, so an
+ * audit row can never disagree with the identity those two use: with
+ * `TRUST_PROXY` unset, `X-Forwarded-For` / `X-Real-IP` are client-controlled
+ * bytes and are ignored.
+ *
+ * `resolveClientIp` returns the shared `"local"` bucket when nothing is
+ * knowable; an audit row records NULL for "unknown" rather than persisting a
+ * bucket name that reads like an address.
+ *
+ * Lives here, next to `resolveClientIp`, because this module is the single
+ * source of truth for the policy and is never replaced by a test double.
+ */
+export function auditClientIp(
+  request: Request | undefined,
+  peerAddress?: string | null,
+): string | null {
+  if (!request) return null;
+  const peer =
+    peerAddress !== undefined ? peerAddress : knownPeerAddress(request);
+  const resolved = resolveClientIp(request, peer);
+  return resolved === "local" ? null : resolved;
+}
+
+/**
+ * Remembers each request's direct peer so request-scoped helpers can derive a
+ * trusted client IP without the server handle. Registered app-wide, next to
+ * `requestIdPlugin`.
+ */
+export const peerAddressPlugin = new Elysia({ name: "peer-address" }).derive(
+  { as: "global" },
+  ({ request, server }) => {
+    rememberPeerAddress(request, peerAddressOf(server, request));
+  },
+);

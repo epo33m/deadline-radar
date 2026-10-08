@@ -1,6 +1,7 @@
 import { authAuditEvents } from "@deadline-radar/db";
 
 import { getDb } from "./db";
+import { auditClientIp } from "./proxy-trust";
 
 export type AuthAuditResult = "success" | "failure" | "denied";
 
@@ -11,16 +12,15 @@ export type AuthAuditInput = {
   sessionId?: string | null;
   method?: string | null;
   request?: Request;
+  /**
+   * Direct TCP peer for `request`. Optional: when omitted the peer recorded by
+   * the global `peerAddressPlugin` derive is used, so audit rows honour
+   * `TRUST_PROXY` without every call site having to pass the server handle.
+   */
+  peerAddress?: string | null;
   requestId?: string | null;
   metadata?: Record<string, unknown>;
 };
-
-function clientIp(request: Request | undefined): string | null {
-  if (!request) return null;
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0]?.trim() || null;
-  return request.headers.get("x-real-ip");
-}
 
 function truncate(value: string | null | undefined, max: number): string | null {
   if (!value) return null;
@@ -32,7 +32,8 @@ function truncate(value: string | null | undefined, max: number): string | null 
  * Failures to persist must not break the auth request path.
  */
 export async function recordAuthEvent(input: AuthAuditInput): Promise<void> {
-  const ip = truncate(clientIp(input.request), 64);
+  const ip = truncate(auditClientIp(input.request, input.peerAddress), 64);
+
   const userAgent = truncate(input.request?.headers.get("user-agent"), 256);
   const requestId =
     input.requestId ??

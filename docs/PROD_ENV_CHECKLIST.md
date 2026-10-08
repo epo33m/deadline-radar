@@ -45,7 +45,7 @@ Legenda lokasi:
 | `REMINDER_RUN_INTERVAL_MS` | ENV-API | ☐ | RF-14 opsional: interval antar run scheduler (ms). Kosong = **3600000** (1 jam). Dipakai `/health/cron`: scheduler dinyatakan unhealthy bila > 2× interval sejak run `ok` terakhir |
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ENV-WEB | ☐ | Fallback verifikasi JWT di proxy |
 | `SUPABASE_JWT_SECRET` | ENV-API + ENV-WEB | ☐ | Opsional; hanya untuk project Supabase HS256 lawas (ES256 baru via JWKS otomatis) |
-| `TRUST_PROXY` / `TRUSTED_PROXIES` | ENV-API | ☐ | Isi HANYA bila di belakang reverse proxy dikenal; salah isi = spoof IP rate-limit |
+| `TRUST_PROXY` / `TRUSTED_PROXIES` | ENV-API | ☐ | Isi HANYA bila di belakang reverse proxy dikenal; salah isi = spoof IP rate-limit **dan IP di audit auth** (tanpa itu audit mencatat NULL) |
 
 ## 3. Dashboard Supabase (DASH-SB, project prod)
 

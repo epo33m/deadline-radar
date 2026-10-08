@@ -4,6 +4,7 @@ import { openapi } from "@elysiajs/openapi";
 
 import { env } from "./env";
 import { requestIdPlugin } from "./lib/api/request-id";
+import { peerAddressPlugin } from "./lib/proxy-trust";
 import { apiSchemas, apiSecuritySchemes } from "./lib/api/openapi-docs";
 import { perfTimingPlugin } from "./plugins/perf-timing";
 import { bootstrapCachePlugin } from "./plugins/bootstrap-cache";import { errorHandlerPlugin } from "./plugins/error-handler";
@@ -30,6 +31,9 @@ export const app = new Elysia({
   .use(perfTimingPlugin)
   .use(bootstrapCachePlugin)
   .use(requestIdPlugin)
+  // #142: before any route handler, so the auth-audit writers can derive a
+  // TRUST_PROXY-aware client IP from the real peer instead of spoofed headers.
+  .use(peerAddressPlugin)
   .use(errorHandlerPlugin)
   .use(
     cors({
