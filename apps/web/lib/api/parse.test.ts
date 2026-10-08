@@ -18,6 +18,10 @@ import {
 
 const HTML_502 = "<html><head><title>502 Bad Gateway</title></head></html>";
 
+// A deliberate spy, not a workaround: the warn-once-per-(status, content-type)
+// contract is behaviour worth pinning, and #140 makes it observable only through
+// `console.warn`. (The suite runs with `bun test --isolate` — #155 — so owning
+// `console.warn` here is safe and no longer load-bearing for survival.)
 const realWarn = console.warn;
 let warnings: unknown[][] = [];
 

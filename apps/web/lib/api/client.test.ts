@@ -11,16 +11,11 @@ import { apiBrowser } from "./client";
 
 const HTML_502 = "<html><head><title>502 Bad Gateway</title></head></html>";
 
-/*
- * `console.warn` must be owned by this file. `proxy.test.ts` imports
- * `next/experimental/testing/server`, which replaces `console.*` with Next's
- * console — outside a request scope every call throws
- * "Invariant: AsyncLocalStorage accessed in runtime where it is not available",
- * so a real `console.warn` from application code fails whichever test happens
- * to run after it. `apiResponseBody` legitimately warns, so stub it here; the
- * warning itself is pinned in `parse.test.ts`.
- */
-const realWarn = console.warn;
+// No console stub, deliberately: `apiResponseBody` warns on a non-JSON body,
+// so this file exercises the real `console.warn` on every run. That is only safe
+// because the suite runs with `bun test --isolate` (#155) — before it, one
+// file's `next/experimental/testing/server` import poisoned the shared console
+// and this test failed for reasons that had nothing to do with #140.
 
 const realFetch = globalThis.fetch;
 let response: Response | null = null;
@@ -34,7 +29,6 @@ function htmlResponse(body: string, status: number): Response {
 
 beforeEach(() => {
   response = null;
-  console.warn = () => undefined;
   globalThis.fetch = (async () => {
     if (!response) throw new Error("fetch response not set");
     return response;
@@ -43,7 +37,6 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = realFetch;
-  console.warn = realWarn;
 });
 
 describe("#140 — apiBrowser with a non-JSON upstream response", () => {
