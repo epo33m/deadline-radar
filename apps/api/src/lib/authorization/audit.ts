@@ -1,14 +1,8 @@
 import { authAuditEvents } from "@deadline-radar/db";
 import { recordAuthEvent } from "../auth-audit";
+import { auditClientIp } from "../proxy-trust";
 import type { AuthorizationContext } from "./context";
 import type { AuthzDenyReason } from "./decide";
-
-function clientIp(request: Request | undefined): string | null {
-  if (!request) return null;
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0]?.trim() || null;
-  return request.headers.get("x-real-ip");
-}
 
 function truncate(value: string | null | undefined, max: number): string | null {
   if (!value) return null;
@@ -29,6 +23,8 @@ export async function recordAuthzDenied(input: {
   resource?: string;
   resourceId?: string;
   request?: Request;
+  /** #142: direct TCP peer; falls back to the per-request memo. */
+  peerAddress?: string | null;
 }): Promise<void> {
   await recordAuthEvent({
     event: "authz.denied",
@@ -36,6 +32,7 @@ export async function recordAuthzDenied(input: {
     userId: input.ctx?.subject.id ?? null,
     sessionId: input.ctx?.subject.sessionId ?? null,
     request: input.request,
+    peerAddress: input.peerAddress,
     requestId: input.ctx?.requestId,
     metadata: {
       capability: input.capability ?? null,
@@ -54,11 +51,15 @@ export async function recordRoleChange(
     targetUserId: string;
     roleSlug: string;
     request?: Request;
+    /** #142: direct TCP peer; falls back to the per-request memo. */
+    peerAddress?: string | null;
   },
   tx?: AuthAuditTxExecutor,
 ): Promise<void> {
   if (tx) {
-    const ip = truncate(clientIp(input.request), 64);
+    // #142: same TRUST_PROXY-aware derivation as every other audit row — this
+    // in-transaction writer used to read X-Forwarded-For unconditionally.
+    const ip = truncate(auditClientIp(input.request, input.peerAddress), 64);
     const userAgent = truncate(input.request?.headers.get("user-agent"), 256);
     const requestId =
       input.request?.headers.get("x-request-id") ??
@@ -97,6 +98,7 @@ export async function recordRoleChange(
       result: "success",
       userId: input.actorId,
       request: input.request,
+      peerAddress: input.peerAddress,
       metadata: {
         targetUserId: input.targetUserId,
         roleSlug: input.roleSlug,

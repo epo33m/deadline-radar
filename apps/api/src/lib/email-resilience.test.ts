@@ -55,6 +55,40 @@ const PAYLOAD = {
   deliveryId: "dlv-1",
 };
 
+/**
+ * #144 telemetry capture. The send path reports each provider attempt on
+ * console.log/warn/error (severity by outcome), so all three are collected and
+ * the assertions can talk about "lines" rather than about a specific level.
+ */
+type AttemptLine = {
+  run_id: string | null;
+  delivery_id: string;
+  attempt: number;
+  attempts: number;
+  duration_ms: number;
+  elapsed_ms: number;
+  outcome: "sent" | "error" | "timeout";
+  will_retry: boolean;
+  error_name?: string | null;
+  status_code?: number | null;
+};
+
+let attemptLines: AttemptLine[] = [];
+const realLog = console.log;
+const realWarn = console.warn;
+const realError = console.error;
+
+function captureAttemptLines(): (...args: unknown[]) => void {
+  return (...args: unknown[]) => {
+    const payload = args.find(
+      (arg) => typeof arg === "string" && arg.startsWith("{"),
+    );
+    if (args[0] === "[reminders] send attempt" && typeof payload === "string") {
+      attemptLines.push(JSON.parse(payload) as AttemptLine);
+    }
+  };
+}
+
 function idempotencyKeys(): Array<string | null> {
   return fetchCalls.map((call) => {
     const headers = new Headers(call.init?.headers);
@@ -64,6 +98,10 @@ function idempotencyKeys(): Array<string | null> {
 
 beforeEach(() => {
   fetchCalls = [];
+  attemptLines = [];
+  console.log = captureAttemptLines();
+  console.warn = captureAttemptLines();
+  console.error = captureAttemptLines();
   fetchBehavior = async () => {
     throw new Error("fetch stub not configured");
   };
@@ -78,6 +116,9 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  console.log = realLog;
+  console.warn = realWarn;
+  console.error = realError;
 });
 
 describe("finding #8 — resend delivery", () => {
@@ -422,5 +463,124 @@ describe("F-07 — deadline rendered in the recipient timezone", () => {
     };
     expect(sent.text).toContain("11:59 PM");
     expect(sent.text).not.toContain("(UTC)");
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// #144: per-attempt send telemetry
+// ---------------------------------------------------------------------------
+
+describe("#144 — one telemetry line per provider attempt", () => {
+  test("a 2×500-then-success run reports every attempt with run + delivery context", async () => {
+    let calls = 0;
+    fetchBehavior = async () => {
+      calls += 1;
+      if (calls < 3) {
+        return jsonResponse(500, {
+          name: "application_error",
+          message: "boom",
+          statusCode: 500,
+        });
+      }
+      return jsonResponse(200, { id: "em_ok" });
+    };
+
+    await sendReminderEmail(PAYLOAD, { baseDelayMs: 1, runId: "run-7" });
+
+    // Exactly one line per attempt — no duplicates, none missing.
+    expect(attemptLines).toHaveLength(3);
+    expect(attemptLines.map((l) => l.attempt)).toEqual([1, 2, 3]);
+    expect(attemptLines.map((l) => l.outcome)).toEqual([
+      "error",
+      "error",
+      "sent",
+    ]);
+    // The first two know another attempt follows; the success does not.
+    expect(attemptLines.map((l) => l.will_retry)).toEqual([true, true, false]);
+
+    for (const line of attemptLines) {
+      expect(line.run_id).toBe("run-7");
+      expect(line.delivery_id).toBe("dlv-1");
+      expect(line.attempts).toBe(3);
+      expect(typeof line.duration_ms).toBe("number");
+      expect(line.duration_ms).toBeGreaterThanOrEqual(0);
+      expect(typeof line.elapsed_ms).toBe("number");
+    }
+    // Wall-time advances across the retry sequence.
+    expect(attemptLines[2]!.elapsed_ms).toBeGreaterThanOrEqual(
+      attemptLines[0]!.elapsed_ms,
+    );
+    // Failure detail is attached, not just an outcome word.
+    expect(attemptLines[0]!.status_code).toBe(500);
+    expect(attemptLines[0]!.error_name).toBe("application_error");
+  });
+
+  test("a permanent failure logs exactly one line and then throws", async () => {
+    fetchBehavior = async () =>
+      jsonResponse(400, {
+        name: "validation_error",
+        message: "bad",
+        statusCode: 400,
+      });
+
+    await expect(
+      sendReminderEmail(PAYLOAD, { baseDelayMs: 1, runId: "run-8" }),
+    ).rejects.toBeInstanceOf(ReminderEmailError);
+
+    // No retry, and exactly one line for the one attempt that happened.
+    expect(attemptLines).toHaveLength(1);
+    expect(attemptLines[0]!.outcome).toBe("error");
+    expect(attemptLines[0]!.will_retry).toBe(false);
+    expect(attemptLines[0]!.run_id).toBe("run-8");
+  });
+
+  test("a clean first-try success still reports one line", async () => {
+    fetchBehavior = async () => jsonResponse(200, { id: "em_ok" });
+
+    await sendReminderEmail(PAYLOAD, { baseDelayMs: 1, runId: "run-9" });
+
+    // The happy path is what a send-latency SLO needs; it is filterable by level
+    // rather than absent.
+    expect(attemptLines).toHaveLength(1);
+    expect(attemptLines[0]!.outcome).toBe("sent");
+    expect(attemptLines[0]!.will_retry).toBe(false);
+  });
+
+  test("a hanging provider is reported as a timeout, not a generic error", async () => {
+    // Real fetch semantics: the request only settles when our own signal fires.
+    fetchBehavior = (_url, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        if (signal?.aborted) {
+          reject(new DOMException("This operation was aborted", "AbortError"));
+          return;
+        }
+        signal?.addEventListener("abort", () => {
+          reject(new DOMException("This operation was aborted", "AbortError"));
+        });
+      });
+
+    await expect(
+      sendReminderEmail(PAYLOAD, {
+        timeoutMs: 120,
+        maxAttempts: 1,
+        baseDelayMs: 1,
+        runId: "run-10",
+      }),
+    ).rejects.toBeInstanceOf(ReminderEmailError);
+
+    expect(attemptLines).toHaveLength(1);
+    expect(attemptLines[0]!.outcome).toBe("timeout");
+    expect(attemptLines[0]!.run_id).toBe("run-10");
+  });
+
+  test("run_id is null when the caller has no run context", async () => {
+    fetchBehavior = async () => jsonResponse(200, { id: "em_ok" });
+
+    await sendReminderEmail(PAYLOAD, { baseDelayMs: 1 });
+
+    expect(attemptLines).toHaveLength(1);
+    expect(attemptLines[0]!.run_id).toBeNull();
   });
 });

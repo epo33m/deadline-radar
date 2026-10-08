@@ -182,7 +182,7 @@ Codes include: `VALIDATION_ERROR`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CO
 
 ### Abuse protection & errors
 - Backend rate limits (hooks `as: "global"`): sensitive auth 20/min, other auth 60/min, general 180/min, cron 10/min. **Redis when `REDIS_URL` is set; otherwise in-memory (dev/single-node).**
- - `TRUST_PROXY=true` required before trusting `X-Forwarded-For` / `X-Real-IP` for rate-limit keys. Without peer info + `TRUSTED_PROXIES`, XFF is NOT trusted for rate-limit keys unless `TRUST_PROXY_LEGACY=1` is explicitly set (spoofable otherwise); register/forgot-password return an identical 202 for existing vs new emails to avoid account enumeration.
+ - `TRUST_PROXY=true` required before trusting `X-Forwarded-For` / `X-Real-IP` for rate-limit keys **and for the client IP recorded on `auth_audit_events` rows** (#142 — one shared derivation, so an audit row can never disagree with the identity the rate limiter enforces). Without peer info + `TRUSTED_PROXIES`, XFF is NOT trusted unless `TRUST_PROXY_LEGACY=1` is explicitly set (spoofable otherwise); with trust disabled the audit IP is the direct peer, or NULL when it is unknowable — never a forwarded header. Register/forgot-password return an identical 202 for existing vs new emails to avoid account enumeration.
 
 - Body limits: 1 MiB JSON; attachments max 10 MiB with MIME allowlist.
 - Progressive delay on repeated failed logins (per email+IP); no permanent lockout.
