@@ -1,15 +1,20 @@
 import { notFound } from "next/navigation";
 
 import { CourseDetail } from "@/components/courses/course-detail";
+import { ListPager } from "@/components/ui/list-pager";
 import { requireBootstrap } from "@/lib/api/bootstrap";
 import { getCourse } from "@/lib/api/course";
 import { apiJson } from "@/lib/api/server";
+import { withPageCount } from "@/lib/paging/href";
+import { LIST_PAGE_LIMIT } from "@/lib/paging/limit";
+import { loadPaged } from "@/lib/paging/load-pages";
+import { parsePageCount } from "@/lib/paging/page-count";
 import type { Course } from "@/types/course";
 import type { Task } from "@/types/task";
 
 type CourseDetailPageProps = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ view?: string }>;
+  searchParams: Promise<{ view?: string; pages?: string | string[] }>;
 };
 
 type ApiTask = {
@@ -25,6 +30,33 @@ function iso(value: string | Date | null | undefined): string | null {
   return value instanceof Date ? value.toISOString() : String(value);
 }
 
+/** One page of this course's tasks, with an explicit `limit` (#141). */
+function fetchCourseTaskPage(courseId: string) {
+  return async (cursor: string | null): Promise<{
+    items: ApiTask[];
+    nextCursor: string | null;
+  }> => {
+    const qs = new URLSearchParams({
+      courseId,
+      limit: String(LIST_PAGE_LIMIT),
+    });
+    if (cursor) qs.set("cursor", cursor);
+
+    const result = await apiJson<{
+      tasks?: ApiTask[];
+      page?: { nextCursor?: string | null };
+      error?: string;
+    }>(`/api/v1/tasks?${qs.toString()}`);
+
+    if (result.error) throw new Error(result.error);
+
+    return {
+      items: result.tasks ?? [],
+      nextCursor: result.page?.nextCursor ?? null,
+    };
+  };
+}
+
 export async function generateMetadata({ params }: CourseDetailPageProps) {
   const { id } = await params;
   const result = await getCourse(id);
@@ -35,15 +67,17 @@ export default async function CourseDetailPage({
   params,
   searchParams,
 }: CourseDetailPageProps) {
-  const [{ id }, { view }, { user }] = await Promise.all([
+  const [{ id }, { view, pages: rawPages }, { user }] = await Promise.all([
     params,
     searchParams,
     requireBootstrap(),
   ]);
 
-  const [courseResult, tasksResult] = await Promise.all([
+  const pageCount = parsePageCount(rawPages);
+
+  const [courseResult, tasksPaged] = await Promise.all([
     getCourse(id),
-    apiJson<{ tasks?: ApiTask[] }>(`/api/v1/tasks?courseId=${id}`),
+    loadPaged(fetchCourseTaskPage(id)),
   ]);
 
   if (courseResult.error === "Course not found") {
@@ -74,7 +108,7 @@ export default async function CourseDetailPage({
     deleted_at: iso(c.deletedAt),
   };
 
-  const tasks = (tasksResult.tasks ?? []).map((t) => ({
+  const tasks = tasksPaged.items.map((t) => ({
     id: t.id,
     title: t.title,
     deadline: iso(t.deadline)!,
@@ -88,6 +122,36 @@ export default async function CourseDetailPage({
     : "all";
 
   return (
-    <CourseDetail course={course} tasks={tasks} timeZone={user.timezone} timeFormat={user.timeFormat} taskView={taskView} nowIso={new Date().toISOString()} />
+    <CourseDetail
+      course={course}
+      tasks={tasks}
+      timeZone={user.timezone}
+      timeFormat={user.timeFormat}
+      taskView={taskView}
+      nowIso={new Date().toISOString()}
+      // Hidden when the walk failed on the first page: then the list is
+      // unknown, and an empty course would read as "this course has no tasks".
+      pager={
+        tasks.length > 0 ? (
+          <ListPager
+            loadedCount={tasks.length}
+            nextPageHref={
+              tasksPaged.nextCursor
+                ? // `view` must survive paging: the task filter lives in the URL.
+                  withPageCount(`/courses/${id}`, { view }, pageCount + 1)
+                : undefined
+            }
+            truncated={tasksPaged.truncated}
+            note={
+              tasksPaged.error != null
+                ? "Some tasks couldn't be loaded. Try again."
+                : undefined
+            }
+            noun="task"
+            nounPlural="tasks"
+          />
+        ) : null
+      }
+    />
   );
 }

@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 
 import { apiJson } from "@/lib/api/server";
+import { LIST_MAX_PAGES, LIST_PAGE_LIMIT } from "@/lib/paging/limit";
+import { loadPaged } from "@/lib/paging/load-pages";
 import type { InAppNotification } from "@/types/notification";
 
 export type NotificationActionState = {
@@ -59,19 +61,58 @@ export type InAppNotificationList = {
    * an incorrect count (e.g. 0) into shared state.
    */
   complete: boolean;
+  /**
+   * Cursor left outstanding after the walk (#141). Present only while more
+   * pages exist, which is what drives the "Load more" control.
+   */
+  nextCursor?: string | null;
+  /** The walk hit the page cap, so older reminders are not shown. */
+  truncated?: boolean;
 };
 
-export async function listInAppNotifications(): Promise<InAppNotificationList> {
+/**
+ * One page of in-app notifications with an explicit `limit` (#141). The API
+ * default is 50, so without it anyone past 50 reminders hit a silent ceiling.
+ */
+async function fetchNotificationPage(cursor: string | null): Promise<{
+  items: ApiNotification[];
+  nextCursor: string | null;
+}> {
+  const qs = new URLSearchParams({ limit: String(LIST_PAGE_LIMIT) });
+  if (cursor) qs.set("cursor", cursor);
+
   const result = await apiJson<{
     notifications?: ApiNotification[];
     page?: { nextCursor?: string | null };
-  }>("/api/v1/notifications");
+  }>(`/api/v1/notifications?${qs.toString()}`);
   if (result.error || !result.notifications) {
-    return { items: [], complete: false };
+    throw new Error(result.error ?? "Invalid notifications response");
   }
   return {
-    items: result.notifications.map(mapNotification),
-    complete: result.page?.nextCursor == null,
+    items: result.notifications,
+    nextCursor: result.page?.nextCursor ?? null,
+  };
+}
+
+export async function listInAppNotifications(
+  options: { pages?: number } = {},
+): Promise<InAppNotificationList> {
+  const pageCount = Math.max(1, Math.floor(options.pages ?? 1));
+  const paged = await loadPaged(fetchNotificationPage, {
+    maxPages: Math.min(pageCount, LIST_MAX_PAGES),
+  });
+
+  if (paged.error != null && paged.items.length === 0) {
+    return { items: [], complete: false };
+  }
+
+  return {
+    items: paged.items.map(mapNotification),
+    // `complete` stays tied to the cursor running out, never to the page count
+    // asked for: it is what makes the unread badge exact.
+    complete: paged.complete,
+    nextCursor: paged.nextCursor,
+    truncated: paged.truncated,
   };
 }
 

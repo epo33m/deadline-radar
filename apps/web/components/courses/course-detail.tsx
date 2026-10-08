@@ -16,7 +16,14 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useActionState, useEffect, useMemo, useState, useTransition } from "react";
+import {
+  useActionState,
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+  type ReactNode,
+} from "react";
 import type { TimeFormat } from "@deadline-radar/validation";
 import { useNow } from "@/lib/use-now";
 
@@ -74,6 +81,12 @@ type CourseDetailProps = {
   timeFormat: TimeFormat;
   taskView: CourseTaskView;
   nowIso?: string;
+  /**
+   * Paging control rendered under the task list (#141). Passed in as a node so
+   * this component stays purely prop-driven — the rows are accumulated
+   * server-side from `?pages=N`, never appended in the browser.
+   */
+  pager?: ReactNode;
 };
 
 type TaskGroupTone = "late" | "upcoming" | "done" | "neutral";
@@ -1070,7 +1083,15 @@ function CourseTasks({
   );
 }
 
-export function CourseDetail({ course, tasks, timeZone, timeFormat, taskView, nowIso }: CourseDetailProps) {
+export function CourseDetail({
+  course,
+  tasks,
+  timeZone,
+  timeFormat,
+  taskView,
+  nowIso,
+  pager,
+}: CourseDetailProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [pendingTargetView, setPendingTargetView] = useState<CourseTaskView | null>(null);
@@ -1163,6 +1184,8 @@ export function CourseDetail({ course, tasks, timeZone, timeFormat, taskView, no
               onEdit={() => setEditOpen(true)}
             />
           )}
+          {/* Task paging belongs to the task view only (#141). */}
+          {view === "task" ? pager : null}
         </div>
       </div>
 
