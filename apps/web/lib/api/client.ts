@@ -1,5 +1,6 @@
 /** Browser-side API helper (same-origin /api rewrite → Elysia). */
 import { normalizeApiErrorBody } from "@/lib/api/errors";
+import { apiResponseBody } from "@/lib/api/parse";
 import {
   createApiTimeout,
   isAbortError,
@@ -58,8 +59,15 @@ export async function apiBrowser<T = unknown>(
     }
     throw error;
   }
+  // #140: a non-JSON body (deploy-window HTML page, truncated response) is
+  // classified, never thrown — a raw SyntaxError here would leave the auth form
+  // with no result at all.
   const text = await response.text();
-  const raw = (text ? JSON.parse(text) : {}) as Record<string, unknown>;
+  const raw = apiResponseBody(
+    text,
+    response.status,
+    response.headers.get("content-type"),
+  );
   const data = normalizeApiErrorBody(raw, response.status);
   return data as T & {
     error?: string;

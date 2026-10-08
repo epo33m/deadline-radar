@@ -7,6 +7,7 @@ import {
   type ApiErrorBody,
 } from "@/lib/api/errors";
 import { resolveApiOrigin } from "@/lib/api/origin";
+import { apiResponseBody } from "@/lib/api/parse";
 import {
   createApiTimeout,
   isAbortError,
@@ -169,8 +170,13 @@ export async function apiFetch<T = unknown>(
     await clearLocalAuthCookies();
   }
 
+  // #140: never let a non-JSON body (deploy-window HTML 502) throw out of here.
   const text = await response.text();
-  const data = (text ? JSON.parse(text) : {}) as T;
+  const data = apiResponseBody(
+    text,
+    response.status,
+    response.headers.get("content-type"),
+  ) as T;
   return { data, response };
 }
 
