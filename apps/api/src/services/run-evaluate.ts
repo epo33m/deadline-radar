@@ -562,7 +562,9 @@ export async function runEvaluateReminders(
     }
 
     try {
-      await sendReminderEmail(payload, { idempotencyKey });
+      // #144: `runId` is correlation-only — it rides along so each provider
+      // attempt's telemetry line can be tied to this run without a DB join.
+      await sendReminderEmail(payload, { idempotencyKey, runId });
     } catch (error) {
       if (isConcurrentIdempotentRequest(error)) {
         // 409 concurrent_idempotent_requests means another run is delivering

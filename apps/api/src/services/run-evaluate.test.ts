@@ -3413,3 +3413,97 @@ describe("#143: retry budget is only spent by a real retry claim", () => {
     expect(row.retryCount).toBe(1);
   });
 });
+
+
+// ---------------------------------------------------------------------------
+// #144: the scheduler's run id reaches the per-attempt send telemetry
+// ---------------------------------------------------------------------------
+
+describe("#144 — send telemetry carries the run id", () => {
+  const realLog = console.log;
+  const realWarn = console.warn;
+  const realError = console.error;
+
+  type AttemptLine = {
+    run_id: string | null;
+    delivery_id: string;
+    attempt: number;
+    outcome: string;
+    duration_ms: number;
+  };
+
+  function capture(into: AttemptLine[]): (...args: unknown[]) => void {
+    return (...args: unknown[]) => {
+      const payload = args.find(
+        (arg) => typeof arg === "string" && arg.startsWith("{"),
+      );
+      if (
+        args[0] === "[reminders] send attempt" &&
+        typeof payload === "string"
+      ) {
+        into.push(JSON.parse(payload) as AttemptLine);
+      }
+    };
+  }
+
+  test("every provider attempt is attributed to the ledger run that sent it", async () => {
+    const lines: AttemptLine[] = [];
+    console.log = capture(lines);
+    console.warn = capture(lines);
+    console.error = capture(lines);
+
+    try {
+      seedOpenTaskWithThreshold("Task A");
+      const result = await runEvaluateReminders(
+        new Date(Date.now() + 86_400_000),
+      );
+
+      expect(result.emailsSent).toBe(1);
+      // One line for the one attempt, and it names the run recorded in the
+      // ledger — that correlation previously required a DB join.
+      expect(lines).toHaveLength(1);
+      const runRow = store.runs[0]!;
+      expect(lines[0]!.run_id).toBe(runRow.id);
+      // Look the row up rather than hardcoding an id: the evaluator also creates
+      // the in_app row in the same batch, so the email delivery is not "dlv-1".
+      const emailRow = store.deliveries.find((d) => d.channel === "email")!;
+      expect(lines[0]!.delivery_id).toBe(emailRow.id);
+      expect(lines[0]!.attempt).toBe(1);
+      expect(lines[0]!.outcome).toBe("sent");
+      expect(typeof lines[0]!.duration_ms).toBe("number");
+    } finally {
+      console.log = realLog;
+      console.warn = realWarn;
+      console.error = realError;
+    }
+  });
+
+  test("retried attempts each report their own attempt number", async () => {
+    const lines: AttemptLine[] = [];
+    console.log = capture(lines);
+    console.warn = capture(lines);
+    console.error = capture(lines);
+
+    try {
+      seedOpenTaskWithThreshold("Task A");
+      sendBehavior = async () => ({
+        data: null,
+        error: { name: "application_error", message: "boom", statusCode: 500 },
+      });
+
+      await runEvaluateReminders(new Date(Date.now() + 86_400_000));
+
+      // The bounded internal retry policy is unchanged; it is now visible.
+      expect(lines.length).toBeGreaterThan(1);
+      expect(lines.map((l) => l.attempt)).toEqual(
+        lines.map((_, index) => index + 1),
+      );
+      const runRow = store.runs[0]!;
+      expect(lines.every((l) => l.run_id === runRow.id)).toBe(true);
+    } finally {
+      console.log = realLog;
+      console.warn = realWarn;
+      console.error = realError;
+    }
+  });
+});

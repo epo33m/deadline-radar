@@ -172,7 +172,67 @@ export type SendReminderEmailOptions = {
   maxAttempts?: number;
   /** Base backoff delay in ms (test hook). Defaults to 500. */
   baseDelayMs?: number;
+  /**
+   * #144: scheduler run this send belongs to, for log correlation only — it
+   * changes nothing about the request. Null when the caller has no run (a
+   * direct/unit invocation).
+   */
+  runId?: string | null;
 };
+
+/** Outcome of one provider attempt, as reported in the telemetry line. */
+type AttemptOutcome = "sent" | "error" | "timeout";
+
+/**
+ * #144: exactly one structured line per provider attempt.
+ *
+ * Until now the retry loop only surfaced its final error through a throw, so a
+ * delivery could not be correlated with the run that produced it without a DB
+ * join, and send latency was never captured anywhere. The line carries the run
+ * id, the delivery id, the attempt number, this attempt's duration and the
+ * elapsed time since the send started (the last line's `elapsed_ms` IS the send
+ * wall-time), plus the outcome and whether another attempt follows.
+ *
+ * Level by severity — `sent` is informational, a retryable error is a warning,
+ * a final failure is an error — so operators can filter the happy path away
+ * without losing the failure detail.
+ */
+function logAttempt(input: {
+  runId?: string | null;
+  deliveryId: string;
+  attempt: number;
+  attempts: number;
+  durationMs: number;
+  elapsedMs: number;
+  outcome: AttemptOutcome;
+  willRetry: boolean;
+  error?: ReminderEmailError;
+}): void {
+  const line = JSON.stringify({
+    run_id: input.runId ?? null,
+    delivery_id: input.deliveryId,
+    attempt: input.attempt,
+    attempts: input.attempts,
+    duration_ms: input.durationMs,
+    elapsed_ms: input.elapsedMs,
+    outcome: input.outcome,
+    will_retry: input.willRetry,
+    ...(input.error
+      ? {
+          error_name: input.error.resendName ?? null,
+          status_code: input.error.statusCode ?? null,
+        }
+      : {}),
+  });
+
+  if (input.outcome === "sent") {
+    console.log("[reminders] send attempt", line);
+  } else if (input.willRetry) {
+    console.warn("[reminders] send attempt", line);
+  } else {
+    console.error("[reminders] send attempt", line);
+  }
+}
 
 function parseRetryAfterMs(
   headers: Record<string, string> | null | undefined,
@@ -345,10 +405,12 @@ export async function sendReminderEmail(
   const baseDelayMs = opts?.baseDelayMs ?? REMINDER_EMAIL_BASE_DELAY_MS;
 
   let lastError: unknown;
+  const sendStartedAt = Date.now();
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     // The Resend SDK converts fetch rejections (including our abort) into
     // an `{ error }` payload, so keep the signal to attribute timeouts.
     const signal = AbortSignal.timeout(timeoutMs);
+    const attemptStartedAt = Date.now();
     let result: {
       error: unknown;
       headers?: Record<string, string> | null;
@@ -370,12 +432,36 @@ export async function sendReminderEmail(
               ? error.message
               : "Failed to send reminder email",
           );
-      if (attempt >= attempts) throw lastError;
+      const willRetry = attempt < attempts;
+      logAttempt({
+        runId: opts?.runId,
+        deliveryId: payload.deliveryId,
+        attempt,
+        attempts,
+        durationMs: Date.now() - attemptStartedAt,
+        elapsedMs: Date.now() - sendStartedAt,
+        outcome: isAbortError(error) || signal.aborted ? "timeout" : "error",
+        willRetry,
+        error: lastError as ReminderEmailError,
+      });
+      if (!willRetry) throw lastError;
       await sleep(backoffDelayMs(attempt, baseDelayMs, REMINDER_EMAIL_MAX_DELAY_MS));
       continue;
     }
 
-    if (!result.error) return;
+    if (!result.error) {
+      logAttempt({
+        runId: opts?.runId,
+        deliveryId: payload.deliveryId,
+        attempt,
+        attempts,
+        durationMs: Date.now() - attemptStartedAt,
+        elapsedMs: Date.now() - sendStartedAt,
+        outcome: "sent",
+        willRetry: false,
+      });
+      return;
+    }
 
     const shape = result.error as {
       name?: unknown;
@@ -402,7 +488,20 @@ export async function sendReminderEmail(
       },
     );
     lastError = mapped;
-    if (attempt >= attempts || isNonRetryableReminderError(mapped)) {
+    const willRetry =
+      attempt < attempts && !isNonRetryableReminderError(mapped);
+    logAttempt({
+      runId: opts?.runId,
+      deliveryId: payload.deliveryId,
+      attempt,
+      attempts,
+      durationMs: Date.now() - attemptStartedAt,
+      elapsedMs: Date.now() - sendStartedAt,
+      outcome: timedOut ? "timeout" : "error",
+      willRetry,
+      error: mapped,
+    });
+    if (!willRetry) {
       throw mapped;
     }
     const headers = (result as { headers?: Record<string, string> | null })
