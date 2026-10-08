@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { urgencyLabel } from "@deadline-radar/domain";
+import type { EmailDeliverySnapshot } from "@deadline-radar/db";
 import { Resend } from "resend";
 
 import { env } from "../env";
@@ -65,6 +66,78 @@ export function buildReminderIdempotencyKey(input: {
     .digest("hex")
     .slice(0, 12);
   return `reminder-delivery-${input.deliveryId}-${digest}`;
+}
+
+/**
+ * RF-02 (#143): resolve the frozen identity of one delivery attempt.
+ *
+ * The persisted pair wins whenever it exists, so a retry — in this run or a
+ * later one — rebuilds the exact email the delivery was first built for even if
+ * the task was edited since. Only a delivery that has never been identified
+ * falls back to the live task inputs, which is why the caller must persist the
+ * result BEFORE calling the provider: a crash after the provider accepted the
+ * send but before the row was marked `sent` must still re-send under the same
+ * key, otherwise the rebuilt body (and key) would differ and the user would get
+ * a duplicate email.
+ *
+ * Pure: no I/O, so the identity rules are unit-testable on their own.
+ */
+export function resolveEmailIdentity(input: {
+  deliveryId: string;
+  /** Recipient address; normalized here so the key matches what is sent. */
+  to: string;
+  /** Live task inputs, used only when nothing is frozen yet. */
+  live: Omit<ReminderEmailPayload, "deliveryId" | "to">;
+  /** Persisted snapshot from the delivery row, when present. */
+  emailSnapshot?: EmailDeliverySnapshot | null;
+  /** Persisted provider key (may be a rotated one). */
+  emailIdempotencyKey?: string | null;
+}): {
+  /** Recipient actually addressed (normalized). */
+  to: string;
+  /** Frozen body inputs for this attempt. */
+  snapshot: EmailDeliverySnapshot;
+  /** Payload to hand the provider. */
+  payload: ReminderEmailPayload;
+  /** Provider idempotency key for this attempt. */
+  idempotencyKey: string;
+  /**
+   * True when the delivery had no persisted identity yet and the caller must
+   * write `{ snapshot, idempotencyKey }` before sending.
+   */
+  needsFreeze: boolean;
+} {
+  const to = input.to.trim().toLowerCase();
+  const snapshot: EmailDeliverySnapshot = input.emailSnapshot ?? {
+    title: input.live.taskTitle,
+    deadlineIso: input.live.deadlineIso,
+    timeZone: input.live.timeZone,
+    daysBefore: input.live.daysBefore,
+    late: input.live.late,
+  };
+  const payload: ReminderEmailPayload = {
+    to,
+    taskTitle: snapshot.title,
+    daysBefore: snapshot.daysBefore,
+    deadlineIso: snapshot.deadlineIso,
+    timeZone: snapshot.timeZone,
+    deliveryId: input.deliveryId,
+    late: snapshot.late,
+  };
+  const body = buildReminderEmailBody(payload);
+  const idempotencyKey =
+    input.emailIdempotencyKey ??
+    buildReminderIdempotencyKey({ deliveryId: input.deliveryId, body });
+
+  return {
+    to,
+    snapshot,
+    payload,
+    idempotencyKey,
+    // A snapshot without a key (a row predating the key column) still needs the
+    // key written; everything else is already persisted.
+    needsFreeze: !input.emailSnapshot || !input.emailIdempotencyKey,
+  };
 }
 
 /** Provider failure that preserves the Resend error identity for mapping. */

@@ -23,6 +23,7 @@ import {
   buildReminderIdempotencyKey,
   isConcurrentIdempotentRequest,
   isTerminalIdempotentError,
+  resolveEmailIdentity,
   sendReminderEmail,
 } from "../lib/email";
 import { getReminderCutoff } from "../lib/reminder-cutoff";
@@ -473,6 +474,42 @@ export async function runEvaluateReminders(
   }
 
   /**
+   * RF-02 (#143): persist the delivery's email identity BEFORE the provider
+   * call.
+   *
+   * The identity used to be written only by `markSent`/`markFailed`, i.e. after
+   * the attempt. A crash in that window left the row unidentified, so the
+   * recovery sweep rebuilt the body from the *live* task — and a title edit in
+   * between produced a different body hash, hence a different provider key,
+   * hence a duplicate email for the user.
+   *
+   * Fail closed: if this write fails we do NOT send. Sending with an unfrozen
+   * identity is exactly the duplicate-producing case above, and the row stays
+   * `pending`/`sending` for the next run (same disposition as a failed
+   * sweep-claim write).
+   */
+  async function freezeEmailIdentity(
+    deliveryId: string,
+    snapshot: EmailDeliverySnapshot,
+    idempotencyKey: string,
+  ): Promise<boolean> {
+    try {
+      await db
+        .update(notificationDeliveries)
+        .set({ emailSnapshot: snapshot, emailIdempotencyKey: idempotencyKey })
+        .where(eq(notificationDeliveries.id, deliveryId));
+      return true;
+    } catch (error) {
+      console.error(
+        "[reminders] email identity freeze failed",
+        deliveryId,
+        error instanceof Error ? error.message : "unknown",
+      );
+      return false;
+    }
+  }
+
+  /**
    * Send one delivery email. Only reached with a delivery this run owns
    * (fresh insert win or atomic retry claim); provider idempotency makes a
    * concurrent same-key send collapse to a single email.
@@ -485,7 +522,6 @@ export async function runEvaluateReminders(
     deadlineIso: string;
     /** Recipient profile timezone for deadline rendering (F-07). */
     timeZone: string;
-    failedRetryCount?: number;
     /** RF-02: frozen body inputs from the delivery row, when already set. */
     emailSnapshot?: EmailDeliverySnapshot | null;
     /** RF-02: exact provider key to reuse, when already set (incl. rotated). */
@@ -498,29 +534,33 @@ export async function runEvaluateReminders(
     // the profile triggers; this covers pre-existing mixed-case rows and
     // any future writer). Normalized before body build so the idempotency
     // key stays consistent with what is sent.
-    const to = input.to.trim().toLowerCase();
-    // RF-02: prefer the frozen snapshot so an across-run retry rebuilds the
-    // exact body from the first attempt even if the task was edited since.
-    const snapshot: EmailDeliverySnapshot = input.emailSnapshot ?? {
-      title: input.taskTitle,
-      deadlineIso: input.deadlineIso,
-      timeZone: input.timeZone,
-      daysBefore: input.daysBefore,
-      late: input.late,
-    };
-    const payload = {
-      to,
-      taskTitle: snapshot.title,
-      daysBefore: snapshot.daysBefore,
-      deadlineIso: snapshot.deadlineIso,
-      timeZone: snapshot.timeZone,
+    const identity = resolveEmailIdentity({
       deliveryId: input.deliveryId,
-      late: snapshot.late,
-    };
-    const body = buildReminderEmailBody(payload);
-    const idempotencyKey =
-      input.emailIdempotencyKey ??
-      buildReminderIdempotencyKey({ deliveryId: input.deliveryId, body });
+      to: input.to,
+      live: {
+        taskTitle: input.taskTitle,
+        deadlineIso: input.deadlineIso,
+        timeZone: input.timeZone,
+        daysBefore: input.daysBefore,
+        late: input.late,
+      },
+      emailSnapshot: input.emailSnapshot,
+      emailIdempotencyKey: input.emailIdempotencyKey,
+    });
+    const { payload, snapshot, idempotencyKey } = identity;
+
+    if (
+      identity.needsFreeze &&
+      !(await freezeEmailIdentity(
+        input.deliveryId,
+        snapshot,
+        idempotencyKey,
+      ))
+    ) {
+      totalEmailsFailed += 1;
+      return;
+    }
+
     try {
       await sendReminderEmail(payload, { idempotencyKey });
     } catch (error) {
@@ -536,27 +576,23 @@ export async function runEvaluateReminders(
         // then sends under the rotated key.
         const rotated = buildReminderIdempotencyKey({
           deliveryId: input.deliveryId,
-          body,
-          nonce: `${input.failedRetryCount ?? 0}-${Date.now().toString(36)}`,
+          body: buildReminderEmailBody(payload),
+          nonce: Date.now().toString(36),
         });
         console.warn(
           "[reminders] terminal idempotency error, rotating key",
           input.deliveryId,
           error instanceof Error ? error.message : "unknown",
         );
-        await markFailed(
-          input.deliveryId,
-          input.failedRetryCount,
-          error,
-          snapshot,
-          rotated,
-        );
+        await markFailed(input.deliveryId, undefined, error, snapshot, rotated);
         totalEmailsFailed += 1;
         return;
       }
+      // retryCount is deliberately not written here: the retry claim owns that
+      // increment (#143), so a failure never consumes budget on its own.
       await markFailed(
         input.deliveryId,
-        input.failedRetryCount,
+        undefined,
         error,
         snapshot,
         idempotencyKey,
@@ -1229,7 +1265,6 @@ export async function runEvaluateReminders(
               daysBefore: row.daysBefore,
               deadlineIso: task.deadline.toISOString(),
               timeZone: profile?.timezone ?? "UTC",
-              failedRetryCount: (row.retryCount ?? 0) + 1,
               emailSnapshot: row.emailSnapshot,
               emailIdempotencyKey: row.emailIdempotencyKey,
               late: dueAction.late,

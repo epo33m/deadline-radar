@@ -11,7 +11,9 @@ import {
 import { MAX_EMAIL_DELIVERY_RETRIES } from "@deadline-radar/domain";
 
 import {
+  buildReminderEmailBody,
   buildReminderIdempotencyKey,
+  resolveEmailIdentity,
   type ReminderEmailBody,
 } from "../lib/email";
 
@@ -53,12 +55,14 @@ type DeliveryRow = {
   failedAt?: Date | null;
   /** F-10 sweep-claim lease; absent unless claimed. */
   claimedAt?: Date | null;
-  /** RF-02 frozen email body inputs; absent until the first send attempt. */
+  /** RF-02 frozen email body inputs; absent until the identity is frozen. */
   emailSnapshot?: {
     title: string;
     deadlineIso: string;
     timeZone: string;
     daysBefore: number;
+    /** RF-11 catch-up label, part of the frozen body. */
+    late?: boolean;
   } | null;
   /** RF-02 exact provider idempotency key; absent until frozen/rotated. */
   emailIdempotencyKey?: string | null;
@@ -118,6 +122,12 @@ type Store = {
   failRecheckOnce: boolean;
   /** I-01: fail the next F-10 sweep-claim update once (row-level DB error). */
   failSweepClaimOnce: boolean;
+  /** #143: fail markSent's confirm-failure context write once, so a test can
+   * simulate a process that died after the provider accepted the send and
+   * persisted nothing at all (a hard crash, not a recoverable confirm error). */
+  failConfirmContextOnce: boolean;
+  /** #143: fail the pre-send identity-freeze write once (fail-closed path). */
+  failFreezeOnce: boolean;
   /** I-06: fail the next set-based retry-claim UPDATE once (batch-scope). */
   failRetryClaimBatchOnce: boolean;
   /** I-06: fail the next batched stale-delete once (contained, best-effort). */
@@ -165,6 +175,8 @@ function resetStore(): void {
     failNextSelectOnce: false,
     failRecheckOnce: false,
     failSweepClaimOnce: false,
+    failConfirmContextOnce: false,
+    failFreezeOnce: false,
     failRetryClaimBatchOnce: false,
     failStaleDeleteOnce: false,
     editAllDeadlinesBeforeSend: false,
@@ -644,10 +656,29 @@ function doUpdate(set: Record<string, unknown>): void {
     }
     return;
   }
+  // RF-02/#143 identity freeze: writes ONLY the frozen body inputs and the
+  // provider key, deliberately without touching status/last_error. It lands
+  // before the provider call so a crash afterwards still re-sends identically.
+  if (set.emailSnapshot != null && set.emailIdempotencyKey != null && !("status" in set) && set.lastError == null) {
+    if (store.failFreezeOnce) {
+      store.failFreezeOnce = false;
+      throw new Error("fake db: email identity freeze failed");
+    }
+    const row = actionable();
+    if (row) {
+      row.emailSnapshot = set.emailSnapshot as DeliveryRow["emailSnapshot"];
+      row.emailIdempotencyKey = set.emailIdempotencyKey as string;
+    }
+    return;
+  }
   // RF-01 confirm-failure context write (markSent's best-effort fallback):
   // sets last_error + failed_at WITHOUT touching status — mirrors production,
   // where an accepted email is never downgraded to `failed`.
   if (set.lastError != null && !("status" in set)) {
+    if (store.failConfirmContextOnce) {
+      store.failConfirmContextOnce = false;
+      throw new Error("fake db: confirm context write failed");
+    }
     const row = actionable();
     if (row) {
       row.lastError = set.lastError as string;
@@ -3201,3 +3232,184 @@ describe("RF-17: scale behavior (mocked load)", () => {
 );
 });
 
+
+
+// ---------------------------------------------------------------------------
+// #143: the email identity is frozen BEFORE the provider call, and a failure
+// never spends retry budget on its own
+// ---------------------------------------------------------------------------
+
+describe("#143: resolveEmailIdentity", () => {
+  const live = {
+    taskTitle: "Task A",
+    deadlineIso: "2026-01-02T00:00:00.000Z",
+    timeZone: "UTC",
+    daysBefore: 1,
+    late: undefined,
+  };
+
+  test("an unidentified delivery resolves from the live task and needs freezing", () => {
+    const identity = resolveEmailIdentity({
+      deliveryId: "dlv-1",
+      to: "user@example.com",
+      live,
+    });
+
+    expect(identity.snapshot).toEqual({
+      title: "Task A",
+      deadlineIso: live.deadlineIso,
+      timeZone: "UTC",
+      daysBefore: 1,
+      late: undefined,
+    });
+    // Nothing is persisted yet, so the caller MUST write it before sending.
+    expect(identity.needsFreeze).toBe(true);
+    expect(identity.idempotencyKey).toBe(
+      buildReminderIdempotencyKey({
+        deliveryId: "dlv-1",
+        body: buildReminderEmailBody(identity.payload),
+      }),
+    );
+  });
+
+  test("a frozen snapshot outranks a later task edit, and needs no re-freeze", () => {
+    // The exact #143 scenario: the task was renamed after the identity was
+    // frozen, and the re-send must still be the original email.
+    const frozen = resolveEmailIdentity({
+      deliveryId: "dlv-1",
+      to: "user@example.com",
+      live,
+    });
+    const retry = resolveEmailIdentity({
+      deliveryId: "dlv-1",
+      to: "user@example.com",
+      live: { ...live, taskTitle: "Renamed after the crash" },
+      emailSnapshot: frozen.snapshot,
+      emailIdempotencyKey: frozen.idempotencyKey,
+    });
+
+    expect(retry.payload.taskTitle).toBe("Task A");
+    expect(retry.idempotencyKey).toBe(frozen.idempotencyKey);
+    expect(retry.needsFreeze).toBe(false);
+  });
+
+  test("a rotated key is reused verbatim", () => {
+    const frozen = resolveEmailIdentity({ deliveryId: "dlv-1", to: "user@example.com", live });
+    const retry = resolveEmailIdentity({
+      deliveryId: "dlv-1",
+      to: "user@example.com",
+      live,
+      emailSnapshot: frozen.snapshot,
+      emailIdempotencyKey: "reminder-delivery-dlv-1-rotated00",
+    });
+
+    expect(retry.idempotencyKey).toBe("reminder-delivery-dlv-1-rotated00");
+    expect(retry.needsFreeze).toBe(false);
+  });
+
+  test("a snapshot without a key still needs the key written", () => {
+    const identity = resolveEmailIdentity({
+      deliveryId: "dlv-1",
+      to: "user@example.com",
+      live,
+      emailSnapshot: {
+        title: "Task A",
+        deadlineIso: live.deadlineIso,
+        timeZone: "UTC",
+        daysBefore: 1,
+      },
+    });
+
+    expect(identity.needsFreeze).toBe(true);
+  });
+
+  test("the recipient is normalized before the body and key are built", () => {
+    const identity = resolveEmailIdentity({
+      deliveryId: "dlv-1",
+      to: "  User@Example.COM ",
+      live,
+    });
+
+    expect(identity.to).toBe("user@example.com");
+    expect(identity.payload.to).toBe("user@example.com");
+  });
+});
+
+describe("#143: crash between provider acceptance and confirmation", () => {
+  test("the sweep re-sends under the SAME key after a title edit, so no duplicate goes out", async () => {
+    seedOpenTaskWithThreshold("Task A");
+
+    // Run 1: the provider accepts the send, then the process dies — BOTH the
+    // confirm write and its best-effort context write fail, so nothing about
+    // the attempt is persisted.
+    store.failMarkSentOnce = true;
+    store.failConfirmContextOnce = true;
+    await runEvaluateReminders(new Date(Date.now() + 86_400_000));
+
+    const row = store.deliveries.find((d) => d.channel === "email")!;
+    expect(sendCalls).toHaveLength(1);
+    const firstKey = sentOptionsOf(0).idempotencyKey;
+    // The identity was already durable BEFORE the provider call — that is the
+    // whole point of the freeze.
+    expect(row.emailIdempotencyKey).toBe(firstKey);
+    expect(row.emailSnapshot?.title).toBe("Task A");
+    // The email was never confirmed, so the row is still outstanding.
+    expect(row.status).toBe("pending");
+
+    // The user renames the task while the delivery is outstanding.
+    store.taskRows[0]!.title = "Renamed after the crash";
+
+    const result = await runEvaluateReminders(new Date(Date.now() + 86_400_000));
+
+    // Two provider calls, one identity: the provider dedups the second.
+    expect(sendCalls).toHaveLength(2);
+    expect(sentOptionsOf(1).idempotencyKey).toBe(firstKey);
+    expect(row.emailSnapshot?.title).toBe("Task A");
+    expect(row.status).toBe("sent");
+    expect(result.emailsSent).toBe(1);
+  });
+
+  test("a freeze that cannot be persisted blocks the send instead of risking a duplicate", async () => {
+    seedOpenTaskWithThreshold("Task A");
+    // No snapshot and no key on the row, and the freeze write fails.
+    store.failFreezeOnce = true;
+
+    const result = await runEvaluateReminders(new Date(Date.now() + 86_400_000));
+
+    // Fail closed: nothing is sent, so a later attempt can still dedup.
+    expect(sendCalls).toHaveLength(0);
+    expect(result.emailsSent).toBe(0);
+    expect(result.emailsFailed).toBe(1);
+    const row = store.deliveries.find((d) => d.channel === "email")!;
+    expect(row.emailSnapshot ?? null).toBeNull();
+    expect(row.status).toBe("pending");
+  });
+});
+
+describe("#143: retry budget is only spent by a real retry claim", () => {
+  test("a sweep failure on a never-attempted row leaves retry_count at 0 and still retryable", async () => {
+    seedOpenTaskWithThreshold("Task A");
+    const row = seedPendingDelivery();
+    sendBehavior = async () => ({
+      data: null,
+      error: { name: "application_error", message: "boom", statusCode: 500 },
+    });
+
+    await runEvaluateReminders(new Date(Date.now() + 86_400_000));
+
+    // The sweep really did attempt the send (bounded to 3 provider attempts).
+    expect(sendCalls.length).toBeGreaterThan(0);
+    expect(row.status).toBe("failed");
+    // Before #143 this became 1: the sweep pre-incremented from a stale read,
+    // double-counting the first attempt against the retry budget.
+    expect(row.retryCount).toBe(0);
+
+    // Budget intact: the next run claims retry #1 and delivers.
+    sendBehavior = successBehavior();
+    const second = await runEvaluateReminders(new Date(Date.now() + 86_400_000));
+
+    expect(second.retried).toBe(1);
+    expect(row.status).toBe("sent");
+    expect(row.retryCount).toBe(1);
+  });
+});
