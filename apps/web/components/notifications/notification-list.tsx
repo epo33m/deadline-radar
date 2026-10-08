@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Bell, CheckCheck, ChevronRight } from "lucide-react";
-import { useEffect, useActionState, useMemo } from "react";
+import { useEffect, useActionState, useMemo, type ReactNode } from "react";
 import type { TimeFormat } from "@deadline-radar/validation";
 
 import {
@@ -78,11 +78,18 @@ export function NotificationList({
   listComplete = false,
   timeZone = "UTC",
   timeFormat = "24h",
+  pager,
 }: {
   notifications: InAppNotification[];
   listComplete?: boolean;
   timeZone?: string;
   timeFormat?: TimeFormat;
+  /**
+   * Paging control rendered under the list (#141). Passed in as a node so this
+   * component stays prop-driven — the rows are accumulated server-side from
+   * `?pages=N`, never appended in the browser.
+   */
+  pager?: ReactNode;
 }) {
   const { syncFromList } = useNotifications();
   const unreadCount = useMemo(
@@ -194,6 +201,8 @@ export function NotificationList({
           );
         })}
       </ul>
+
+      {pager}
     </div>
   );
 }

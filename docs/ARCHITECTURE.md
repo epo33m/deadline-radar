@@ -45,6 +45,8 @@ Main pages (indicative):
 - `/settings`, `/settings/notifications`
 - Header bell — unread count via API
 
+**List paging:** the list surfaces (tasks, course tasks, notifications) walk the API cursor server-side from `?pages=N` (`apps/web/lib/paging`), because they filter by status in the browser and so cannot page per-URL. Rows are accumulated on the server and rendered with a "Load more" link, capped at `LIST_MAX_PAGES`; the loaded count and any truncation are always stated, never silent.
+
 ### 2.2 Backend — Elysia (`apps/api`, port 4025)
 Owns **all auth, domain API, and business logic** under **`/api/v1`** (immediate cutover; no coexisting `/api` v0 aliases):
 - Auth: register, login, logout, password reset, session, timezone

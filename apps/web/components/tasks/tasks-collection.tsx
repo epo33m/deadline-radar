@@ -72,6 +72,12 @@ type TasksCollectionProps = {
   timeZone: string;
   timeFormat: TimeFormat;
   nowIso?: string;
+  /**
+   * Paging control rendered under the list (#141). Passed in as a node so this
+   * component stays purely prop-driven — the rows it renders are accumulated
+   * server-side from `?pages=N`, never appended in the browser.
+   */
+  pager?: ReactNode;
 };
 
 function matchesSearch(task: TaskListItem, query: string): boolean {
@@ -209,6 +215,7 @@ export function TasksCollection({
   timeZone,
   timeFormat,
   nowIso,
+  pager,
 }: TasksCollectionProps) {
   const now = useNow(60_000, nowIso);
   const [view, setView] = useState<TasksStatusView>("all");
@@ -446,6 +453,8 @@ export function TasksCollection({
           ) : null}
         </div>
       ) : null}
+
+      {pager}
 
       {emptyState === "no-courses" ? (
         <EmptyPanel
