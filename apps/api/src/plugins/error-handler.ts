@@ -111,6 +111,25 @@ export const errorHandlerPlugin = new Elysia({
     );
   }
 
+  // Elysia PARSE (#139): a malformed or truncated JSON/multipart body.
+  // This is a client error (ParseError carries code "PARSE", status 400), so
+  // it must use the standard 400 envelope — never the generic 500 and never a
+  // Sentry capture. Zod routes are already covered by read-json.ts.
+  if (
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    (error as { code?: string }).code === "PARSE"
+  ) {
+    set.status = 400;
+    return toErrorBody(
+      ApiError.validation("Request validation failed", [
+        { message: "Invalid request" },
+      ]),
+      rid,
+    );
+  }
+
   // Elysia route miss
   if (
     error &&
