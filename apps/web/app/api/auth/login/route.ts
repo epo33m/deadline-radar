@@ -12,6 +12,7 @@ import {
   type AuthTokenBody,
 } from "@/lib/auth/cookies";
 
+import { inboundClientFor } from "@/lib/api/client-ip";
 import { resolveApiOrigin } from "@/lib/api/origin";
 
 const API_ORIGIN = resolveApiOrigin();
@@ -39,11 +40,16 @@ async function bridgeAuthPost(
   request: NextRequest,
 ): Promise<NextResponse> {
   const incoming = await request.text();
+  // #160: the 20/min auth-sensitive budget is per-client, but the API can only
+  // tell callers apart when this tier supplies an identity — see
+  // lib/api/client-ip.ts for why forwarding is gated.
+  const inboundFor = inboundClientFor(request.headers);
   const upstream = await fetch(`${API_ORIGIN}${path}`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
       cookie: request.headers.get("cookie") ?? "",
+      ...(inboundFor ? { "x-forwarded-for": inboundFor } : {}),
       origin: process.env.WEB_ORIGIN ?? "http://127.0.0.1:3025",
       [AUTH_BRIDGE_HEADER]: authBridgeSecret(),
     },

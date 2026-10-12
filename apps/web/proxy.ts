@@ -14,6 +14,7 @@ import {
 } from "@/lib/auth/cookies";
 import { resolveSessionGate } from "@/lib/auth/session-gate";
 import { buildSecurityHeaders } from "@/lib/security-headers";
+import { inboundClientFor } from "@/lib/api/client-ip";
 import { resolveApiOrigin } from "@/lib/api/origin";
 
 function supabaseUrl(): string {
@@ -126,10 +127,14 @@ async function resolveHasSession(request: NextRequest): Promise<{
   }
 
   try {
+    // #160: same conditional identity forwarding as login/route.ts — see
+    // lib/api/client-ip.ts.
+    const inboundFor = inboundClientFor(request.headers);
     const upstream = await fetch(`${apiOrigin()}/api/v1/auth/refresh`, {
       method: "POST",
       headers: {
         cookie: `${REFRESH_COOKIE}=${refresh}`,
+        ...(inboundFor ? { "x-forwarded-for": inboundFor } : {}),
         [AUTH_BRIDGE_HEADER]: authBridgeSecret(),
         origin: process.env.WEB_ORIGIN ?? "http://127.0.0.1:3025",
       },

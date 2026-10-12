@@ -6,6 +6,7 @@ import {
   normalizeApiErrorBody,
   type ApiErrorBody,
 } from "@/lib/api/errors";
+import { inboundClientFor } from "@/lib/api/client-ip";
 import { resolveApiOrigin } from "@/lib/api/origin";
 import { apiResponseBody } from "@/lib/api/parse";
 import {
@@ -140,6 +141,11 @@ export async function apiFetch<T = unknown>(
   const fwdProto = headerStore.get("x-forwarded-proto") ?? "http";
   headersInit.set("x-forwarded-proto", fwdProto);
   headersInit.set("origin", process.env.WEB_ORIGIN ?? "http://127.0.0.1:3025");
+  // #160: every Server Action funnels through here, so this is the call site
+  // that made one caller able to spend the whole 180/min `api` scope. Same
+  // conditional forwarding rule — see lib/api/client-ip.ts.
+  const inboundFor = inboundClientFor(headerStore);
+  if (inboundFor) headersInit.set("x-forwarded-for", inboundFor);
 
   // I-04: every request is bounded — a stalled API can never hang the page.
   // A caller signal (when provided) is combined, never replaced.
