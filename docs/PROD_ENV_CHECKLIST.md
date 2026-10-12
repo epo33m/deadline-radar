@@ -45,7 +45,8 @@ Legenda lokasi:
 | `REMINDER_RUN_INTERVAL_MS` | ENV-API | ☐ | RF-14 opsional: interval antar run scheduler (ms). Kosong = **3600000** (1 jam). Dipakai `/health/cron`: scheduler dinyatakan unhealthy bila > 2× interval sejak run `ok` terakhir |
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ENV-WEB | ☐ | Fallback verifikasi JWT di proxy |
 | `SUPABASE_JWT_SECRET` | ENV-API + ENV-WEB | ☐ | Opsional; hanya untuk project Supabase HS256 lawas (ES256 baru via JWKS otomatis) |
-| `TRUST_PROXY` / `TRUSTED_PROXIES` | ENV-API | ☐ | Isi HANYA bila di belakang reverse proxy dikenal; salah isi = spoof IP rate-limit **dan IP di audit auth** (tanpa itu audit mencatat NULL) |
+| `TRUST_PROXY` / `TRUSTED_PROXIES` | ENV-API | ☐ | **WAJIB** bila web tier berada di belakang edge (#160): tanpa keduanya API tidak bisa membedakan pemanggil dari tier, jadi budget 20/mnt auth jadi satu bucket bersama untuk semua user (salah isi = spoof IP rate-limit **dan IP di audit auth**; tanpa itu audit mencatat NULL). Isi `TRUSTED_PROXIES` dengan alamat egress web tier |
+| `WEB_FORWARD_CLIENT_IP` | ENV-WEB | ☐ | **Opsional, default OFF** (#160). Isi `true` HANYA setelah memastikan edge platform **OVERWRITE** `X-Forwarded-For`. Kalau edge MENAMBAH (append) header kiriman client, API akan mempercayai entry pilihan attacker — bucket milik attacker, lebih buruk dari bucket bersama yang diperbaiki. Perlu `TRUST_PROXY=true` + `TRUSTED_PROXIES` di API juga, jika tidak header diabaikan. Catatan: dengan K alamat egress web tier, limit jadi 20*K/mnt — pastikan K kecil |
 
 ## 3. Dashboard Supabase (DASH-SB, project prod)
 

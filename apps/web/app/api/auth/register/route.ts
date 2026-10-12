@@ -12,6 +12,7 @@ import {
   type AuthTokenBody,
 } from "@/lib/auth/cookies";
 
+import { inboundClientFor } from "@/lib/api/client-ip";
 import { resolveApiOrigin } from "@/lib/api/origin";
 
 const API_ORIGIN = resolveApiOrigin();
@@ -36,11 +37,15 @@ function applySessionCookies(
 
 export async function POST(request: NextRequest) {
   const incoming = await request.text();
+  // #160: same conditional identity forwarding as login/route.ts — see
+  // lib/api/client-ip.ts.
+  const inboundFor = inboundClientFor(request.headers);
   const upstream = await fetch(`${API_ORIGIN}/api/v1/auth/register`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
       cookie: request.headers.get("cookie") ?? "",
+      ...(inboundFor ? { "x-forwarded-for": inboundFor } : {}),
       origin: process.env.WEB_ORIGIN ?? "http://127.0.0.1:3025",
       [AUTH_BRIDGE_HEADER]: authBridgeSecret(),
     },

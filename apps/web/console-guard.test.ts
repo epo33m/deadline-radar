@@ -36,6 +36,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 const ALLOWED_NEXT_IMPORTS: Record<string, string> = {
   // Evaluates the proxy `matcher`; deliberately imports no Next runtime.
   "proxy.test.ts": "next/experimental/testing/server",
+  // #160: drives the three auth bridge route handlers and the proxy through
+  // their real entrypoints, so `NextRequest`/`NextResponse` are needed to
+  // assert what each site actually sends upstream. `next/headers` is
+  // `mock.module`-stubbed here (never loaded), so this is the only real import.
+  "forward-client-ip.test.ts": "next/server",
 };
 
 function collect(dir: string): string[] {

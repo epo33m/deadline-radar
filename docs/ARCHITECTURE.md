@@ -183,6 +183,8 @@ Codes include: `VALIDATION_ERROR`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CO
 ### Abuse protection & errors
 - Backend rate limits (hooks `as: "global"`): sensitive auth 20/min, other auth 60/min, general 180/min, cron 10/min. **Redis when `REDIS_URL` is set; otherwise in-memory (dev/single-node).**
  - `TRUST_PROXY=true` required before trusting `X-Forwarded-For` / `X-Real-IP` for rate-limit keys **and for the client IP recorded on `auth_audit_events` rows** (#142 — one shared derivation, so an audit row can never disagree with the identity the rate limiter enforces). Without peer info + `TRUSTED_PROXIES`, XFF is NOT trusted unless `TRUST_PROXY_LEGACY=1` is explicitly set (spoofable otherwise); with trust disabled the audit IP is the direct peer, or NULL when it is unknowable — never a forwarded header. Register/forgot-password return an identical 202 for existing vs new emails to avoid account enumeration.
+ - These budgets are scoped **per client**, which makes the web tier the source of that identity: it is the only component that can see the caller's real address. #160 was the tier forwarding no `x-forwarded-for` at all, so the API resolved every caller to the Next server and one bucket was shared by all users. Five sites supply it — `login` / `register` / `refresh` bridges, the proxy's silent refresh, and `apiFetch` (every Server Action) — all via `apps/web/lib/api/client-ip.ts`, gated on `WEB_FORWARD_CLIENT_IP=true`. The `next.config.ts` rewrite is a platform proxy, not a hand-built header set, so it is not a forwarding site.
+ - The gate is an **owner assertion, not a convenience flag**, and off by default: it is enabled only once the platform edge is confirmed to OVERWRITE `x-forwarded-for`. An appending edge leaves a client-chosen rightmost entry that the API would then trust — an attacker-owned bucket, worse than the shared one. Enabling it is inert unless the API also runs `TRUST_PROXY=true` + `TRUSTED_PROXIES`. Appending the tier's own peer is not an alternative (Next 16 exposes no peer address, and the API's right-to-left scan skips a trusted peer anyway); if the edge cannot be shown to sanitise the header, the correct state is gate-off plus a documented deployment limitation, not a forwarded value.
 
 - Body limits: 1 MiB JSON; attachments max 10 MiB with MIME allowlist.
 - Progressive delay on repeated failed logins (per email+IP); no permanent lockout.
@@ -195,7 +197,7 @@ Codes include: `VALIDATION_ERROR`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CO
 - Serve auth over HTTPS in production. Rotate Supabase JWT/service keys, `CRON_SECRET`, and `AUTH_BRIDGE_SECRET` via env/secret store (never commit secrets).
 
 ### Env
-- See `.env.example`: `DATABASE_URL`, `SUPABASE_*`, `SUPABASE_JWT_SECRET`, `RESEND_*`, `CRON_SECRET`, `AUTH_BRIDGE_SECRET`, `REDIS_URL` (optional), `TRUST_PROXY` (optional), `WEB_ORIGIN`, `API_ORIGIN`, `API_PORT`.
+- See `.env.example`: `DATABASE_URL`, `SUPABASE_*`, `SUPABASE_JWT_SECRET`, `RESEND_*`, `CRON_SECRET`, `AUTH_BRIDGE_SECRET`, `REDIS_URL` (optional), `TRUST_PROXY` / `TRUSTED_PROXIES` (required when the web tier sits behind an edge), `WEB_FORWARD_CLIENT_IP` (optional, default off), `WEB_ORIGIN`, `API_ORIGIN`, `API_PORT`.
 
 ## 5. Folder Structure
 
