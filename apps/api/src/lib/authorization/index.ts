@@ -37,10 +37,15 @@ export { loadAuthorizationContext, setLoadAuthorizationContextOverride } from ".
 
 export {
   getCachedAuthz,
+  getFreshAuthz,
   setCachedAuthz,
   invalidateAuthzCache,
   resetAuthzCache,
   setAuthzCacheTtlMs,
+  primeCachedAuthz,
+  authzCacheGeneration,
+  authzGenerationToken,
+  setAuthzRedisForTests,
 } from "./cache";
 
 export { withUserRls } from "./rls-context";

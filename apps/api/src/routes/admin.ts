@@ -74,6 +74,13 @@ export const adminRoutes = new Elysia({ prefix: "/api/v1/admin" })
           if (result.error === "already_assigned") {
             throw ApiError.conflict("Role already assigned");
           }
+          // 400 VALIDATION_ERROR: the caller legitimately holds role.assign, so this
+          // is not an authorization failure (403) — it is a well-formed request
+          // that policy forbids (#161). Reusing the existing validation code
+          // keeps the error vocabulary and OpenAPI surface unchanged.
+          if (result.error === "self_assignment") {
+            throw ApiError.validation("Cannot assign a role to yourself");
+          }
           throw ApiError.validation("Invalid role");
         }
         response = {
@@ -158,6 +165,10 @@ export const adminRoutes = new Elysia({ prefix: "/api/v1/admin" })
         if (!result.ok) {
           if (result.error === "not_assigned") {
             throw ApiError.notFound("Role not assigned");
+          }
+          if (result.error === "self_revocation") {
+            // 400 for the same reason as self_assignment (#161).
+            throw ApiError.validation("Cannot revoke your own role");
           }
           throw ApiError.validation("Invalid role");
         }

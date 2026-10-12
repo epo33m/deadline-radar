@@ -33,8 +33,8 @@ let failAuditInsert = false;
 
 import {
   getCachedAuthz,
+  primeCachedAuthz,
   resetAuthzCache,
-  setCachedAuthz,
 } from "./cache";
 
 mock.module("../db", () => ({
@@ -145,10 +145,10 @@ mock.module("../db", () => ({
 const { assignRole, revokeRole } = await import("./role-admin");
 
 describe("M-11 — Transactional Role Administration", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     resetAuthzCache();
     // Prime the cache with existing user data
-    setCachedAuthz(TARGET_USER_ID, {
+    await primeCachedAuthz(TARGET_USER_ID, {
       roles: ["user"],
       capabilities: ["course.view"],
     });
@@ -233,7 +233,7 @@ describe("M-11 — Transactional Role Administration", () => {
       expect(auditEventsStore.length).toBe(1);
 
       // Reprime cache
-      setCachedAuthz(TARGET_USER_ID, {
+      await primeCachedAuthz(TARGET_USER_ID, {
         roles: ["admin"],
         capabilities: ["role.assign"],
       });
@@ -300,7 +300,7 @@ describe("M-11 — Transactional Role Administration", () => {
   });
 
   describe("revokeRole()", () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       userRolesStore = [
         {
           id: "ur-1",
@@ -309,7 +309,7 @@ describe("M-11 — Transactional Role Administration", () => {
           assignedBy: ACTOR_ID,
         },
       ];
-      setCachedAuthz(TARGET_USER_ID, {
+      await primeCachedAuthz(TARGET_USER_ID, {
         roles: ["admin"],
         capabilities: ["role.assign"],
       });
