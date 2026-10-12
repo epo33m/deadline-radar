@@ -18,7 +18,32 @@ import {
 
 export type RoleMutationResult =
   | { ok: true; roleSlug: RoleSlug; userId: string }
-  | { ok: false; error: "invalid_role" | "user_not_found" | "already_assigned" | "not_assigned" };
+  | {
+      ok: false;
+      error:
+        | "invalid_role"
+        | "user_not_found"
+        | "already_assigned"
+        | "not_assigned"
+        | "self_assignment"
+        | "self_revocation";
+    };
+
+/**
+ * #161: an administrator may not act on their own role row.
+ *
+ * The capability that makes a revocation meaningful is the same one that can
+ * undo it, so leaving self-mutation reachable means the only thing standing
+ * between "an admin was revoked" and "the admin is back" is cache timing. This
+ * closes that off at the service layer, so the rule holds for every caller
+ * rather than for the HTTP route alone.
+ *
+ * Admin is provisioned out of band (migration / SQL / dashboard), not through
+ * this API, so blocking self-assignment does not remove a bootstrap path.
+ */
+function isSelfMutation(actorId: string, targetUserId: string): boolean {
+  return actorId === targetUserId;
+}
 
 export async function assignRole(input: {
   actorId: string;
@@ -26,6 +51,10 @@ export async function assignRole(input: {
   roleSlug: string;
   request?: Request;
 }): Promise<RoleMutationResult> {
+  if (isSelfMutation(input.actorId, input.targetUserId)) {
+    return { ok: false, error: "self_assignment" };
+  }
+
   if (!isRoleSlug(input.roleSlug)) {
     return { ok: false, error: "invalid_role" };
   }
@@ -97,6 +126,12 @@ export async function revokeRole(input: {
   roleSlug: string;
   request?: Request;
 }): Promise<RoleMutationResult> {
+  if (isSelfMutation(input.actorId, input.targetUserId)) {
+    // Self-revocation would let an admin lock themselves out with no second
+    // actor to restore the role — including while responding to an incident.
+    return { ok: false, error: "self_revocation" };
+  }
+
   if (!isRoleSlug(input.roleSlug)) {
     return { ok: false, error: "invalid_role" };
   }

@@ -14,7 +14,7 @@ import {
   isRoleSlug,
   requireCapability,
   resetAuthzCache,
-  setCachedAuthz,
+  primeCachedAuthz,
 } from "./index";
 import { ApiError } from "../api/errors";
 
@@ -148,13 +148,13 @@ describe("field-policy mass assignment", () => {
 });
 
 describe("authz cache", () => {
-  test("keys by user id and does not collide across users", () => {
+  test("keys by user id and does not collide across users", async () => {
     resetAuthzCache();
-    setCachedAuthz("user-a", {
+    await primeCachedAuthz("user-a", {
       roles: ["user"],
       capabilities: ["course.view"],
     });
-    setCachedAuthz("user-b", {
+    await primeCachedAuthz("user-b", {
       roles: ["admin"],
       capabilities: ["role.assign"],
     });
@@ -166,9 +166,9 @@ describe("authz cache", () => {
     resetAuthzCache();
   });
 
-  test("ignores empty user id keys", () => {
+  test("ignores empty user id keys", async () => {
     resetAuthzCache();
-    setCachedAuthz("", {
+    await primeCachedAuthz("", {
       roles: ["admin"],
       capabilities: ["role.assign"],
     });

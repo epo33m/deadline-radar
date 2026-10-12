@@ -53,6 +53,11 @@ Langkah dashboard:
    Supabase `us-east-1`, Upstash US East; perf plan 2026-09-26 §R1).
    CLI: `railway service scale us-east=1` lalu `railway service scale sfo=0`
    (tetap 1 replika — keputusan single replica).
+   Catatan (#161): invalidasi cache authz yang lintas-replika bergantung pada
+   counter generasi di Redis (`authz:gen:<userId>`). `REDIS_URL` sudah wajib di
+   prod, jadi selama 1 replika ini aman; kalau nanti diskalakan, pastikan
+   Redis tetap terisi — tanpa itu satu revoke hanya membersihkan replika yang
+   melayani, dan replika lain bisa-serving snapshot lama sampai TTL habis.
 4. Isi env di **ENV-API** (tab Variables). Start command dan port sudah di-set
    di `Dockerfile` (`API_PORT=${PORT:-$API_PORT}`) — biarkan kosong.
 5. Deploy. Rewrite tidak perlu; domain publik dari service → dipakai

@@ -10,7 +10,8 @@ import {
 } from "./context";
 import { isRoleSlug, type RoleSlug } from "./roles";
 import {
-  getCachedAuthz,
+  authzGenerationToken,
+  getFreshAuthz,
   setCachedAuthz,
 } from "./cache";
 
@@ -33,6 +34,8 @@ export function setLoadAuthorizationContextOverride(fn: LoadFn | null): void {
  * Fail closed: DB errors and invalid role slugs yield empty capabilities.
  * Never trusts client-provided roles.
  * Uses a short-lived per-userId cache; invalidated on role assign/revoke.
+ * Invalidation is generation-ordered (#161): a read that began before a
+ * revocation committed can never write its pre-revoke snapshot back.
  */
 export async function loadAuthorizationContext(
   subject: AuthUser,
@@ -52,7 +55,13 @@ export async function loadAuthorizationContext(
     });
   }
 
-  const cached = getCachedAuthz(subject.id);
+  // #161: the generation token is captured BEFORE the database read, so a
+  // revocation that commits while this read is in flight can be detected
+  // before the result is written back. It also gates the cache lookup, so a
+  // snapshot invalidated on another replica is not served for its remaining TTL.
+  const generationAtReadStart = await authzGenerationToken(subject.id);
+
+  const cached = await getFreshAuthz(subject.id, generationAtReadStart);
   if (cached) {
     return createAuthorizationContext({
       subject,
@@ -97,10 +106,20 @@ export async function loadAuthorizationContext(
       }
     }
 
-    setCachedAuthz(subject.id, {
-      roles: validRoles,
-      capabilities: [...capabilitySet],
-    });
+    // Do not reinstate an entry that was invalidated while this read was in
+    // flight (#161). Skipping the write costs one extra database read on the
+    // next request, which is the correct trade for a revocation that must not
+    // be reversible by the capability it removes.
+    if ((await authzGenerationToken(subject.id)) === generationAtReadStart) {
+      setCachedAuthz(
+        subject.id,
+        {
+          roles: validRoles,
+          capabilities: [...capabilitySet],
+        },
+        generationAtReadStart,
+      );
+    }
 
     return createAuthorizationContext({
       subject,
