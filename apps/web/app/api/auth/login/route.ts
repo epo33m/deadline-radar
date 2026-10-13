@@ -7,6 +7,8 @@ import {
   REFRESH_COOKIE_MAX_AGE_SECONDS,
   authBridgeSecret,
   authCookieOptions,
+  isJsonAuthRequest,
+  isSameOriginAuthRequest,
   isSecureRequest,
   stripAuthTokens,
   type AuthTokenBody,
@@ -39,6 +41,23 @@ async function bridgeAuthPost(
   path: string,
   request: NextRequest,
 ): Promise<NextResponse> {
+  // #162: refuse a cross-site request BEFORE reading the body or issuing any
+  // upstream fetch. A cross-site top-level form navigation otherwise installs
+  // the requester's session in the victim's browser: SameSite=Lax withholds no
+  // cookie here and cannot prevent a response from SETTING one.
+  if (!isSameOriginAuthRequest(request)) {
+    return NextResponse.json(
+      { error: "Cross-origin auth request rejected" },
+      { status: 403 },
+    );
+  }
+  if (!isJsonAuthRequest(request)) {
+    return NextResponse.json(
+      { error: "Unsupported auth request content type" },
+      { status: 415 },
+    );
+  }
+
   const incoming = await request.text();
   // #160: the 20/min auth-sensitive budget is per-client, but the API can only
   // tell callers apart when this tier supplies an identity — see

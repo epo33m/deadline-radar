@@ -8,6 +8,7 @@ import {
   authBridgeSecret,
   authCookieOptions,
   clearedAuthCookieOptions,
+  isSameOriginAuthRequest,
   isSecureRequest,
   stripAuthTokens,
   type AuthTokenBody,
@@ -20,6 +21,16 @@ const API_ORIGIN = resolveApiOrigin();
 
 /** Optional same-origin refresh bridge for client-triggered renewal. */
 export async function POST(request: NextRequest) {
+  // #162: renewal can also set session cookies, so apply the same-origin gate
+  // before any upstream fetch. No JSON gate is used here because this bridge
+  // sends no request body upstream.
+  if (!isSameOriginAuthRequest(request)) {
+    return NextResponse.json(
+      { error: "Cross-origin auth request rejected" },
+      { status: 403 },
+    );
+  }
+
   // #160: same conditional identity forwarding as login/route.ts — see
   // lib/api/client-ip.ts. This route is public and unauthenticated, which is
   // what made its 60/min `auth` bucket reachable by an anonymous caller.

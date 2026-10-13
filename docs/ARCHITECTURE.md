@@ -180,7 +180,7 @@ Codes include: `VALIDATION_ERROR`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CO
 ### Page / API enforcement
 - Next session gate: **public allowlist** (`/`, auth pages, `/reset-password`, `/auth/confirm`); all other pages require a session (fail closed).
 - API: public auth/health/openapi; domain + admin routes authenticated + capability-checked; cron via `CRON_SECRET`. Client-supplied user IDs / roles / capabilities are never trusted as authorization input.
-- CSRF: `SameSite=lax` + same-origin `/api` (no separate CSRF token). CORS locked to `WEB_ORIGIN` with credentials.
+- CSRF: `SameSite=lax` + same-origin `/api` (no separate CSRF token). CORS locked to `WEB_ORIGIN` with credentials. Auth bridges that can set session cookies also enforce same-origin intent before reading the body or calling upstream (#162): login, register, and refresh compare `Origin` against `WEB_ORIGIN`, fall back to `Referer`, and fail closed when neither signal is present. Login and register additionally require an inbound JSON content type, closing CORS-safelisted simple-request delivery independently.
 
 ### Abuse protection & errors
 - Backend rate limits (hooks `as: "global"`): sensitive auth 20/min, other auth 60/min, general 180/min, cron 10/min. **Redis when `REDIS_URL` is set; otherwise in-memory (dev/single-node).**

@@ -7,6 +7,8 @@ import {
   REFRESH_COOKIE_MAX_AGE_SECONDS,
   authBridgeSecret,
   authCookieOptions,
+  isJsonAuthRequest,
+  isSameOriginAuthRequest,
   isSecureRequest,
   stripAuthTokens,
   type AuthTokenBody,
@@ -36,6 +38,21 @@ function applySessionCookies(
 }
 
 export async function POST(request: NextRequest) {
+  // #162: registration mints a session cookie from a body credential, so it
+  // needs the same same-origin and JSON gates as login.
+  if (!isSameOriginAuthRequest(request)) {
+    return NextResponse.json(
+      { error: "Cross-origin auth request rejected" },
+      { status: 403 },
+    );
+  }
+  if (!isJsonAuthRequest(request)) {
+    return NextResponse.json(
+      { error: "Unsupported auth request content type" },
+      { status: 415 },
+    );
+  }
+
   const incoming = await request.text();
   // #160: same conditional identity forwarding as login/route.ts — see
   // lib/api/client-ip.ts.

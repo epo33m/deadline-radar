@@ -15,6 +15,66 @@ export function authBridgeSecret(): string {
 export const REFRESH_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 
 /**
+ * Same-origin gate for auth Route Handlers that can set session cookies.
+ *
+ * Login and registration credentials arrive in the request BODY while the
+ * request is unauthenticated by construction. `SameSite=Lax` therefore cannot
+ * carry this defence: it controls whether an existing cookie is SENT, not
+ * whether a response may SET one. Next's built-in Origin check covers Server
+ * Actions only, and the proxy matcher excludes `api/`, so these handlers must
+ * establish same-origin intent themselves.
+ *
+ * The comparison uses exact origin equality. A prefix match would accept
+ * `https://web.example.evil.test` for `https://web.example`.
+ */
+export function resolveExpectedAuthOrigin(
+  webOrigin: string | undefined = process.env.WEB_ORIGIN,
+): string {
+  return (webOrigin ?? "").trim().replace(/\/+$/, "");
+}
+
+export function isSameOriginAuthRequest(
+  request: { headers: { get(name: string): string | null } },
+  webOrigin: string | undefined = process.env.WEB_ORIGIN,
+): boolean {
+  const expected = resolveExpectedAuthOrigin(webOrigin);
+  // Unconfigured: refuse to mint cookies rather than accept everything.
+  if (!expected) return false;
+
+  const origin = request.headers.get("origin")?.trim();
+  if (origin) return origin === expected;
+
+  // Fail closed when neither signal is present. An implementation that merely
+  // compares a present Origin would leave the no-signal path open.
+  const referer = request.headers.get("referer")?.trim();
+  if (!referer) return false;
+  try {
+    return new URL(referer).origin === expected;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * JSON-body gate for login and registration bridges.
+ *
+ * These handlers forward the request body upstream as JSON. An inbound
+ * `text/plain` simple request needs no CORS preflight, so rejecting a
+ * non-JSON media type removes that cross-site delivery path independently of
+ * the origin check. Charset parameters are accepted.
+ */
+export function isJsonAuthRequest(request: {
+  headers: { get(name: string): string | null };
+}): boolean {
+  const mediaType = request.headers
+    .get("content-type")
+    ?.split(";")[0]
+    ?.trim()
+    .toLowerCase();
+  return mediaType === "application/json";
+}
+
+/**
  * Whether the response is served over TLS. TLS-dependent cookie attributes
  * (`Secure`) key on the request origin, never on `NODE_ENV` — same defect
  * family as #58/#59, where an environment gate emitted TLS-only directives
