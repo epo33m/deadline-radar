@@ -142,18 +142,24 @@ async function resolveHasSession(request: NextRequest): Promise<{
     });
 
     if (!upstream.ok) {
+      // #163: retryable upstream conditions (429 throttle, 5xx, gateway
+      // errors) must not be laundered into a session logout — keep the
+      // cookies so the next request can retry. Only 401 proves the session
+      // is gone.
       return {
         hasSession: false,
-        shouldClearCookies: true,
+        shouldClearCookies: upstream.status === 401,
         refreshTokens: null,
       };
     }
 
     const data = (await upstream.json()) as AuthTokenBody;
     if (!data.accessToken || !data.refreshToken) {
+      // #163: malformed 200 body means the refresh outcome is unknown, not
+      // negative — leave the cookies untouched for a retry.
       return {
         hasSession: false,
-        shouldClearCookies: true,
+        shouldClearCookies: false,
         refreshTokens: null,
       };
     }
@@ -164,9 +170,11 @@ async function resolveHasSession(request: NextRequest): Promise<{
       refreshTokens: data,
     };
   } catch {
+    // #163: transport failure means the refresh outcome is unknown, not
+    // negative — never clear on an exception.
     return {
       hasSession: false,
-      shouldClearCookies: true,
+      shouldClearCookies: false,
       refreshTokens: null,
     };
   }

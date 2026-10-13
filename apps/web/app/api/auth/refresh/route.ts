@@ -72,7 +72,10 @@ export async function POST(request: NextRequest) {
       data.refreshToken,
       authCookieOptions(REFRESH_COOKIE_MAX_AGE_SECONDS, isSecure),
     );
-  } else if (!upstream.ok) {
+  } else if (upstream.status === 401) {
+    // #163: only an affirmative "session invalid" outcome ends the session.
+    // A 429 or 5xx means the refresh did not complete; dropping the cookies
+    // here would log out every signed-in user on a transient upstream fault.
     response.cookies.set(
       ACCESS_COOKIE,
       "",
