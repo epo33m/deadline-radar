@@ -3,7 +3,10 @@ import { describe, expect, test } from "bun:test";
 import {
   authCookieOptions,
   clearedAuthCookieOptions,
+  isJsonAuthRequest,
+  isSameOriginAuthRequest,
   isSecureRequest,
+  resolveExpectedAuthOrigin,
   stripAuthTokens,
   type AuthTokenBody,
 } from "./cookies";
@@ -114,5 +117,133 @@ describe("isSecureRequest", () => {
     );
     expect(isSecureRequest({ host: "192.168.18.135:3025" })).toBe(true);
     expect(isSecureRequest({})).toBe(true);
+  });
+});
+
+describe("isSameOriginAuthRequest", () => {
+  const expected = "https://web.example";
+
+  function headers(init: Record<string, string> = {}): Headers {
+    return new Headers(init);
+  }
+
+  test("accepts a matching Origin and ignores a trailing slash in WEB_ORIGIN", () => {
+    expect(
+      isSameOriginAuthRequest(
+        { headers: headers({ origin: expected }) },
+        `${expected}/`,
+      ),
+    ).toBe(true);
+  });
+
+  test("rejects a cross-site Origin", () => {
+    expect(
+      isSameOriginAuthRequest(
+        { headers: headers({ origin: "https://evil.example" }) },
+        expected,
+      ),
+    ).toBe(false);
+  });
+
+  test("falls back to Referer only when Origin is absent", () => {
+    expect(
+      isSameOriginAuthRequest(
+        {
+          headers: headers({
+            referer: `${expected}/login?next=/summary`,
+          }),
+        },
+        expected,
+      ),
+    ).toBe(true);
+    expect(
+      isSameOriginAuthRequest(
+        { headers: headers({ referer: "https://evil.example/login" }) },
+        expected,
+      ),
+    ).toBe(false);
+  });
+
+  test("prefers Origin over Referer", () => {
+    expect(
+      isSameOriginAuthRequest(
+        {
+          headers: headers({
+            origin: "https://evil.example",
+            referer: `${expected}/login`,
+          }),
+        },
+        expected,
+      ),
+    ).toBe(false);
+  });
+
+  test("fails closed when neither Origin nor Referer is present", () => {
+    expect(isSameOriginAuthRequest({ headers: headers() }, expected)).toBe(
+      false,
+    );
+  });
+
+  test("rejects a prefix-confusion host", () => {
+    expect(
+      isSameOriginAuthRequest(
+        { headers: headers({ origin: "https://web.example.evil.test" }) },
+        expected,
+      ),
+    ).toBe(false);
+  });
+
+  test("rejects an invalid Referer", () => {
+    expect(
+      isSameOriginAuthRequest(
+        { headers: headers({ referer: "not a url" }) },
+        expected,
+      ),
+    ).toBe(false);
+  });
+
+  test("refuses to mint cookies when WEB_ORIGIN is unconfigured", () => {
+    expect(resolveExpectedAuthOrigin(undefined)).toBe("");
+    expect(resolveExpectedAuthOrigin("   ")).toBe("");
+    expect(
+      isSameOriginAuthRequest(
+        { headers: headers({ origin: expected }) },
+        undefined,
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("isJsonAuthRequest", () => {
+  function headers(contentType?: string): Headers {
+    const init: Record<string, string> = {};
+    if (contentType !== undefined) init["content-type"] = contentType;
+    return new Headers(init);
+  }
+
+  test("accepts JSON with or without parameters", () => {
+    expect(isJsonAuthRequest({ headers: headers("application/json") })).toBe(
+      true,
+    );
+    expect(
+      isJsonAuthRequest({
+        headers: headers("Application/JSON; charset=utf-8"),
+      }),
+    ).toBe(true);
+  });
+
+  test("rejects missing and CORS-safelisted content types", () => {
+    for (const contentType of [
+      undefined,
+      "text/plain",
+      "text/plain;charset=UTF-8",
+      "application/x-www-form-urlencoded",
+      "multipart/form-data",
+      "application/octet-stream",
+    ]) {
+      expect(isJsonAuthRequest({ headers: headers(contentType) }), contentType).toBe(
+        false,
+      );
+    }
   });
 });

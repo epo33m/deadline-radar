@@ -39,7 +39,12 @@ function lastUpstream(): UpstreamCall {
 }
 
 function post(url: string, xff?: string): NextRequest {
-  const headers: Record<string, string> = { "content-type": "application/json" };
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    // #162: these requests represent the legitimate same-origin browser caller,
+    // so they carry the expected Origin and JSON content type.
+    origin: "http://localhost",
+  };
   if (xff !== undefined) headers["x-forwarded-for"] = xff;
   return new NextRequest(url, { method: "POST", headers, body: "{}" });
 }
@@ -50,6 +55,9 @@ function post(url: string, xff?: string): NextRequest {
 // is loud rather than silent.
 process.env.AUTH_BRIDGE_SECRET = "test-bridge-secret";
 process.env.API_ORIGIN = "http://127.0.0.1:4025";
+// #162: the auth-bridge same-origin guard reads WEB_ORIGIN at request time.
+const savedWebOrigin = process.env.WEB_ORIGIN;
+process.env.WEB_ORIGIN = "http://localhost";
 
 // apiFetch reads the request context through next/headers, which has no ambient
 // request outside a render. A mutable store keeps these assertions honest about
@@ -73,14 +81,20 @@ const ROUTES = [
 ] as const;
 
 beforeEach(() => {
-  // WEB_FORWARD_CLIENT_IP is the only env var these tests mutate; the rest are
-  // process-wide fixtures set above.
+  // WEB_FORWARD_CLIENT_IP and WEB_ORIGIN are the env vars these tests mutate;
+  // the rest are process-wide fixtures set above.
   delete process.env.WEB_FORWARD_CLIENT_IP;
+  process.env.WEB_ORIGIN = "http://localhost";
   stubFetch({ accessToken: "a", refreshToken: "r", expiresIn: 60 });
 });
 
 afterEach(() => {
   delete process.env.WEB_FORWARD_CLIENT_IP;
+  if (savedWebOrigin === undefined) {
+    delete process.env.WEB_ORIGIN;
+  } else {
+    process.env.WEB_ORIGIN = savedWebOrigin;
+  }
 });
 
 describe("#160 — auth bridges forward the client identity only when gated on", () => {

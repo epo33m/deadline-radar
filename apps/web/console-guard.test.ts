@@ -41,6 +41,9 @@ const ALLOWED_NEXT_IMPORTS: Record<string, string> = {
   // assert what each site actually sends upstream. `next/headers` is
   // `mock.module`-stubbed here (never loaded), so this is the only real import.
   "forward-client-ip.test.ts": "next/server",
+  // #162: drives the three auth bridges through their real entrypoints to
+  // assert that cross-site requests are refused before any upstream call.
+  "app/api/auth/auth-csrf.test.ts": "next/server",
 };
 
 function collect(dir: string): string[] {
