@@ -125,6 +125,37 @@ describe("finding #9 — proxy trust model", () => {
     expect(isTrustedProxy("192.168.1.1")).toBe(true);
     expect(isTrustedProxy("192.168.1.2")).toBe(false);
   });
+
+  test("#165: all-trusted chain fails closed to the peer, not chain[0]", () => {
+    setProxyEnv("true", "10.0.0.0/8");
+    // Every supplied entry is a trusted proxy: the client is unknowable.
+    expect(
+      resolveClientIp(requestWith({ "x-forwarded-for": "10.9.9.9" }), "10.0.0.1"),
+    ).toBe("10.0.0.1");
+    expect(
+      resolveClientIp(
+        requestWith({ "x-forwarded-for": "10.1.2.3, 10.4.5.6" }),
+        "10.0.0.1",
+      ),
+    ).toBe("10.0.0.1");
+    // Rotating in-range values must not yield distinct identities.
+    for (const spoof of ["10.2.0.1", "10.3.0.2", "10.4.0.3"]) {
+      expect(
+        resolveClientIp(requestWith({ "x-forwarded-for": spoof }), "10.0.0.1"),
+      ).toBe("10.0.0.1");
+    }
+  });
+
+  test("#165: appending edge still resolves the real client (control)", () => {
+    setProxyEnv("true", "10.0.0.0/8");
+    // Edge appended the real client rightmost: loop terminates there.
+    expect(
+      resolveClientIp(
+        requestWith({ "x-forwarded-for": "10.9.9.9, 203.0.113.42" }),
+        "10.0.0.1",
+      ),
+    ).toBe("203.0.113.42");
+  });
 });
 
 describe("finding #9 — account-level throttling", () => {
