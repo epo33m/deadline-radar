@@ -93,6 +93,13 @@ JOIN pg_namespace n ON n.oid = p.pronamespace
 WHERE p.prosecdef AND n.nspname = 'public'
 ORDER BY function;
 
+-- §4b — #166: get_user_summary tidak boleh EXECUTEable oleh client roles --
+-- Ekspektasi: anon_exec = false, auth_exec = false. Migrasi
+-- 20261014000000_revoke_summary_rpc_execute.sql mencabutnya; bila ada yang
+-- true, jangan lanjut ke production sebelum REVOKE diterapkan.
+SELECT has_function_privilege('anon', 'public.get_user_summary(uuid,text,timestamptz)', 'EXECUTE') AS anon_exec,
+       has_function_privilege('authenticated', 'public.get_user_summary(uuid,text,timestamptz)', 'EXECUTE') AS auth_exec;
+
 -- §5 — Riwayat migrasi terapan (bandingkan dengan supabase/migrations/) ------
 SELECT version FROM supabase_migrations.schema_migrations ORDER BY version;
 

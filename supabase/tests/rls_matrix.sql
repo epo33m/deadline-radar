@@ -363,6 +363,23 @@ begin
 end $assert$;
 
 -- ---------------------------------------------------------------------------
+-- 5b. #166: get_user_summary must not be EXECUTEable by client roles.
+-- A later CREATE OR REPLACE cannot silently restore the default PUBLIC
+-- EXECUTE without failing here.
+-- ---------------------------------------------------------------------------
+do $assert$
+begin
+  if has_function_privilege('anon', 'public.get_user_summary(uuid,text,timestamptz)', 'EXECUTE') then
+    raise exception 'RLS MATRIX FAILED (function EXECUTE): anon can execute public.get_user_summary';
+  end if;
+  if has_function_privilege('authenticated', 'public.get_user_summary(uuid,text,timestamptz)', 'EXECUTE') then
+    raise exception 'RLS MATRIX FAILED (function EXECUTE): authenticated can execute public.get_user_summary';
+  end if;
+
+  raise notice 'PASS  5b. get_user_summary EXECUTE revoked from anon/authenticated';
+end $assert$;
+
+-- ---------------------------------------------------------------------------
 -- 6. courses matrix: S/I/U own-allow + cross-deny, DELETE must fail
 -- ---------------------------------------------------------------------------
 select set_config('request.jwt.claim.sub', current_setting('rls_matrix.user_a'), true),
