@@ -159,7 +159,13 @@ export function resolveClientIp(
     for (let i = chain.length - 1; i >= 0; i -= 1) {
       if (!isTrustedProxy(chain[i])) return chain[i];
     }
-    return chain[0] ?? peer;
+    // #165: no chain entry qualifies as the client (every supplied entry is
+    // a trusted proxy) — the client is unknowable, so fail closed to the
+    // observed peer. Returning chain[0] here would hand a caller-chosen
+    // leftmost entry to the rate-limit bucket. This matches the module rule
+    // above ("rightmost chain entry that is NOT a trusted proxy") and the
+    // fail-closed fallbacks at :148 and :174.
+    return peer;
   }
 
   // Legacy path (no peer info or no allow-list configured): spoofable when
