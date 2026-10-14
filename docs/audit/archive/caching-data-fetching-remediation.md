@@ -1,3 +1,5 @@
+> **Archived — original language preserved (Indonesian). Exempt from the English-only docs rule.**
+
 # Remediation Log — CR-1: Status deadline tidak refresh saat tab idle
 
 - **Temuan asal:** `docs/audit/caching-data-fetching-audit.md` §CR-1 (🔴 Critical)

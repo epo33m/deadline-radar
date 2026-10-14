@@ -1,3 +1,5 @@
+> **Archived — original language preserved (Indonesian). Exempt from the English-only docs rule.**
+
 # Laporan Verifikasi — Audit Caching & Data Fetching (Deadline Radar)
 
 - **Tanggal:** 2026-09-20

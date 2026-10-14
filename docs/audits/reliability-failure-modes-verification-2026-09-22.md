@@ -1,3 +1,5 @@
+> **Archived — original language preserved (Indonesian). Exempt from the English-only docs rule.**
+
 # Laporan Verifikasi Reliability & Failure Modes — Deadline Radar (Reminder Pipeline)
 
 Tanggal: 2026-09-22

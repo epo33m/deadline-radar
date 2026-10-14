@@ -1,3 +1,5 @@
+> **Archived — original language preserved (Indonesian). Exempt from the English-only docs rule.**
+
 # VERIFIKASI FINAL & SIGN-OFF — Deadline Radar
 
 > **Peran:** Release Gatekeeper (verifikasi independen terhadap `AUDIT-FINAL-REMEDIASI.md` + `E2E_SMOKE_REPORT.md`).

@@ -1,3 +1,5 @@
+> **Archived — original language preserved (Indonesian). Exempt from the English-only docs rule.**
+
 # Remediation Log — LO-2: Badge unread hanya bisa telat sampai 60 detik (batas desain)
 
 - **Temuan asal:** `docs/audit/caching-data-fetching-audit.md` §3 LO-2 (⚪ Low).

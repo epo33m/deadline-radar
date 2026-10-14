@@ -1,168 +1,167 @@
-# Deploy Produksi — Deadline Radar
+# Production Deploy — Deadline Radar
 
-> Status 2026-09-26: repo **belum punya** auto-deploy. Push ke `main` hanya
-> memicu CI (`.github/workflows/ci.yml`). Deploy terjadi dari dashboard Railway
-> (API) dan Vercel (Web) memakai branch `main`.
-> Checklist env + verifikasi tetap di `docs/PROD_ENV_CHECKLIST.md`.
-> Arsitektur region (perf plan 2026-09-26, `docs/performance-audit-2026-09-26.md`):
-> Web `iad1` (Vercel Hobby, terkunci) + API **US East** (Railway) + DB
-> **`us-east-1`** (Supabase) + Redis **US East** (Upstash). Semua server-side
-> satu region; hop `sin1`↔`iad1` (~400–500ms) adalah plafon Hobby.
+> Status 2026-09-26: the repo has **no** auto-deploy yet. Pushing to `main`
+> only triggers CI (`.github/workflows/ci.yml`). Deploys happen from the
+> Railway dashboard (API) and Vercel (Web) using the `main` branch.
+> Env checklist + verification stay in `docs/PROD_ENV_CHECKLIST.md`.
+> Region architecture (perf plan 2026-09-26, `docs/performance-audit-2026-09-26.md`):
+> Web `iad1` (Vercel Hobby, locked) + API **US East** (Railway) + DB
+> **`us-east-1`** (Supabase) + Redis **US East** (Upstash). All server-side
+> in one region; the `sin1`↔`iad1` hop (~400–500ms) is the Hobby ceiling.
 
-## 0. Prasyarat (sudah diverifikasi 2026-09-26, read-only)
+## 0. Prerequisites (verified 2026-09-26, read-only)
 
-| Item | Hasil |
+| Item | Result |
 |---|---|
-| Migrasi prod | 41 applied, **0 pending** (`bun run db:migrate status`) — syarat N-4 terpenuhi |
-| Tabel prod | 12 tabel public lengkap (`reminder_thresholds`, `reminder_runs`, …) |
-| Data prod | `tasks` 0, `notification_deliveries` 0, `reminder_runs` 0 → belum ada scheduler yang pernah jalan |
-| `.env.production` (lokal, operator) | `assertStartupConfig()` PASS (RF-11/RF-13 fail-closed) |
+| Prod migrations | 41 applied, **0 pending** (`bun run db:migrate status`) — requirement N-4 met |
+| Prod tables | 12 public tables complete (`reminder_thresholds`, `reminder_runs`, …) |
+| Prod data | `tasks` 0, `notification_deliveries` 0, `reminder_runs` 0 → no scheduler has ever run |
+| `.env.production` (local, operator) | `assertStartupConfig()` PASS (RF-11/RF-13 fail-closed) |
 | Redis (Upstash `rediss://`) | `PING → PONG` |
 | Resend | domain `rapm.space` **verified** |
-| Web | belum dideploy → `WEB_ORIGIN` masih placeholder |
+| Web | not deployed yet → `WEB_ORIGIN` still a placeholder |
 
-Nilai rahasia tidak pernah masuk repo. `.env.production` hanya referensi
-operator; env yang benar-benar dipakai adalah secret store Railway/Vercel.
+Secrets never enter the repo. `.env.production` is only an operator
+reference; the env actually used is the Railway/Vercel secret store.
 
-## 1. Urutan deploy (WAJIB berurutan)
+## 1. Deploy order (MUST be sequential)
 
-1. `bun run db:migrate` (kode baru sebelum API-nya) + `db:verify` — tanpa ini
-   enum `sending`/kolom `claimed_at` belum ada dan setiap run cron 500
-   (RF-15, `assertReminderSchemaPrerequisites` menolak boot).
-2. Deploy **API** ke Railway.
-3. Isi `WEB_ORIGIN` di Railway dengan domain publik Vercel (butuh untuk CORS +
-   cookie), lalu redeploy/restart API.
-4. Deploy **Web** ke Vercel (Root Directory `apps/web`).
-5. Isi `API_ORIGIN` di Vercel = domain Railway, lalu **redeploy** — rewrite
-   `next.config.ts` di-*bake* saat build, jadi perubahan env tidak cukup tanpa
-   build baru.
-6. Trigger cron pertama kali secara manual (§4) dan verifikasi §6.
+1. `bun run db:migrate` (new code before its API) + `db:verify` — without this
+   the `sending` enum / `claimed_at` column do not exist and every cron run 500s
+   (RF-15, `assertReminderSchemaPrerequisites` refuses to boot).
+2. Deploy the **API** to Railway.
+3. Fill `WEB_ORIGIN` in Railway with the public Vercel domain (needed for CORS +
+   cookies), then redeploy/restart the API.
+4. Deploy the **Web** to Vercel (Root Directory `apps/web`).
+5. Fill `API_ORIGIN` in Vercel = the Railway domain, then **redeploy** — the
+   `next.config.ts` rewrite is baked at build time, so an env change alone
+   is not enough without a new build.
+6. Trigger the first cron run manually (§4) and verify §6.
 
 ## 2. Railway — API
 
-File config: `railway.json` + `Dockerfile` (root). Railway tidak bisa
-mendeteksi Bun secara otomatis, jadi Dockerfile wajib; build context = repo
-root agar workspace Bun ter-install dari lockfile yang benar.
+Config files: `railway.json` + `Dockerfile` (root). Railway cannot
+auto-detect Bun, so the Dockerfile is required; build context = repo
+root so the Bun workspace installs from the correct lockfile.
 
-Langkah dashboard:
+Dashboard steps:
 1. **New Project → Deploy from GitHub repo** (`epo33m/deadline-radar`).
-2. Service API: **Root Directory = `/`** (default; JANGAN `apps/api`, karena
-   `bun.lock` + `packages/*` di root), builder **Dockerfile** (dari
+2. API service: **Root Directory = `/`** (default; NOT `apps/api`, because
+   `bun.lock` + `packages/*` live at the root), builder **Dockerfile** (from
    `railway.json`).
-3. **Region = US East** (Virginia — satu region dengan Vercel `iad1`,
+3. **Region = US East** (Virginia — same region as Vercel `iad1`,
    Supabase `us-east-1`, Upstash US East; perf plan 2026-09-26 §R1).
-   CLI: `railway service scale us-east=1` lalu `railway service scale sfo=0`
-   (tetap 1 replika — keputusan single replica).
-   Catatan (#161): invalidasi cache authz yang lintas-replika bergantung pada
-   counter generasi di Redis (`authz:gen:<userId>`). `REDIS_URL` sudah wajib di
-   prod, jadi selama 1 replika ini aman; kalau nanti diskalakan, pastikan
-   Redis tetap terisi — tanpa itu satu revoke hanya membersihkan replika yang
-   melayani, dan replika lain bisa-serving snapshot lama sampai TTL habis.
-4. Isi env di **ENV-API** (tab Variables). Start command dan port sudah di-set
-   di `Dockerfile` (`API_PORT=${PORT:-$API_PORT}`) — biarkan kosong.
-5. Deploy. Rewrite tidak perlu; domain publik dari service → dipakai
-   sebagai `API_ORIGIN` di Vercel dan `PROD_API_URL` di GitHub secret.
+   CLI: `railway service scale us-east=1` then `railway service scale sfo=0`
+   (stay at 1 replica — single-replica decision).
+   Note (#161): cross-replica authz cache invalidation depends on the
+   generation counter in Redis (`authz:gen:<userId>`). `REDIS_URL` is already
+   required in prod, so this is safe at 1 replica; if scaled later, make sure
+   Redis stays populated — without it one revoke only clears the serving
+   replica, and other replicas may serve a stale snapshot until TTL expiry.
+4. Fill env in **ENV-API** (Variables tab). Start command and port are already set
+   in the `Dockerfile` (`API_PORT=${PORT:-$API_PORT}`) — leave empty.
+5. Deploy. No rewrite needed; the service public domain is used
+   as `API_ORIGIN` in Vercel and `PROD_API_URL` in the GitHub secret.
 
-| Var | Catatan |
+| Var | Notes |
 |---|---|
-| `NODE_ENV` | `production` (sudah di-set sebagai `ENV` di image) |
-| `REMINDER_CUTOFF_ISO` | **wajib** (RF-11). Nilai aktivasi scheduler yang disepakati; boleh maju, jangan mundur |
-| `DATABASE_URL` | Pooler Supabase, `prepare:false` sudah di kode. **Region `us-east-1`** (project baru pasca-2026-09-26; perf plan §R1). Pindah region = project baru: `bun run db:migrate` + `db:verify` + `supabase/verify-prod.sql` §1–§5 + buat ulang bucket `attachments` + user daftar ulang |
-| `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | service_role **tidak boleh** masuk Vercel |
-| `CRON_SECRET` | acak panjang; sama dengan `CRON_SECRET` GitHub secret |
-| `AUTH_BRIDGE_SECRET` | **harus identik** dengan nilai di Vercel |
-| `REDIS_URL` | wajib (SEC-007). **Region US East** (satu region dengan API; perf plan §R4 — INCR jauh = ~180ms per request) |
-| `REDIS_TIMEOUT_MS` | opsional, default **250** (fallback memory + warn bila Redis lebih lambat; juga batas per-command di transport: ioredis `commandTimeout`/`connectTimeout` + abort signal REST Upstash, termasuk throttle login auth-abuse) |
-| `RESEND_API_KEY` / `RESEND_FROM_EMAIL` | domain terverifikasi di Resend |
-| `WEB_ORIGIN` | origin publik Vercel (cookie/CORS) |
-| `AUTH_AUDIT_RETENTION_DAYS` | `90` (keputusan audit ROUND 1) |
-| `SENTRY_DSN` | opsional; Sentry mati bila kosong |
+| `NODE_ENV` | `production` (already set as `ENV` in the image) |
+| `REMINDER_CUTOFF_ISO` | **required** (RF-11). The agreed scheduler activation value; may move forward, never backward |
+| `DATABASE_URL` | Supabase pooler, `prepare:false` already in code. **Region `us-east-1`** (new project post-2026-09-26; perf plan §R1). Moving region = new project: `bun run db:migrate` + `db:verify` + `supabase/verify-prod.sql` §1–§5 + recreate the `attachments` bucket + re-register users |
+| `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | service_role must **never** go to Vercel |
+| `CRON_SECRET` | long random; same as the `CRON_SECRET` GitHub secret |
+| `AUTH_BRIDGE_SECRET` | **must be identical** to the value in Vercel |
+| `REDIS_URL` | required (SEC-007). **Region US East** (same region as the API; perf plan §R4 — far INCR = ~180ms per request) |
+| `REDIS_TIMEOUT_MS` | optional, default **250** (memory fallback + warn when Redis is slower; also the per-command bound in transports: ioredis `commandTimeout`/`connectTimeout` + Upstash REST abort signal, including the auth-abuse login throttle) |
+| `RESEND_API_KEY` / `RESEND_FROM_EMAIL` | Resend-verified domain |
+| `WEB_ORIGIN` | public Vercel origin (cookies/CORS) |
+| `AUTH_AUDIT_RETENTION_DAYS` | `90` (audit ROUND 1 decision) |
+| `SENTRY_DSN` | optional; Sentry is off when empty |
 
-Healthcheck: `railway.json` → `/health` (statis `200 {ok:true}`, tanpa DB,
-exempt rate limit). Endpoint ini **bukan** bukti scheduler hidup — untuk itu
-ada `/health/cron` (§6).
+Healthcheck: `railway.json` → `/health` (static `200 {ok:true}`, no DB,
+rate-limit exempt). This endpoint is **not** proof the scheduler is alive — that is
+`/health/cron` (§6).
 
 ## 3. Vercel — Web
 
-Tidak ada `vercel.json` sengaja: Vercel mendeteksi monorepo Nx + `bun.lock`
-otomatis. Setting yang perlu diisi manual:
+No `vercel.json` on purpose: Vercel auto-detects the Nx monorepo + `bun.lock`.
+Settings to fill in manually:
 
-| Setting | Nilai |
+| Setting | Value |
 |---|---|
 | Root Directory | `apps/web` |
-| Install Command | `bun install` (default; Vercel mencari `bun.lock` ke parent) |
-| Build Command | `next build && bun scripts/verify-routes.ts && bun scripts/build-csp-hashes.ts && next build && bun scripts/build-csp-hashes.ts --verify` (route gate + double-build hash-CSP, Fase C/W1; SAMA dengan `bun run build`) |
+| Install Command | `bun install` (default; Vercel looks up `bun.lock` toward the parent) |
+| Build Command | `next build && bun scripts/verify-routes.ts && bun scripts/build-csp-hashes.ts && next build && bun scripts/build-csp-hashes.ts --verify` (route gate + double-build hash-CSP, Phase C/W1; SAME as `bun run build`) |
 | Output Directory | `.next` (default) |
-| Function Region | `iad1` default (Hobby terkunci; plafon latensi, lihat perf audit §R2) |
+| Function Region | `iad1` default (Hobby locked; latency ceiling, see perf audit §R2) |
 
-Env di **ENV-WEB** (Project Settings → Environment Variables, environment
-production — hanya production, jangan preview/dev):
+Env in **ENV-WEB** (Project Settings → Environment Variables, production
+environment — production only, not preview/dev):
 
-| Var | Catatan |
+| Var | Notes |
 |---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | di-inline saat build |
-| `API_ORIGIN` | domain Railway; dipakai rewrite `/api/*`, `/openapi`, `/health` |
-| `AUTH_BRIDGE_SECRET` | **harus sama** dengan Railway |
-| `SUPABASE_JWT_SECRET` | opsional (HS256 lawas) |
-| `NEXT_PUBLIC_SENTRY_DSN` | opsional |
+| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | inlined at build time |
+| `API_ORIGIN` | Railway domain; used for the `/api/*`, `/openapi`, `/health` rewrites |
+| `AUTH_BRIDGE_SECRET` | **must match** Railway |
+| `SUPABASE_JWT_SECRET` | optional (legacy HS256) |
+| `NEXT_PUBLIC_SENTRY_DSN` | optional |
 
-`NEXT_PUBLIC_*` di-inline saat build → mengisi ulang harus disertai redeploy.
+`NEXT_PUBLIC_*` is inlined at build time → refilling must come with a redeploy.
 
-## 4. Trigger scheduler (cron)
+## 4. Scheduler trigger (cron)
 
 Default: **GitHub Actions** `.github/workflows/cron-reminders.yml`
-(`0 * * * *` UTC), memanggil `GET /api/v1/cron/evaluate-reminders` dengan
-`Authorization: Bearer $CRON_SECRET`. GitHub secret yang perlu dibuat:
-`PROD_API_URL` (domain Railway) + `CRON_SECRET`.
+(`0 * * * *` UTC), calling `GET /api/v1/cron/evaluate-reminders` with
+`Authorization: Bearer $CRON_SECRET`. GitHub secrets to create:
+`PROD_API_URL` (Railway domain) + `CRON_SECRET`.
 
-Kenapa bukan `cronSchedule` di `railway.json`: Railway mengeksekusi **start
-command** service pada jadwal, dan `railway.json` berlaku untuk seluruh repo
-(bukan per-service) — cron di service API akan menjalankan boot API tiap jam.
-Alternatif jika mau: service Railway kedua (`scheduler`) dengan start command
+Why not `cronSchedule` in `railway.json`: Railway executes the service
+**start command** on schedule, and `railway.json` applies to the whole repo
+(not per-service) — a cron on the API service would boot the API every hour.
+Alternative if wanted: a second Railway service (`scheduler`) with start command
 `curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://<api>/api/v1/cron/evaluate-reminders`
-dan cron `0 * * * *` di dashboard service itu saja.
+and cron `0 * * * *` on that service's dashboard only.
 
-Overlap aman: single-flight lock (`reminder_runs_single_active`) membuat
-panggilan kedua keluar `skipped` tanpa kerja.
+Overlap is safe: the single-flight lock (`reminder_runs_single_active`) makes
+the second call exit `skipped` with no work.
 
 ## 5. Rollback
 
-- Kode API: Railway redeploy revision sebelumnya aman (enum `sending` yang
-  tertinggal diabaikan sweep claim lama).
-- Migrasi: rollback enum `sending` tidak mungkin selama ada row `sending`
-  (lihat `docs/RUNBOOK-reminders.md` §6).
+- API code: redeploying the previous Railway revision is safe (a leftover
+  `sending` enum is ignored by the old sweep claim).
+- Migrations: rolling back the `sending` enum is impossible while `sending`
+  rows exist (see `docs/RUNBOOK-reminders.md` §6).
 
-## 6. Verifikasi pasca-deploy
+## 6. Post-deploy verification
 
 1. `GET https://<api>/health` → `200 {ok:true, service:"deadline-radar-api"}`.
-2. `GET https://<api>/openapi` → 200 (dokumentasi API hidup).
-3. `GET https://<web>/health` → 200 (rewrite ke API lewat Vercel).
-4. Trigger manual: GitHub Actions → Scheduler Trigger → Run workflow. Log harus
-   `[cron] evaluate-reminders finished: …` di log Railway. ☑ (2026-09-27:
-   trigger manual via API + cron per jam tercatat `ok` di `reminder_runs`)
-5. `GET https://<api>/health/cron` → **503 sampai run pertama `ok` tercatat**
-   (`reminder_runs` masih 0 row saat dokumen ini ditulis). Setelah run pertama
-   harus `200 {ok:true, lastRunAt, lastStatus, evaluatedTasks}`.
-6. Login end-to-end di browser prod (auth bridge butuh `AUTH_BRIDGE_SECRET` yang
-   sama di kedua sisi) + satu task uji dengan threshold H-1 untuk memastikan
-   email benar-benar keluar. ☑ (2026-09-27: register 200 + login + task H-0 →
-   delivery `sent` + email mendarat di inbox; audit §9; akun uji dihapus)
-7. Pasang monitor eksternal (UptimeRobot/StatusCake) ke `/health/cron` setiap
-   menit — alerted saat `503` (RF-14 MTTD).
+2. `GET https://<api>/openapi` → 200 (live API docs).
+3. `GET https://<web>/health` → 200 (rewrite to the API through Vercel).
+4. Manual trigger: GitHub Actions → Scheduler Trigger → Run workflow. The log must show
+   `[cron] evaluate-reminders finished: …` in the Railway logs. ☑ (2026-09-27:
+   manual trigger via API + hourly cron recorded `ok` in `reminder_runs`)
+5. `GET https://<api>/health/cron` → **503 until the first `ok` run is recorded**
+   (`reminder_runs` still 0 rows when this doc was written). After the first run it must be
+   `200 {ok:true, lastRunAt, lastStatus, evaluatedTasks}`.
+6. End-to-end login in the prod browser (the auth bridge needs the same
+   `AUTH_BRIDGE_SECRET` on both sides) + one test task with an H-1 threshold
+   to prove email really goes out. ☑ (2026-09-27: register 200 + login + H-0 task →
+   `sent` delivery + email landed in the inbox; audit §9; test account deleted)
+7. Attach an external monitor (UptimeRobot/StatusCake) to `/health/cron` every
+   minute — alert on `503` (RF-14 MTTD).
 
-## 7. Rekaman installasi production (2026-09-26)
+## 7. Production installation record (2026-09-26)
 
-| Item | Nilai |
+| Item | Value |
 |---|---|
 | Railway project / service | `deadline-radar-api` / `deadline-radar-api` (`6886d8eb-b917-4820-bc2e-74ac3c0b16c2`) |
-| Domain API | `https://deadline-radar-api-production.up.railway.app` |
+| API domain | `https://deadline-radar-api-production.up.railway.app` |
 | Vercel project | `deadline-radar-web` (`prj_BT7yRuoU4Jw7MXggiQDenlfffovJ`), root `apps/web`, GitHub connected |
-| Domain Web | `https://dr.rapm.space` |
+| Web domain | `https://dr.rapm.space` |
 | GitHub secrets | `PROD_API_URL`, `CRON_SECRET` |
 
-`API_ORIGIN` = domain API, `WEB_ORIGIN` = domain Web. `railway.json` masih
-dipakai (deprecated CLI, tetap jalan sampai 2026-12-01; migrasi ke
-`.railway/railway.ts` bila perlu). CLI: `railway link` (project+environment
-`production`+service) sudah terpasang di repo ini, `vercel link` ada di
-`apps/web/.vercel` (tidak di-commit).
-
+`API_ORIGIN` = API domain, `WEB_ORIGIN` = Web domain. `railway.json` is still
+in use (deprecated CLI, keeps working until 2026-12-01; migrate to
+`.railway/railway.ts` if needed). CLI: `railway link` (project + `production`
+environment + service) is already attached in this repo, `vercel link` lives in
+`apps/web/.vercel` (not committed).

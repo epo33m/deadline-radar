@@ -1,3 +1,5 @@
+> **Archived — original language preserved (Indonesian). Exempt from the English-only docs rule.**
+
 # Remediation Log — LO-1: Duplikasi `requireSession()` layout + page mengandalkan fetch-memoization, bukan `React.cache()`
 
 - **Temuan asal:** `docs/audit/caching-data-fetching-audit.md` §3 LO-1 (⚪ Low).

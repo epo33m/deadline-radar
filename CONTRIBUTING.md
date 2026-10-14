@@ -1,13 +1,13 @@
 # Contributing to Deadline Radar
 
-Terima kasih mau berkontribusi. Panduan ini untuk menjalankan repo secara lokal, menjalankan tes, dan mengirim perubahan.
+Thank you for contributing. This guide covers running the repo locally, running tests, and submitting changes.
 
 ## Prerequisites
 
 - Bun 1.4+
-- Node (untuk tooling Vercel)
-- Supabase project (project ref production: lihat `scripts/lib/target.ts` deny list)
-- `vercel` CLI (opsional, untuk env production)
+- Node (for Vercel tooling)
+- Supabase project (production project ref: see `scripts/lib/target.ts` deny list)
+- `vercel` CLI (optional, for production env)
 
 ## Getting started
 
@@ -92,12 +92,16 @@ curl http://127.0.0.1:4025/api/cron/evaluate-reminders
 
 ## Status
 
-`v1.1.0` — in production on Nx + Elysia + Supabase (live at https://dr.rapm.space — bukan demo). Set `DATABASE_URL` and `SUPABASE_JWT_SECRET` before exercising authenticated API routes.
+`v1.1.0` — in production on Nx + Elysia + Supabase (live at https://dr.rapm.space — not a demo). Set `DATABASE_URL` and `SUPABASE_JWT_SECRET` before exercising authenticated API routes.
 
 ## Workflow & CI
 
-- Branch dari `main`, PR ke `main`. CI hijau wajib: `bun run typecheck`, `bun run lint`, `bunx nx run-many -t test`, deploy-migrations dry-run.
-- Production deployment hanya dari `main` (Vercel project `deadline-radar-web`, root `apps/web`).
-- Prod smoke workflow (`smoke-prod.yml`) membutuhkan secrets: `PROD_WEB_URL=https://dr.rapm.space`, `PROD_API_URL`, Supabase keys — sudah ter-set di repo.
-- Branch lokal/remote yang sudah merged boleh dihapus; `main` hanya menerima squash-merge dari PR.
-- Issues & triage: lihat `docs/agents/` (GitHub Issues, label `needs-triage` dst).
+- Branch from `main`, PR to `main`. Green CI required: `bun run typecheck`, `bun run lint`, `bunx nx run-many -t test`, deploy-migrations dry-run.
+- Production deploys only from `main` (Vercel project `deadline-radar-web`, root `apps/web`).
+- Prod smoke workflow (`smoke-prod.yml`) needs secrets: `PROD_WEB_URL=https://dr.rapm.space`, `PROD_API_URL`, Supabase keys — already set in the repo.
+- Merged local/remote branches may be deleted; `main` only accepts squash-merge from PRs.
+- Issues & triage: see `docs/agents/` (GitHub Issues, `needs-triage` label etc.).
+
+## Docs language (mandatory)
+
+All documentation, release notes, changelogs, and PR descriptions must be written in English. `bun run check:docs-language` enforces this in CI.

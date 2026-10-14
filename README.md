@@ -4,7 +4,7 @@
 
 Personal academic task tracker that helps students monitor coursework and meet deadlines through a centralized Summary and tiered reminders (email + in-app).
 
-> **Production — bukan demo.** Aplikasi live di [dr.rapm.space](https://dr.rapm.space) dengan data real per-user (akun dan isolasi data masing-masing pengguna).
+> **Production — not a demo.** Live at [dr.rapm.space](https://dr.rapm.space) with real per-user data (each user has their own account with isolated data).
 
 > **v1.1.0 is out 🎉** — [What's changed](https://github.com/epo33m/deadline-radar/releases/tag/v1.1.0): cursor pagination di task & notification lists (I-10) + per-attempt send telemetry (I-13), plus pengerasan auth bridge, body-size guard, dan idempotency. Bug reports carry the `ref:` code shown under any error message.
 

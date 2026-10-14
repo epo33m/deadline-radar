@@ -1,3 +1,5 @@
+> **Archived — original language preserved (Indonesian). Exempt from the English-only docs rule.**
+
 # Testing Audit — Deadline Radar
 
 > **Mode:** Full Suite Audit (static, read-only audit; no code executed by auditor except via sub-agent reads)
