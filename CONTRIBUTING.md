@@ -92,7 +92,7 @@ curl http://127.0.0.1:4025/api/cron/evaluate-reminders
 
 ## Status
 
-`v1.0.0` — MVP in production on Nx + Elysia + Supabase. Set `DATABASE_URL` and `SUPABASE_JWT_SECRET` before exercising authenticated API routes.
+`v1.1.0` — in production on Nx + Elysia + Supabase (live at https://dr.rapm.space — bukan demo). Set `DATABASE_URL` and `SUPABASE_JWT_SECRET` before exercising authenticated API routes.
 
 ## Workflow & CI
 

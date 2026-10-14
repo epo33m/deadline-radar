@@ -43,7 +43,12 @@ production dari `main`.
 5. Merge ke `main` → `deploy-production.yml` (perlu approval pemilik) +
    Vercel **Production** deployment. Lanjut checklist manual
    `docs/PROD_ENV_CHECKLIST.md` + `supabase/verify-prod.sql`.
-6. Hapus head branch setelah merge. Tag tiap beta (`v0.1.0-beta.N`).
+6. Hapus head branch setelah merge. Tag tiap rilis (`vX.Y.Z`, target `main`).
+   `package.json` (root + semua workspace `apps/*/packages/*`) wajib sama
+   dengan versi tag (tanpa prefix `v`). Guard: `bun run check:version`
+   (konsistensi workspace, jalan di CI feature); sebelum publish tag jalankan
+   `bun run scripts/check-version-sync.ts --tag vX.Y.Z`. Lihat
+   `docs/RELEASE.md` untuk checklist dan anatomi GitHub Release.
 
 ## Pemisahan fitur vs production
 
