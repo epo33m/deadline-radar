@@ -16,6 +16,7 @@ import {
 
 import { inboundClientFor } from "@/lib/api/client-ip";
 import { resolveApiOrigin } from "@/lib/api/origin";
+import { readLimitedBodyText } from "@/lib/api/body-limit";
 
 const API_ORIGIN = resolveApiOrigin();
 
@@ -58,7 +59,16 @@ async function bridgeAuthPost(
     );
   }
 
-  const incoming = await request.text();
+  // #167: bounded read — see register/route.ts. The gates above already ran,
+  // so this 413 fires only for a same-origin, JSON-typed, oversized body,
+  // before any upstream fetch is attempted.
+  const incoming = await readLimitedBodyText(request);
+  if (incoming === null) {
+    return NextResponse.json(
+      { error: "Auth request body too large" },
+      { status: 413 },
+    );
+  }
   // #160: the 20/min auth-sensitive budget is per-client, but the API can only
   // tell callers apart when this tier supplies an identity — see
   // lib/api/client-ip.ts for why forwarding is gated.

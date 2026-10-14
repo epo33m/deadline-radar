@@ -16,6 +16,7 @@ import {
 
 import { inboundClientFor } from "@/lib/api/client-ip";
 import { resolveApiOrigin } from "@/lib/api/origin";
+import { readLimitedBodyText } from "@/lib/api/body-limit";
 
 const API_ORIGIN = resolveApiOrigin();
 
@@ -53,7 +54,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const incoming = await request.text();
+  // #167: bounded read — an unauthenticated body must be size-gated before
+  // it is buffered, not after the downstream API caps it. Reject past
+  // BRIDGE_BODY_MAX_BYTES (auth JSON is <1KB; 64KiB is generous) before any
+  // upstream fetch is attempted.
+  const incoming = await readLimitedBodyText(request);
+  if (incoming === null) {
+    return NextResponse.json(
+      { error: "Auth request body too large" },
+      { status: 413 },
+    );
+  }
   // #160: same conditional identity forwarding as login/route.ts — see
   // lib/api/client-ip.ts.
   const inboundFor = inboundClientFor(request.headers);
