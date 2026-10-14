@@ -1,4 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
+import { readdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { postgres } from "./client";
 import {
   AUTHORITATIVE_SCHEMA_CONTRACT,
@@ -52,13 +54,20 @@ describe("M-13 Database Schema & Drift Protection", () => {
     expect(result.summary.triggersVerified).toBe(6);
   });
 
-  test("migration history table tracks all 44 migrations", async () => {
+  test("migration history table tracks every migration in the repo", async () => {
     const rows = await sql<{ version: string; name: string }[]>`
       SELECT version, name FROM supabase_migrations.schema_migrations ORDER BY version;
     `;
-    expect(rows.length).toBe(44);
-    expect(rows[0].version).toBe("20260901000000");
-    expect(rows[rows.length - 1].version).toBe("20261007000000");
+    // Expected versions derived from supabase/migrations filenames, not
+    // hard-coded: every new migration would otherwise stale this assertion
+    // (#166). Ordered equality still catches an unapplied, missing-middle,
+    // or out-of-order entry — including the first version pin.
+    const dir = fileURLToPath(new URL("../../../supabase/migrations", import.meta.url));
+    const expected = readdirSync(dir)
+      .filter((f) => /^\d+_.+\.sql$/.test(f))
+      .map((f) => f.split("_")[0])
+      .sort();
+    expect(rows.map((r) => r.version)).toEqual(expected);
   });
 
   describe("drift detector failure cases (adversarial simulation)", () => {
