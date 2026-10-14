@@ -1,6 +1,8 @@
 # Deadline Radar — MVP Scope
 
-> **Source of truth:** `product.md` (Baseline v0.1), `DOMAIN.md`, `ARCHITECTURE.md`, `DATA-MODEL.md`
+> **Source of truth:** `product.md` (v1.1.0), `DOMAIN.md`, `ARCHITECTURE.md`, `DATA-MODEL.md`
+
+> **Status historis:** MVP dinyatakan done saat v1.0.0 (live di produksi). Dokumen ini dipertahankan sebagai cakupan MVP awal; rilis produksi lanjutan (v1.1.0+) dicatat di [RELEASE.md](RELEASE.md) dan GitHub Releases — bukan di sini.
 
 ---
 

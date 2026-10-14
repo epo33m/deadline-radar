@@ -1,8 +1,8 @@
 # Deadline Radar — Product Requirements Document
 
-> **Status:** Baseline v0.1 (locked)
+> **Status:** v1.1.0 (production, live at https://dr.rapm.space — bukan demo; MVP done di v1.0.0)
 > **Owner:** (add your name)
-> **Last updated:** 2026-09-05
+> **Last updated:** 2026-10-14
 
 ---
 

@@ -1,10 +1,12 @@
 # Deadline Radar
 
-[![v1.0.0](https://img.shields.io/badge/release-v1.0.0-blue)](https://github.com/epo33m/deadline-radar/releases/tag/v1.0.0) [![live](https://img.shields.io/badge/demo-live-brightgreen)](https://dr.rapm.space)
+[![v1.1.0](https://img.shields.io/badge/release-v1.1.0-blue)](https://github.com/epo33m/deadline-radar/releases/tag/v1.1.0) [![live](https://img.shields.io/badge/live-production-brightgreen)](https://dr.rapm.space)
 
 Personal academic task tracker that helps students monitor coursework and meet deadlines through a centralized Summary and tiered reminders (email + in-app).
 
-> **v1.0.0 is out 🎉** — live at [dr.rapm.space](https://dr.rapm.space). Bug reports carry the `ref:` code shown under any error message.
+> **Production — bukan demo.** Aplikasi live di [dr.rapm.space](https://dr.rapm.space) dengan data real per-user (akun dan isolasi data masing-masing pengguna).
+
+> **v1.1.0 is out 🎉** — [What's changed](https://github.com/epo33m/deadline-radar/releases/tag/v1.1.0): cursor pagination di task & notification lists (I-10) + per-attempt send telemetry (I-13), plus pengerasan auth bridge, body-size guard, dan idempotency. Bug reports carry the `ref:` code shown under any error message.
 
 ## Features
 
@@ -44,6 +46,7 @@ Use `bun` / `bunx` for install, scripts, and package adds. Do not use npm, npx, 
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture |
 | [docs/diagrams/mvp-architecture.html](docs/diagrams/mvp-architecture.html) | Interactive MVP architecture map (Archify) |
 | [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | Schema, triggers, and RLS |
+| [docs/RELEASE.md](docs/RELEASE.md) | Release checklist, version-sync guard, dan anatomi GitHub Release |
 | [docs/agents/](docs/agents/) | Agent issue tracker, triage labels, domain-doc layout |
 
 Product docs under `docs/` are the source of truth. Engineering work follows the Matt Pocock skills wired in `AGENTS.md`.
