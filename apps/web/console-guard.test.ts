@@ -44,6 +44,10 @@ const ALLOWED_NEXT_IMPORTS: Record<string, string> = {
   // #162: drives the three auth bridges through their real entrypoints to
   // assert that cross-site requests are refused before any upstream call.
   "app/api/auth/auth-csrf.test.ts": "next/server",
+  // #167: drives the login/register bridges through their real entrypoints
+  // to assert oversized bodies are rejected before any upstream call, so
+  // `NextRequest` is needed to construct the inbound request.
+  "app/api/auth/auth-body-limit.test.ts": "next/server",
 };
 
 function collect(dir: string): string[] {
