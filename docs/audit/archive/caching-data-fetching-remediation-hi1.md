@@ -1,3 +1,5 @@
+> **Archived — original language preserved (Indonesian). Exempt from the English-only docs rule.**
+
 # Remediation Log — HI-1: Invalidasi mutasi tidak lengkap untuk course & preferensi waktu
 
 - **Temuan asal:** `docs/audit/caching-data-fetching-audit.md` §3 HI-1 (🟠 High).

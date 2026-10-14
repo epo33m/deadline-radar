@@ -41,6 +41,9 @@ jobs:
       - name: Check version sync
         run: bun run check:version
 
+      - name: Check docs language
+        run: bun run check:docs-language
+
       - name: Run Lint
         run: bun run lint
 

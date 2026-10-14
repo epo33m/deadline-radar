@@ -1,3 +1,5 @@
+> **Archived — original language preserved (Indonesian). Exempt from the English-only docs rule.**
+
 # Audit Sistem Reminder — Scheduled Reminder & Notification Delivery
 
 Tanggal: 2026-09-20 | Auditor: senior backend reliability engineer (forensik, skeptis) | Scope: subsistem *scheduled reminder & notification delivery* (cron → `evaluateReminders` → Resend).

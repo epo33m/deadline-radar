@@ -1,3 +1,5 @@
+> **Archived — original language preserved (Indonesian). Exempt from the English-only docs rule.**
+
 # Laporan Audit — Caching & Data Fetching (Next.js + Supabase)
 
 - **Objek audit:** Deadline Radar, stack Next.js App Router (web) → API Elysia internal → Supabase

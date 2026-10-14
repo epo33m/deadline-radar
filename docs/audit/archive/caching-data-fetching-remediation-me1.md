@@ -1,3 +1,5 @@
+> **Archived — original language preserved (Indonesian). Exempt from the English-only docs rule.**
+
 # Remediation Log — ME-1: `revalidateTask()` memakai pola dinamis `/courses/[id]` sehingga membatalkan semua halaman detail course per mutasi task
 
 - **Temuan asal:** `docs/audit/caching-data-fetching-audit.md` §3 ME-1 (🟡 Medium).

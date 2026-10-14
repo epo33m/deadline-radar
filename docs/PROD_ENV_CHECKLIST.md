@@ -1,96 +1,96 @@
 # Production Environment Checklist — Deadline Radar
 
-> Diisi manusia (pemilik) SEBELUM deploy pertama. Nilai tidak pernah masuk repo.
-> Status awal: sebagian besar BELUM (prod belum deploy).
-> Keputusan tercatat: single replica · `AUTH_AUDIT_RETENTION_DAYS=90` ·
-> Redis wajib (SEC-007, boot gagal tanpanya).
-> Cara isi per platform (Railway = ENV-API, Vercel = ENV-WEB) + urutan deploy:
+> Filled in by a human (owner) BEFORE the first deploy. Values never enter the repo.
+> Initial status: mostly NOT DONE (prod not deployed yet).
+> Recorded decisions: single replica · `AUTH_AUDIT_RETENTION_DAYS=90` ·
+> Redis required (SEC-007, boot fails without it).
+> Per-platform fill guide (Railway = ENV-API, Vercel = ENV-WEB) + deploy order:
 > `docs/DEPLOY-PROD.md`.
 
-Legenda lokasi:
-- **ENV-API** — environment variables service API (hosting API)
-- **ENV-WEB** — environment variables service Web/Next.js (hosting Web)
-- **DASH-SB** — Supabase dashboard (project production)
+Location legend:
+- **ENV-API** — API service environment variables (API hosting)
+- **ENV-WEB** — Web/Next.js service environment variables (Web hosting)
+- **DASH-SB** — Supabase dashboard (production project)
 - **DASH-RE** — Resend dashboard
-- **DASH-SE** — Sentry dashboard (setelah proyek dibuat)
+- **DASH-SE** — Sentry dashboard (after the project is created)
 
-## 1. Rahasia wajib boot (API gagal start tanpanya)
+## 1. Required boot secrets (API fails to start without them)
 
-| Var | Lokasi isi | Status | Catatan |
+| Var | Fill location | Status | Notes |
 |---|---|---|---|
-| `DATABASE_URL` | ENV-API | ☐ | Pooler Supabase project prod (`pgbouncer`, `prepare:false` tetap di kode) |
-| `SUPABASE_URL` | ENV-API | ☐ | URL project prod |
-| `SUPABASE_ANON_KEY` | ENV-API | ☐ | anon key project prod |
-| `SUPABASE_SERVICE_ROLE_KEY` | ENV-API | ☐ | service_role project prod; JANGAN ke Web |
-| `CRON_SECRET` | ENV-API + scheduler cron | ☐ | Acak panjang; scheduler memanggil `GET /api/v1/cron/evaluate-reminders` dengan `Authorization: Bearer …` |
-| `AUTH_BRIDGE_SECRET` | ENV-API **dan** ENV-WEB (sama) | ☐ | Acak panjang; tidak pernah literal `"1"` |
-| `REDIS_URL` | ENV-API | ☐ | Wajib prod (SEC-007). Legacy TCP — dipakai hanya bila REST unset |
-| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | ENV-API | ☐ | Transport utama (HTTP, tanpa connection management). REST menang atas `REDIS_URL` agar accounting tak split-brain. Region **US East** |
-| `REDIS_TIMEOUT_MS` | ENV-API | ☐ | Opsional: batas satu round trip Redis (ms). Kosong = **250**. Lambat/lebih dari ini = fallback bucket memory + warn (bukan 500); juga batas per-command di transport (ioredis `commandTimeout`/`connectTimeout`, abort signal REST Upstash) untuk rate-limit dan throttle login; samakan region Upstash dengan region API agar jarang terpicu |
-| `BOOTSTRAP_CACHE_TTL_MS` | ENV-API | ☐ | Opsional: TTL cache `GET /api/v1/bootstrap` per-user (ms). Kosong = **30000**. `0` = matikan. Eviksi otomatis tiap mutasi 2xx (hook global); over-evict hanya buang refetch |
+| `DATABASE_URL` | ENV-API | ☐ | Prod Supabase pooler (`pgbouncer`, `prepare:false` stays in code) |
+| `SUPABASE_URL` | ENV-API | ☐ | Prod project URL |
+| `SUPABASE_ANON_KEY` | ENV-API | ☐ | Prod project anon key |
+| `SUPABASE_SERVICE_ROLE_KEY` | ENV-API | ☐ | Prod project service_role; NEVER to Web |
+| `CRON_SECRET` | ENV-API + scheduler cron | ☐ | Long random; the scheduler calls `GET /api/v1/cron/evaluate-reminders` with `Authorization: Bearer …` |
+| `AUTH_BRIDGE_SECRET` | ENV-API **and** ENV-WEB (same) | ☐ | Long random; never the literal `"1"` |
+| `REDIS_URL` | ENV-API | ☐ | Required in prod (SEC-007). Legacy TCP — used only when REST is unset |
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | ENV-API | ☐ | Primary transport (HTTP, no connection management). REST wins over `REDIS_URL` so accounting never split-brains. Region **US East** |
+| `REDIS_TIMEOUT_MS` | ENV-API | ☐ | Optional: one Redis round-trip bound (ms). Empty = **250**. Slow/beyond this = memory-bucket fallback + warn (not 500); also the per-command bound in transports (ioredis `commandTimeout`/`connectTimeout`, Upstash REST abort signal) for rate-limit and login throttle; co-locate the Upstash region with the API region so it rarely fires |
+| `BOOTSTRAP_CACHE_TTL_MS` | ENV-API | ☐ | Optional: `GET /api/v1/bootstrap` per-user cache TTL (ms). Empty = **30000**. `0` = off. Auto-evicted on every 2xx mutation (global hook); over-evict only wastes a refetch |
 
-## 2. Fungsional (degradasi bila kosong)
+## 2. Functional (degraded when empty)
 
-| Var | Lokasi isi | Status | Catatan |
+| Var | Fill location | Status | Notes |
 |---|---|---|---|
-| `RESEND_API_KEY` | ENV-API | ☐ | **WAJIB prod (RF-13 fail-closed): API refusal boot kalau kosong / bukan format `re_`.** Tanpa ini semua delivery gagal di send-time (blackout) |
-| `RESEND_FROM_EMAIL` | ENV-API | ☐ | **WAJIB prod (RF-13): valid (bukan default sandbox).** Kosong/invalid = refusal boot; pakai domain terverifikasi di DASH-RE (domain `resend.dev` = warn, hanya preview) |
-| `SENTRY_DSN` | ENV-API **dan** ENV-WEB | ☐ | DSN project Sentry (bukan rahasia, tapi tetap via env); lihat §5 |
-| `WEB_ORIGIN` | ENV-API + ENV-WEB | ☐ | Origin publik web prod = `https://dr.rapm.space` (metadata base, cookie/CORS/redirect). **WAJIB untuk auth bridge (#162):** login/register/refresh menolak mint cookie bila kosong |
-| `API_ORIGIN` / `API_PORT` | ENV-WEB / ENV-API | ☐ | Alamat API yang di-rewrite Web |
-| `AUTH_AUDIT_RETENTION_DAYS` | ENV-API | ☐ | Sudah diputuskan **90**; template aktif 90 |
-| `REMINDER_CUTOFF_ISO` | ENV-API | ☐ | F-03 + sign-off N-2: WAJIB isi dengan instant aktivasi scheduler saat deploy (format ISO) + komunikasikan ke user. **WAJIB di production (RF-11 fail-closed): API refusal boot kalau kosong/format salah.** Kosong = run pertama PASTI burst (terbatas kuota 50/run/user — puluhan email per user, bukan nol). Nilai dipilih: `2026-09-26T04:07:00Z` (aktivasi scheduler 2026-09-26; naikkan kalau run pertama jauh lebih akhir, jangan turunkan) |
-| `MAX_TASKS_PER_RUN` | ENV-API | ☐ | RF-12 opsional: cap task per run. Kosong = **10000**; invalid = diabaikan (warning) + default, tidak gagal boot. Set lebih kecil bila host timeout < budget default |
-| `MAX_RUN_DURATION_MS` | ENV-API | ☐ | RF-12 opsional: deadline wall-clock per run (ms). Kosong = **120000**; invalid = diabaikan (warning) + default. Selalu < 30 mnt (di-clamp) agar tak menggembok single-flight lock; selaraskan dengan `timeout`/`maxDuration` host saat hosting diputuskan |
-| `REMINDER_RUN_INTERVAL_MS` | ENV-API | ☐ | RF-14 opsional: interval antar run scheduler (ms). Kosong = **3600000** (1 jam). Dipakai `/health/cron`: scheduler dinyatakan unhealthy bila > 2× interval sejak run `ok` terakhir |
-| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ENV-WEB | ☐ | Fallback verifikasi JWT di proxy |
-| `SUPABASE_JWT_SECRET` | ENV-API + ENV-WEB | ☐ | Opsional; hanya untuk project Supabase HS256 lawas (ES256 baru via JWKS otomatis) |
-| `TRUST_PROXY` / `TRUSTED_PROXIES` | ENV-API | ☐ | **WAJIB** bila web tier berada di belakang edge (#160): tanpa keduanya API tidak bisa membedakan pemanggil dari tier, jadi budget 20/mnt auth jadi satu bucket bersama untuk semua user (salah isi = spoof IP rate-limit **dan IP di audit auth**; tanpa itu audit mencatat NULL). Isi `TRUSTED_PROXIES` dengan alamat egress web tier |
-| `WEB_FORWARD_CLIENT_IP` | ENV-WEB | ☐ | **Opsional, default OFF** (#160). Isi `true` HANYA setelah memastikan edge platform **OVERWRITE** `X-Forwarded-For`. Kalau edge MENAMBAH (append) header kiriman client, API akan mempercayai entry pilihan attacker — bucket milik attacker, lebih buruk dari bucket bersama yang diperbaiki. Perlu `TRUST_PROXY=true` + `TRUSTED_PROXIES` di API juga, jika tidak header diabaikan. Catatan: dengan K alamat egress web tier, limit jadi 20*K/mnt — pastikan K kecil |
+| `RESEND_API_KEY` | ENV-API | ☐ | **REQUIRED in prod (RF-13 fail-closed): API refuses to boot when empty / not `re_` format.** Without it every delivery fails at send time (blackout) |
+| `RESEND_FROM_EMAIL` | ENV-API | ☐ | **REQUIRED in prod (RF-13): valid (not the default sandbox).** Empty/invalid = boot refusal; use a DASH-RE verified domain (`resend.dev` domain = warn, preview only) |
+| `SENTRY_DSN` | ENV-API **and** ENV-WEB | ☐ | Sentry project DSN (not a secret, but still via env); see §5 |
+| `WEB_ORIGIN` | ENV-API + ENV-WEB | ☐ | Prod web public origin = `https://dr.rapm.space` (metadata base, cookies/CORS/redirects). **REQUIRED for the auth bridge (#162):** login/register/refresh refuse to mint cookies when empty |
+| `API_ORIGIN` / `API_PORT` | ENV-WEB / ENV-API | ☐ | The API address the Web rewrites to |
+| `AUTH_AUDIT_RETENTION_DAYS` | ENV-API | ☐ | Decided **90**; template active at 90 |
+| `REMINDER_CUTOFF_ISO` | ENV-API | ☐ | F-03 + sign-off N-2: MUST be filled with the scheduler activation instant at deploy (ISO format) + communicated to users. **REQUIRED in production (RF-11 fail-closed): API refuses to boot when empty/malformed.** Empty = the first run WILL burst (capped by the 50/run/user quota — dozens of emails per user, not zero). Chosen value: `2026-09-26T04:07:00Z` (scheduler activation 2026-09-26; raise if the first run is much later, never lower) |
+| `MAX_TASKS_PER_RUN` | ENV-API | ☐ | RF-12 optional: per-run task cap. Empty = **10000**; invalid = ignored (warning) + default, no boot failure. Set smaller when the host timeout is under the default budget |
+| `MAX_RUN_DURATION_MS` | ENV-API | ☐ | RF-12 optional: per-run wall-clock deadline (ms). Empty = **120000**; invalid = ignored (warning) + default. Always < 30 min (clamped) so it never wedges the single-flight lock; align with the host `timeout`/`maxDuration` once hosting is decided |
+| `REMINDER_RUN_INTERVAL_MS` | ENV-API | ☐ | RF-14 optional: scheduler run interval (ms). Empty = **3600000** (1 hour). Used by `/health/cron`: the scheduler is unhealthy when > 2× interval passed since the last `ok` run |
+| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ENV-WEB | ☐ | Proxy JWT-verification fallback |
+| `SUPABASE_JWT_SECRET` | ENV-API + ENV-WEB | ☐ | Optional; only for legacy HS256 Supabase projects (new ES256 via JWKS automatic) |
+| `TRUST_PROXY` / `TRUSTED_PROXIES` | ENV-API | ☐ | **REQUIRED** when the web tier sits behind an edge (#160): without both, the API cannot tell callers apart from the tier, so the 20/min auth budget becomes one shared bucket for all users (wrong values = rate-limit IP spoofing **and auth-audit IPs**; without it the audit records NULL). Fill `TRUSTED_PROXIES` with the web tier egress addresses |
+| `WEB_FORWARD_CLIENT_IP` | ENV-WEB | ☐ | **Optional, default OFF** (#160). Set `true` ONLY after confirming the edge platform **OVERWRITES** `X-Forwarded-For`. If the edge APPENDS the client-sent header, the API will trust an attacker-chosen entry — the attacker's bucket, worse than the shared bucket it fixes. Also needs `TRUST_PROXY=true` + `TRUSTED_PROXIES` on the API, otherwise the header is ignored. Note: with K web-tier egress addresses the limit becomes 20*K/min — keep K small |
 
-## 3. Dashboard Supabase (DASH-SB, project prod)
+## 3. Supabase dashboard (DASH-SB, prod project)
 
-| Item | Status | Cara verifikasi |
+| Item | Status | How to verify |
 |---|---|---|
-| Migrasi `supabase/migrations/*` diterapkan (`bun run db:migrate`, lalu `db:verify`) | ☐ | `supabase/verify-prod.sql` bagian 5: nol pending. Sign-off N-4 (blocking): migrate WAJIB jalan SEBELUM deploy kode — tanpa nilai enum `sending` + kolom `claimed_at`, klaim sweep F-10 melempar dan setiap run 500 berulang |
-| `db:drift` bersih kecuali deviasi yang dikenal | ☐ | Ekspektasi: HANYA `profiles_id_fkey → users` (pra-ada). Selain itu = migrasi belum diterapkan |
-| Body fungsi trigger F-13 ternormalisasi di prod | ☐ | Drift check tidak hash body fungsi — verifikasi manual: `pg_get_functiondef` untuk `handle_new_user` + `handle_user_email_change` harus memuat `lower(trim` |
-| RLS aktif 12 tabel + 17 policy sesuai kontrak | ☐ | `supabase/verify-prod.sql` bagian 1–2 |
-| Bucket `attachments` private (`public=false`) + 4 policy storage | ☐ | `supabase/verify-prod.sql` bagian 3 |
-| Auth → Redirect allowlist HANYA domain prod | ☐ | Cek manual; isi: … |
-| Auth → wajib konfirmasi email, kebijakan password & expiry OTP | ☐ | Cek manual; isi: … |
-| Auth → hooks/webhook kustom tidak ada yang tak dikenal | ☐ | Cek manual |
+| `supabase/migrations/*` applied (`bun run db:migrate`, then `db:verify`) | ☐ | `supabase/verify-prod.sql` section 5: zero pending. Sign-off N-4 (blocking): migrate MUST run BEFORE code deploy — without the `sending` enum value + `claimed_at` column, the F-10 sweep claim throws and every run 500s repeatedly |
+| `db:drift` clean except the known deviation | ☐ | Expected: ONLY `profiles_id_fkey → users` (pre-existing). Anything else = migrations not applied |
+| F-13 trigger function bodies normalized in prod | ☐ | The drift check does not hash function bodies — verify manually: `pg_get_functiondef` for `handle_new_user` + `handle_user_email_change` must contain `lower(trim` |
+| RLS on 12 tables + 17 policies per contract | ☐ | `supabase/verify-prod.sql` sections 1–2 |
+| `attachments` bucket private (`public=false`) + 4 storage policies | ☐ | `supabase/verify-prod.sql` section 3 |
+| Auth → redirect allowlist ONLY prod domains | ☐ | Manual check; fill in: … |
+| Auth → mandatory email confirmation, password policy & OTP expiry | ☐ | Manual check; fill in: … |
+| Auth → no unknown custom hooks/webhooks | ☐ | Manual check |
 
-## 4. Dashboard Resend (DASH-RE)
+## 4. Resend dashboard (DASH-RE)
 
-| Item | Status | Catatan |
+| Item | Status | Notes |
 |---|---|---|
-| Domain pengirim terverifikasi (SPF/DKIM/DMARC) | ☐ | Tanpa ini masuk spam / ditolak |
-| Tidak perlu webhook bounce/complaint di sisi kita | ☐ | Diputuskan N/A: daftar supresi otomatis Resend sudah menangani; tidak ada endpoint webhook di repo (hasil audit item 6) |
-| Alerting biaya/kuota bulanan aktif | ☐ | Wajib pasca-SEC-003 (kuota kode ada, tagihan tetap perlu alarm) |
+| Sender domain verified (SPF/DKIM/DMARC) | ☐ | Without this, mail lands in spam / is rejected |
+| No bounce/complaint webhook needed on our side | ☐ | Decided N/A: Resend's automatic suppression list already handles it; no webhook endpoint in the repo (audit item 6 result) |
+| Monthly cost/quota alerting on | ☐ | Required post-SEC-003 (code quotas exist, the bill still needs an alarm) |
 
-## 5. Dashboard Sentry (DASH-SE)
+## 5. Sentry dashboard (DASH-SE)
 
-| Item | Status | Catatan |
+| Item | Status | Notes |
 |---|---|---|
-| Project `deadline-radar-web` + `deadline-radar-api` dibuat | ☑ (2026-09-27, API) | `sentry.io/epo33m`: `deadline-radar-web` (javascript-nextjs), `deadline-radar-api` (node); template `javascript-nextjs` tak dipakai |
-| `SENTRY_DSN` | ENV-API **dan** ENV-WEB | ☑ (2026-09-27, sync) | Kecuali itu: `SENTRY_DSN` sempat tak ada di sync `WEB_KEYS` (server/edge web takkan pernah aktif) — dibetulkan. `NEXT_PUBLIC_SENTRY_DSN` untuk client |
-| `sendDefaultPii: false` + scrub `beforeSend` aktif (sudah di kode) | ☑ | Diverifikasi test scrub |
-| Alert error-rate + cron gagal aktif | ☑ terbukti menyala (2026-09-27) | Drill: blackout message → GH issue #53 otomatis; 12 events/jam → detector `api-error-rate` fire + metric issue #5 → GH issue #54. GH drill #52/#53/#54 di-close. **Keputusan: rule blackout SENGAJA broad** (fire untuk semua issue baru — filter message-contains tak ada di builder UI org ini; diverifikasi via API schema + CLI 3.8.0 tanpa subcommand `alert`). Untuk volume error MVP ini (hanya 5xx yang di-capture) setiap issue baru memang layak jadi GH issue. Tinjau ulang bila noise > ~5 issue/minggu: opsi saat itu = tag `kind=blackout` dari kode + filter tagged-event. Drill issues Sentry dibiarkan open (API tolak manual-resolve); berlabel DRILL jelas |
+| `deadline-radar-web` + `deadline-radar-api` projects created | ☑ (2026-09-27, API) | `sentry.io/epo33m`: `deadline-radar-web` (javascript-nextjs), `deadline-radar-api` (node); the `javascript-nextjs` template is unused |
+| `SENTRY_DSN` | ENV-API **and** ENV-WEB | ☑ (2026-09-27, sync) | Except: `SENTRY_DSN` was once missing from the `WEB_KEYS` sync (server/edge web would never activate) — fixed. `NEXT_PUBLIC_SENTRY_DSN` for the client |
+| `sendDefaultPii: false` + `beforeSend` scrub on (already in code) | ☑ | Verified by the scrub test |
+| Error-rate + failed-cron alerts on | ☑ proven firing (2026-09-27) | Drill: blackout message → automatic GH issue #53; 12 events/hour → `api-error-rate` detector fires + metric issue #5 → GH issue #54. GH drills #52/#53/#54 closed. **Decision: the blackout rule is DELIBERATELY broad** (fires for every new issue — no message-contains filter in this org's builder UI; verified via API schema + CLI 3.8.0 with no `alert` subcommand). For this MVP's error volume (only 5xx captured) every new issue genuinely deserves a GH issue. Revisit if noise > ~5 issues/week: the option then = `kind=blackout` tag from code + tagged-event filter. Sentry drill issues left open (API rejects manual resolve); clearly labeled DRILL |
 
-## 6. Repo hygiene pra-rilis
+## 6. Pre-release repo hygiene
 
 | Item | Status |
 |---|---|
-| `.env.local` / `.env*` tidak ter-commit (`git status` bersih dari secret) | ☐ |
-| Tidak ada file `.env*` di `apps/web/` (Next auto-load-nya di dev/build/start, jadi isinya masuk `process.env` web tanpa diminta — #71) | ☑ (2026-09-30: `apps/web/.env.local` yang berisi `VERCEL_OIDC_TOKEN` dihapus; `apps/e2e/app-env.ts` menolak jalan kalau muncul lagi) |
-| Rilis dari PR/diff bersih berisi HANYA fix audit | ☐ | Sign-off: pohon kerja saat ini bercampur feature work paralel (UI, account security) — rilis dari diff yang hanya memuat perbaikan terverifikasi, bukan seluruh working tree |
-| Tidak ada SQL dump / backup di repo atau hosting statis | ☐ |
-| Source-map prod tidak terekspos sembarang (atau nonaktifkan bila perlu) | ☐ |
-| `openapi.json` + `schema.d.ts` di-regenerate pasca-SEC-008 | ☑ (sesi ini: `TaskWithCourse` tanpa `description` terkonfirmasi di keduanya) |
-| `/.well-known/security.txt` ter-deploy (file ada di `apps/web/public/`) | ☐ | Hosting harus menyertakan direktori `public/` (default di Vercel; Docker wajib `COPY apps/web/public/`). Contact masih placeholder — ganti sebelum rilis |
+| `.env.local` / `.env*` not committed (`git status` free of secrets) | ☐ |
+| No `.env*` file in `apps/web/` (Next auto-loads it in dev/build/start, so its content enters the web `process.env` unasked — #71) | ☑ (2026-09-30: `apps/web/.env.local` holding `VERCEL_OIDC_TOKEN` deleted; `apps/e2e/app-env.ts` refuses to run if it returns) |
+| Release from a clean PR/diff containing ONLY audit fixes | ☐ | Sign-off: the current working tree mixes parallel feature work (UI, account security) — release from a diff holding only verified fixes, not the whole working tree |
+| No SQL dumps / backups in the repo or on static hosting | ☐ |
+| Prod source maps not arbitrarily exposed (or disabled if needed) | ☐ |
+| `openapi.json` + `schema.d.ts` regenerated post-SEC-008 | ☑ (this session: `TaskWithCourse` without `description` confirmed in both) |
+| `/.well-known/security.txt` deployed (file exists in `apps/web/public/`) | ☐ | Hosting must include the `public/` directory (default on Vercel; Docker must `COPY apps/web/public/`). Contact still a placeholder — replace before release |
 
-## 7. Production security gates (blocking — dari SECURITY_SIGNOFF_2026-09-20.md)
+## 7. Production security gates (blocking — from SECURITY_SIGNOFF_2026-09-20.md)
 
 ```
 [x] C1 — Independent verification
@@ -103,261 +103,261 @@ Legenda lokasi:
 
 ### C4 — SEC-003: Direct PostgREST/Supabase INSERT quota bypass — CLOSED (code control verified 2026-09-20)
 
-- **Risiko:** application-level quota sudah enforced (200 task / 10 threshold /
-  cap 50 email per user per run), tetapi direct PostgREST insert melalui public
-  anon key masih dapat membuat task tanpa enforcement quota per-user yang sama.
-  RLS `WITH CHECK (user_id = auth.uid())` tidak membatasi jumlah baris, dan
-  trigger `on_task_created` menyuntik 4 threshold default pada setiap insert
-  dari jalur mana pun.
-- **Status subjektif dilarang:** SEC-003 tidak boleh ditandai PASS/VERIFIED-FIXED
-  hanya karena test aplikasi hijau. Status tetap PARTIALLY-FIXED sampai gate ini lolos.
-- **Required before release:** verifikasi bahwa quota task tidak dapat dibypass
-  melalui direct Supabase/PostgREST write path.
+- **Risk:** the application-level quota is already enforced (200 tasks / 10 thresholds /
+  50-email-per-user-per-run cap), but a direct PostgREST insert through the public
+  anon key could still create tasks without the same per-user quota enforcement.
+  The RLS `WITH CHECK (user_id = auth.uid())` does not limit row counts, and
+  the `on_task_created` trigger injects 4 default thresholds on inserts
+  from any path.
+- **Subjective status forbidden:** SEC-003 must not be marked PASS/VERIFIED-FIXED
+  just because the app tests are green. Status stays PARTIALLY-FIXED until this gate passes.
+- **Required before release:** verify that the task quota cannot be bypassed
+  through the direct Supabase/PostgREST write path.
 - **Verification must cover:**
-  1. application API write path (sudah: `tasks.quota.test.ts`, 4 test)
-  2. direct PostgREST write path menggunakan anon/authenticated client yang sesuai
-  3. RLS `WITH CHECK (user_id = auth.uid())` (eksistensi + ketiadaan batas hitung)
-  4. quota enforcement / global threshold behavior (cap 50/user/run tetap menahan laju)
-  5. regression test yang membuktikan bypass gagal (insert langsung ke-N+1 ditolak
-     atau compensating control setara, mis. revoke INSERT / trigger kuota DB)
+  1. application API write path (done: `tasks.quota.test.ts`, 4 tests)
+  2. direct PostgREST write path using a matching anon/authenticated client
+  3. RLS `WITH CHECK (user_id = auth.uid())` (existence + absence of a count bound)
+  4. quota enforcement / global threshold behavior (the 50/user/run cap still throttles the rate)
+  5. regression test proving the bypass fails (the N+1 direct insert is rejected
+     or an equivalent compensating control, e.g. INSERT revoke / DB quota trigger)
 - **Evidence required:** test output + production verification evidence
-  (output `supabase/verify-prod.sql` §2/§5 + bukti uji tulis langsung sebagai user).
-- **Release rule:** C4 dicentang hanya bila residual direct-write path sudah
-  **ditutup** (bukti di atas) atau **compensating control setara** didokumentasikan
-  dan diverifikasi. Sampai saat itu rilis publik dilarang.
-- **Closure 2026-09-20 (owner: epo33m, review: 2026-12-20):** compensating control
-  setara ditutup dan diverifikasi — trigger `task_quota_before_insert` (200 active
-  tasks/user) + `threshold_quota_before_insert` (10/task) di
+  (`supabase/verify-prod.sql` §2/§5 output + direct-write test evidence as a user).
+- **Release rule:** C4 is checked only when the residual direct-write path is
+  **closed** (evidence above) or an **equivalent compensating control** is documented
+  and verified. Until then public release is forbidden.
+- **Closure 2026-09-20 (owner: epo33m, review: 2026-12-20):** an equivalent
+  compensating control closed and verified — the `task_quota_before_insert` trigger
+  (200 active tasks/user) + `threshold_quota_before_insert` (10/task) in
   `supabase/migrations/20260921000000_sec003_task_threshold_quota.sql`
   (`service_role` bypass intentional & scoped); direct `notification_deliveries`
-  fabrication tetap ditolak RLS (42501), jadi jalur amplifikasi email tertutup.
-  Bukti: fresh-DB `supabase migration up` (34/34 applied) + `migrate.ts status/verify`
+  fabrication still RLS-rejected (42501), so the email amplification path is closed.
+  Evidence: fresh-DB `supabase migration up` (34/34 applied) + `migrate.ts status/verify`
   + 9/9 SQL scripts PASS (`rls_matrix.sql` 13/13 sections, `sec003_quota.sql` 9/9:
   201st task `TASK_QUOTA_EXCEEDED`, 11th threshold `THRESHOLD_QUOTA_EXCEEDED`,
-  cross-tenant/anon 42501, service_role bypass scoped, deliveries 42501) + bun
+  cross-tenant/anon 42501, scoped service_role bypass, deliveries 42501) + bun
   wrappers `sec003-quota.test.ts` / `rls-matrix.test.ts` PASS (negative control:
   dropping the trigger makes `sec003_quota.sql` FAIL) + full `bun run test`
   green (5 projects) + `typecheck`/`lint`/`build` green. Item (2) direct-PostgREST
-  write path dibuktikan via `authenticated`/`anon` role probes (bukan anon key
-  sungguhan, karena tidak ada project Supabase di loop ini); bukti tulis-langsung
-  sebagai user prod + `verify-prod.sql` §2/§5 wajib diulang saat C3 deploy.
+  write path proven via `authenticated`/`anon` role probes (not a real anon key,
+  since no Supabase project exists in this loop); direct-write evidence
+  as a prod user + `verify-prod.sql` §2/§5 must be repeated at C3 deploy.
 
-## 8. Verifikasi tertunda pra-rilis (dari sign-off audit reminder 2026-09-20)
+## 8. Deferred pre-release verification (from the 2026-09-20 reminder sign-off audit)
 
-Skenario wajib yang belum tereksekusi — eksekusi atau terima tertulis sebelum rilis.
-Rujukan: `docs/audits/reminder-system-audit-2026-09-20.md` §4 tabel skenario.
+Mandatory scenarios not yet executed — execute or formally accept before release.
+Reference: `docs/audits/reminder-system-audit-2026-09-20.md` §4 scenario table.
 
-| Skenario | Status | Yang dibutuhkan |
+| Scenario | Status | Needed |
 |---|---|---|
-| S-02 cron paralel multi-proses (≥2 instance, ≥10 iterasi) | ☐ | Staging 2 replika / 2 proses serentak melawan DB yang sama; harap: tepat 1 email per reminder per iterasi |
-| S-04 timeout-tapi-terkirim | ☐ | Fake provider stateful (mencatat terkirim lalu melempar timeout); harap: tanpa email kedua, key stabil antar percobaan |
-| S-08 cron mati 5 siklus lalu hidup | ☐ | Matikan scheduler 5 interval di staging, hidupkan; harap: catch-up terkendali (cutoff aktif), bukan burst |
-| S-10 dua user ekstrem (UTC+14 / UTC-11) | ☐ | Fixture dua profil; harap: reminder di jam lokal masing-masing yang benar |
-| S-11 hari transisi DST (maju + mundur) | ☐ | Fixture zona ber-DST melewati transisi; harap: tak bergeser/hilang/ganda |
-| S-15 dry-run deploy pertama di data historis | ☐ | Snapshot/tiruan data prod berukuran wajar, evaluator dry-run; laporkan angka email sebelum ada yang terkirim |
-| S-18 beban puncak | ☐ | Volume kandidat setara puncak; harap: selesai jauh di bawah interval cron, query ber-index, memori stabil |
+| S-02 parallel multi-process cron (≥2 instances, ≥10 iterations) | ☐ | Staging with 2 replicas / 2 concurrent processes against the same DB; expect: exactly 1 email per reminder per iteration |
+| S-04 timeout-but-delivered | ☐ | Stateful fake provider (records delivered, then throws timeout); expect: no second email, stable key across attempts |
+| S-08 cron dead 5 cycles then alive | ☐ | Kill the scheduler for 5 intervals on staging, restart; expect: controlled catch-up (cutoff active), not a burst |
+| S-10 two extreme users (UTC+14 / UTC-11) | ☐ | Two-profile fixture; expect: reminders at each correct local time |
+| S-11 DST transition day (forward + back) | ☐ | DST-zone fixture across the transition; expect: no shift/loss/duplication |
+| S-15 dry-run first deploy on historical data | ☐ | Snapshot/mock of reasonably sized prod data, evaluator dry-run; report email counts before anything is sent |
+| S-18 peak load | ☐ | Peak-equivalent candidate volume; expect: finishes far under the cron interval, indexed queries, stable memory |
 
 ## 9. Accepted risks (final verification 2026-09-20)
 
-Risiko berikut diterima tertulis dengan pemilik dan tanggal review. Selain
-daftar ini, tidak ada risiko yang diterima — sisanya harus ditutup.
+The following risks are formally accepted with owner and review date. Apart from
+this list, no risk is accepted — the rest must be closed.
 
-| ID | Risiko | Pemilik | Rasional | Review | Kontrol kompensasi |
+| ID | Risk | Owner | Rationale | Review | Compensating control |
 |---|---|---|---|---|---|
-| F-7 | 3 journey E2E tidak dikunci di CI (advisory) | epo33m | CI `verify` hanya sedia vanilla PostgreSQL; E2E butuh Chromium + build prod + project Supabase live | 2026-12-20 | `E2E_TARGET=staging bun run test:e2e` manual pra-rilis (`apps/e2e/README.md`); suite menolak jalan tanpa target bernama dan menolak host production (#56); drill sampai hijau sekali |
-| Quota-race | Dua txn bersamaan di 199/200 bisa lolos dua-duanya | epo33m | Diterima di komentar migrasi; API tetap enforcement utama, trigger adalah backstop | 2026-12-20 | Alarm biaya/kuota Resend (§4); hitung aktif = `deleted_at IS NULL` |
-| S-02…S-18 | Skenario staging §8 belum tereksekusi | epo33m | Tidak ada staging; S-11 tercakup sebagian oleh vektor DST unit (6 test `America/New_York`) | 2026-12-20 | Eksekusi atau terima tertulis sebelum rilis publik (C6) |
-| P2-cache | Snapshot authz tetap Map in-memory TTL 30 dtk, single replika | epo33m | MVP satu replika (keputusan di atas); refetch penuh per nav dapat diterima pada skala ini | 2026-12-20 | §11: pindah ke Redis (`REDIS_URL`) atau buang map lokal SEBELUM scale horizontal |
-| P3-notif-idx | Index `sent_at`-led untuk list notifikasi SENGAJA tidak dibuat | epo33m | EXPLAIN gate 2026-09-21 (scratch PG 100k tasks/157k deliveries): planner tetap nested-loop via M9 (~1.1ms, 1456 buffers), kandidat tak terpakai — index tak terpakai hanya membebani write | 2026-12-20 | Re-cek via EXPLAIN bila volume delivery/user naik 10–100x |
-| S-no-staging | Tidak ada environment staging; drill S-02/S-08/S-18 hanya lokal | epo33m | S-02 substitusi lokal (2 proses vs DB sama, ≥10 iterasi); S-08/S-15/S-18 diterima tertulis dengan mitigasi urutan prod (cutoff + kuota + dry-run) | 2026-12-20 | C6: bukti runtime pasca-deploy menggantikan drill staging; sediakan staging sebelum rilis publik berikutnya bila memungkinkan |
+| F-7 | 3 E2E journeys not locked in CI (advisory) | epo33m | CI `verify` only has vanilla PostgreSQL; E2E needs Chromium + prod build + live Supabase project | 2026-12-20 | `E2E_TARGET=staging bun run test:e2e` manual pre-release (`apps/e2e/README.md`); the suite refuses to run without a named target and refuses production hosts (#56); drill to green once |
+| Quota-race | Two concurrent txns at 199/200 can both pass | epo33m | Accepted in the migration comment; the API stays the primary enforcement, the trigger is a backstop | 2026-12-20 | Resend cost/quota alarm (§4); active count = `deleted_at IS NULL` |
+| S-02…S-18 | §8 staging scenarios not yet executed | epo33m | No staging; S-11 partly covered by unit DST vectors (6 `America/New_York` tests) | 2026-12-20 | Execute or formally accept before public release (C6) |
+| P2-cache | Authz snapshot stays an in-memory Map with 30s TTL, single replica | epo33m | MVP single replica (decision above); full refetch per nav acceptable at this scale | 2026-12-20 | §11: move to Redis (`REDIS_URL`) or drop the local map BEFORE horizontal scale |
+| P3-notif-idx | `sent_at`-led index for the notification list DELIBERATELY not built | epo33m | EXPLAIN gate 2026-09-21 (scratch PG 100k tasks/157k deliveries): the planner still nested-loops via M9 (~1.1ms, 1456 buffers), the candidate goes unused — an unused index only taxes writes | 2026-12-20 | Re-check via EXPLAIN if delivery volume/user rises 10–100x |
+| S-no-staging | No staging environment; S-02/S-08/S-18 drills local only | epo33m | S-02 local substitute (2 processes vs same DB, ≥10 iterations); S-08/S-15/S-18 formally accepted with prod-ordering mitigations (cutoff + quota + dry-run) | 2026-12-20 | C6: post-deploy runtime evidence replaces staging drills; provide staging before the next public release if possible |
 
-## 10. Verifikasi pasca-deploy — P1 waterfall fixes (2026-09-21)
+## 10. Post-deploy verification — P1 waterfall fixes (2026-09-21)
 
-Perubahan: 3 select task-detail diparalelkan (`apps/api/src/routes/tasks.ts`,
-gate `ownedTask` tidak berubah); agregasi summary pindah ke Postgres RPC
-(`public.get_user_summary`, migrasi `supabase/migrations/20260921010000_summary_rpc.sql`);
-batch cron paralel + kirim terbatas (`apps/api/src/services/run-evaluate.ts`,
-`EMAIL_SEND_CONCURRENCY=5`; predikat klaim atomik tidak berubah).
+Changes: 3 task-detail selects parallelized (`apps/api/src/routes/tasks.ts`,
+the `ownedTask` gate unchanged); summary aggregation moved to the Postgres RPC
+(`public.get_user_summary`, migration `supabase/migrations/20260921010000_summary_rpc.sql`);
+parallel cron batches + bounded sends (`apps/api/src/services/run-evaluate.ts`,
+`EMAIL_SEND_CONCURRENCY=5`; the atomic claim predicate unchanged).
 
-| Item | Status | Cara verifikasi |
+| Item | Status | How to verify |
 |---|---|---|
-| Migrasi `20260921010000_summary_rpc.sql` diterapkan di staging/prod (`bun run db:migrate`, lalu `db:verify`) — fungsi BARU, tanpa backfill | ☐ | `select public.get_user_summary('<user-id>', 'UTC', now())` mengembalikan `{summary:{7 int}, progress:{…}}`; `supabase/verify-prod.sql` bagian 5: nol pending |
-| APM spans `GET /tasks/:id`: 4 sekuensial → 2 (gate `ownedTask`, lalu 1 fan-out paralel) | ☐ | Trace APM per tampilan detail |
-| Byte respons `GET /summary` + `EXPLAIN (ANALYZE, BUFFERS)` pemindaian tasks | ☐ | Bandingkan sebelum/sesudah pada akun berat; harap: index-only scan `idx_tasks_user_deadline_id_active`, payload 7 int + progress, bukan N baris |
-| Durasi cron + ledger `reminder_runs` sebelum/sesudah; tanpa tumpang tindih dengan tick berikutnya | ☐ | Log `[cron] evaluate-reminders finished` (outcome+durationMs) + baris `reminder_runs`; kirim-ganda tetap 0 (klaim atomik tak tersentuh) |
-| Rilis dari diff bersih berisi HANYA fix terverifikasi | ☐ | Lihat §6: pohon kerja bercampur feature work paralel (UI, account security) — jangan rilis seluruh working tree; tidak ada commit yang dibuat di sesi ini |
+| Migration `20260921010000_summary_rpc.sql` applied on staging/prod (`bun run db:migrate`, then `db:verify`) — NEW function, no backfill | ☐ | `select public.get_user_summary('<user-id>', 'UTC', now())` returns `{summary:{7 int}, progress:{…}}`; `supabase/verify-prod.sql` section 5: zero pending |
+| APM spans `GET /tasks/:id`: 4 sequential → 2 (the `ownedTask` gate, then 1 parallel fan-out) | ☐ | APM trace per detail view |
+| `GET /summary` response bytes + `EXPLAIN (ANALYZE, BUFFERS)` of the task scan | ☐ | Compare before/after on a heavy account; expect: index-only scan `idx_tasks_user_deadline_id_active`, payload of 7 ints + progress, not N rows |
+| Cron duration + `reminder_runs` ledger before/after; no overlap with the next tick | ☐ | `[cron] evaluate-reminders finished` log (outcome+durationMs) + `reminder_runs` rows; double-sends stay 0 (atomic claim untouched) |
+| Release from a clean diff holding ONLY verified fixes | ☐ | See §6: the working tree mixes parallel feature work (UI, account security) — do not release the whole working tree; no commits made in this session |
 
-### 10b. Verifikasi pasca-deploy — P2 fixes (2026-09-21)
+### 10b. Post-deploy verification — P2 fixes (2026-09-21)
 
-Perubahan: proyeksi list tanpa `description` (`serializeTaskList`; kontrak
-`TaskWithCourse` di OpenAPI + `openapi.json`/`schema.d.ts` di-regenerate);
-`GET /tasks?dueFrom&dueTo` + calendar month-scoped (cursor diikuti sampai habis,
-cap 10 halaman); session RTT di-overlap dengan fetch data di 6 halaman
+Changes: list projection without `description` (`serializeTaskList`; the
+`TaskWithCourse` contract in OpenAPI + regenerated `openapi.json`/`schema.d.ts`);
+`GET /tasks?dueFrom&dueTo` + month-scoped calendar (cursor followed to exhaustion,
+10-page cap); session RTT overlapped with data fetch on 6 pages
 (tasks, courses, summary, calendar, task-detail, course-detail);
-satu transaksi `withUserRls` per handler mutasi (tasks PATCH/complete/thresholds,
-courses PATCH, attachments link). pengecualian intentional: POST create
-(idempotency protocol), DELETE single-statement, dan path dengan network call
-di tengah (attachments file/delete, signed-url dibiarkan).
+one `withUserRls` transaction per mutation handler (tasks PATCH/complete/thresholds,
+courses PATCH, attachments link). Deliberate exceptions: POST create
+(idempotency protocol), single-statement DELETE, and paths with a network call
+in the middle (attachments file/delete, signed-url left as-is).
 
-| Item | Status | Cara verifikasi |
+| Item | Status | How to verify |
 |---|---|---|
-| Byte respons `GET /tasks` sebelum/sesudah (tanpa `description` × N baris) | ☐ | Bandingkan payload list pada akun berat |
-| Jumlah baris respons per nav bulan; kebenaran bulan dengan >50 tasks | ☐ | Navigasi calendar pada bulan padat; tak ada bulan parsial |
-| Waterfall DevTools: RTT session vs data overlap | ☐ | Trace load halaman tasks/calendar |
-| Span transaksi per mutasi di APM/log (1 tx per handler) | ☐ | Trace PATCH/PUT/complete; suite ownership hijau sebagai gate pra-deploy |
+| `GET /tasks` response bytes before/after (no `description` × N rows) | ☐ | Compare the list payload on a heavy account |
+| Response row count per month nav; month correctness with >50 tasks | ☐ | Navigate the calendar on a dense month; no partial month |
+| DevTools waterfall: session vs data RTT overlap | ☐ | Trace the tasks/calendar page load |
+| Transaction span per mutation in APM/logs (1 tx per handler) | ☐ | Trace PATCH/PUT/complete; the ownership suite green as the pre-deploy gate |
 
-### 10c. Verifikasi pasca-deploy — P3 indexes + React hygiene (2026-09-21)
+### 10c. Post-deploy verification — P3 indexes + React hygiene (2026-09-21)
 
-Perubahan: migrasi `supabase/migrations/20260921020000_p3_list_indexes.sql`
-(`idx_attachments_task_id`, `idx_tasks_user_course_deadline_active`; keduanya
-di `schema.ts` + `schema-contract.ts` + `supabase/tests/p3_list_indexes_test.sql`
-+ wrapper `packages/db/src/p3-list-indexes.test.ts`); memo `TaskRow` /
-`CalendarDayCell` / `CalendarTaskChip` + `useDeferredValue` pada search.
-SENGAJA TIDAK dibuat (EXPLAIN gate, data di komentar migrasi): index
-`sent_at`-led untuk notifikasi — planner tetap memilih nested-loop via M9
-index bahkan saat kandidat ada (1.1ms, 1456 buffers @100k tasks/157k deliveries);
-index tak terpakai hanya membebani write.
+Changes: migration `supabase/migrations/20260921020000_p3_list_indexes.sql`
+(`idx_attachments_task_id`, `idx_tasks_user_course_deadline_active`; both in
+`schema.ts` + `schema-contract.ts` + `supabase/tests/p3_list_indexes_test.sql`
++ wrapper `packages/db/src/p3-list-indexes.test.ts`); `TaskRow` /
+`CalendarDayCell` / `CalendarTaskChip` memo + `useDeferredValue` on search.
+DELIBERATELY NOT built (EXPLAIN gate, data in the migration comment): the
+`sent_at`-led index for notifications — the planner still picks the nested loop via M9
+even with the candidate present (1.1ms, 1456 buffers @100k tasks/157k deliveries);
+an unused index only taxes writes.
 
-| Item | Status | Cara verifikasi |
+| Item | Status | How to verify |
 |---|---|---|
-| Migrasi P3 diterapkan (`bun run db:migrate`, `db:verify`, `db:drift` bersih — dua index baru ekspektasi, bukan deviasi) | ☐ | `supabase/verify-prod.sql` bagian 5: nol pending |
-| `EXPLAIN (ANALYZE, BUFFERS)` ketiga query pada data prod-shape: attachments-by-task → Index Scan; course-filtered list → `idx_tasks_user_course_deadline_active`; notif list → nested-loop M9 (re-cek bila volume delivery/user naik 10–100x) | ☐ | Output EXPLAIN tersimpan sebagai bukti |
-| Profiler React: ketikan search + nav bulan sebelum/sesudah (render counts/commit ms) | ☐ | React DevTools Profiler; `dynamic()` splits tetap ditahan sampai data Profiler menuntutnya |
+| P3 migration applied (`bun run db:migrate`, `db:verify`, clean `db:drift` — the two new indexes expected, not a deviation) | ☐ | `supabase/verify-prod.sql` section 5: zero pending |
+| `EXPLAIN (ANALYZE, BUFFERS)` of the three queries on prod-shaped data: attachments-by-task → Index Scan; course-filtered list → `idx_tasks_user_course_deadline_active`; notif list → M9 nested loop (re-check if delivery volume/user rises 10–100x) | ☐ | EXPLAIN output stored as evidence |
+| React Profiler: search typing + month nav before/after (render counts/commit ms) | ☐ | React DevTools Profiler; `dynamic()` splits held back until Profiler data demands them |
 
-### 10d. Verifikasi pasca-deploy — RF-01 checkpoint + RF-02 email identity (2026-09-21)
+### 10d. Post-deploy verification — RF-01 checkpoint + RF-02 email identity (2026-09-21)
 
-Perubahan (migrasi + kode; rujukan `docs/audits/reliability-failure-modes-audit-2026-09-21.md`):
+Changes (migration + code; see `docs/audits/reliability-failure-modes-audit-2026-09-21.md`):
 
-- **RF-01 — checkpoint run + konteks kegagalan konfirmasi + timeout DB:**
+- **RF-01 — run checkpoint + confirmation-failure context + DB timeouts:**
   `supabase/migrations/20260921030000_reminder_runs_checkpoint.sql`
-  (`reminder_runs.last_seen_task_id uuid`, nullable, tanpa index). `run-evaluate.ts`
-  menulis `last_seen_task_id` setelah tiap batch selesai (crash-safe: batch yang
-  gagal tidak menggeser checkpoint) dan menulis `last_error`/`failed_at` saat
-  confirm-write gagal tanpa menurunkan status ke `failed`. `packages/db/src/client.ts`
-  menambah timeout koneksi (`connect`/`statement`/`idle`/`max_lifetime`) dengan
-  override env.
-- **RF-02 — identitas email deterministik (frozen body + rotasi key):**
+  (`reminder_runs.last_seen_task_id uuid`, nullable, no index). `run-evaluate.ts`
+  writes `last_seen_task_id` after each finished batch (crash-safe: a failed batch
+  does not move the checkpoint) and writes `last_error`/`failed_at` when a
+  confirm-write fails without dropping the status to `failed`. `packages/db/src/client.ts`
+  adds connection timeouts (`connect`/`statement`/`idle`/`max_lifetime`) with
+  env overrides.
+- **RF-02 — deterministic email identity (frozen body + key rotation):**
   `supabase/migrations/20260921040000_reminder_deliveries_email_snapshots.sql`
   (`notification_deliveries.email_snapshot jsonb` + `email_idempotency_key text`,
-  nullable, tanpa index). `apps/api/src/lib/email.ts`: `buildReminderEmailBody`
-  diekspor; `buildReminderIdempotencyKey` menerima `nonce` (rotasi);
-  `isRateLimitedReminderError` — `Retry-After` kini dihormati untuk
-  `rate_limited`/`rate_limit_exceeded` walau tanpa `statusCode`.
-  `apps/api/src/services/run-evaluate.ts`: `deliverEmail` membangun payload dari
-  `email_snapshot` bila ada (else live), memakai `email_idempotency_key` bila ada,
-  mem-persist snapshot+key pada `markSent`/`markFailed` (termasuk fallback
-  confirm-failure RF-01), dan merotasi key + persist saat terminal idempotency
-  error agar retry berikutnya bisa terkirim.
+  nullable, no index). `apps/api/src/lib/email.ts`: `buildReminderEmailBody`
+  exported; `buildReminderIdempotencyKey` takes a `nonce` (rotation);
+  `isRateLimitedReminderError` — `Retry-After` now honored for
+  `rate_limited`/`rate_limit_exceeded` even without `statusCode`.
+  `apps/api/src/services/run-evaluate.ts`: `deliverEmail` builds the payload from
+  `email_snapshot` when present (else live), uses `email_idempotency_key` when present,
+  persists snapshot+key on `markSent`/`markFailed` (including the RF-01
+  confirm-failure fallback), and rotates the key + persists on terminal idempotency
+  errors so the next retry can deliver.
 - **Schema:** `packages/db/src/schema.ts` (+`EmailDeliverySnapshot`),
-  `schema-contract.ts`, `schema.test.ts`, `schema-drift.test.ts` (jumlah migrasi
-  37→38, versi terakhir `20260921040000`).
+  `schema-contract.ts`, `schema.test.ts`, `schema-drift.test.ts` (migration count
+  37→38, latest version `20260921040000`).
 - **Docs:** `docs/DOMAIN.md` §2.5 (`sent` = accepted, not delivered; frozen
-  body/key) + `docs/RUNBOOK-reminders.md` §3 (cara telusur duplikat via
+  body/key) + `docs/RUNBOOK-reminders.md` §3 (tracing duplicates via
   `email_idempotency_key`).
 
-| Item | Status | Cara verifikasi |
+| Item | Status | How to verify |
 |---|---|---|
-| Migrasi `20260921030000_reminder_runs_checkpoint.sql` + `20260921040000_reminder_deliveries_email_snapshots.sql` diterapkan (`bun run db:migrate`, lalu `db:verify`) — kolom BARU nullable, tanpa backfill | ☐ | `supabase/verify-prod.sql` bagian 5: nol pending; `db:drift` bersih kecuali `profiles_id_fkey → users` |
-| RF-01 checkpoint terisi: run multi-batch menulis `reminder_runs.last_seen_task_id` = task terakhir yang selesai diproses | ☐ | Jalankan cron pada data >1 batch; `select id, last_seen_task_id, evaluated_tasks, status from reminder_runs order by started_at desc limit 5` |
-| RF-01 crash mid-run tidak menggeser checkpoint (batch gagal → resume dari batch terakhir yang sukses) | ☐ | Simulasi kegagalan batch (staging); baris `status='error'` mempertahankan `last_seen_task_id` batch sebelumnya |
-| RF-01 confirm-write gagal: baris TIDAK jadi `failed`, tetap sendable + `last_error = 'confirm failed: …'` | ☐ | Paksa kegagalan write konfirmasi (staging); cek `status`, `last_error`, `failed_at` pada `notification_deliveries` |
-| RF-01 timeout DB aktif (connect/statement/idle/max_lifetime) sesuai env prod | ☐ | Cek `SHOW statement_timeout` pada koneksi app; log/observability tidak lagi menggantung pada provider DB lambat |
-| RF-02 frozen body: setelah send gagal, baris punya `email_snapshot`; edit judul task lalu run berikutnya retry memakai body + key yang sama (tanpa email ganda) | ☐ | `select email_snapshot, email_idempotency_key from notification_deliveries where id='<delivery-id>'`; bandingkan `Idempotency-Key` di Resend dashboard antar percobaan |
-| RF-02 rotasi key: terminal idempotency rejection (`invalid_idempotent_request`/`invalid_idempotency_key`) → `email_idempotency_key` berotasi + `last_error` tercatat; retry berikutnya terkirim di key baru | ☐ | Drill provider yang menolak key sekali; cek key berubah dan `emails_sent` naik pada run berikutnya |
-| RF-02 rate-limit: `Retry-After` dihormati untuk `rate_limited`/`rate_limit_exceeded` tanpa `statusCode` (tidak jatuh ke backoff generik) | ☐ | Drill 429 storm di staging; jeda retry mengikuti `Retry-After` (cap 30 dtk) |
-| Docs diperbarui: `DOMAIN.md` §2.5 (`sent` = accepted, not delivered + frozen body/key) dan `RUNBOOK-reminders.md` §3 (telusur duplikat via `email_idempotency_key`) | ☐ | Review isi dokumen; keputusan sejalan dengan §4 "tanpa webhook bounce/complaint" |
-| Rilis dari diff bersih berisi HANYA fix terverifikasi (RF-01 + RF-02), bukan seluruh working tree | ☐ | Lihat §6: pohon kerja bercampur feature work paralel |
+| Migrations `20260921030000_reminder_runs_checkpoint.sql` + `20260921040000_reminder_deliveries_email_snapshots.sql` applied (`bun run db:migrate`, then `db:verify`) — NEW nullable columns, no backfill | ☐ | `supabase/verify-prod.sql` section 5: zero pending; `db:drift` clean except `profiles_id_fkey → users` |
+| RF-01 checkpoint fills: a multi-batch run writes `reminder_runs.last_seen_task_id` = the last fully processed task | ☐ | Run cron on >1 batch of data; `select id, last_seen_task_id, evaluated_tasks, status from reminder_runs order by started_at desc limit 5` |
+| RF-01 mid-run crash does not move the checkpoint (failed batch → resume from the last successful batch) | ☐ | Simulate a batch failure (staging); a `status='error'` row keeps the previous batch's `last_seen_task_id` |
+| RF-01 confirm-write failure: the row does NOT become `failed`, stays sendable + `last_error = 'confirm failed: …'` | ☐ | Force a confirmation-write failure (staging); check `status`, `last_error`, `failed_at` on `notification_deliveries` |
+| RF-01 DB timeouts active (connect/statement/idle/max_lifetime) per prod env | ☐ | Check `SHOW statement_timeout` on the app connection; logs/observability no longer hang on a slow DB provider |
+| RF-02 frozen body: after a failed send the row has `email_snapshot`; editing the task title then retrying on the next run uses the same body + key (no double email) | ☐ | `select email_snapshot, email_idempotency_key from notification_deliveries where id='<delivery-id>'`; compare the `Idempotency-Key` in the Resend dashboard across attempts |
+| RF-02 key rotation: terminal idempotency rejection (`invalid_idempotent_request`/`invalid_idempotency_key`) → `email_idempotency_key` rotated + `last_error` recorded; the next retry delivers on the new key | ☐ | Drill a provider that rejects the key once; check the key changed and `emails_sent` rises on the next run |
+| RF-02 rate limit: `Retry-After` honored for `rate_limited`/`rate_limit_exceeded` without `statusCode` (no fallthrough to generic backoff) | ☐ | Drill a 429 storm on staging; retry spacing follows `Retry-After` (30s cap) |
+| Docs updated: `DOMAIN.md` §2.5 (`sent` = accepted, not delivered + frozen body/key) and `RUNBOOK-reminders.md` §3 (duplicate tracing via `email_idempotency_key`) | ☐ | Review the doc contents; the decision aligns with §4 "no bounce/complaint webhook" |
+| Release from a clean diff holding ONLY verified fixes (RF-01 + RF-02), not the whole working tree | ☐ | See §6: the working tree mixes parallel feature work |
 
-### 10e. Verifikasi pasca-deploy — RF-04 single-flight + RF-06 idempotency + RF-07 edit mid-run + RF-08 poison terminal (2026-09-21)
+### 10e. Post-deploy verification — RF-04 single-flight + RF-06 idempotency + RF-07 mid-run edit + RF-08 poison terminal (2026-09-21)
 
-Perubahan (migrasi + kode; rujukan `docs/audits/reliability-failure-modes-audit-2026-09-21.md`):
+Changes (migration + code; see `docs/audits/reliability-failure-modes-audit-2026-09-21.md`):
 
 - **RF-04 — single-flight run lock:**
   `supabase/migrations/20260921050000_reminder_run_single_flight.sql`
-  (partial unique index `reminder_runs_single_active` pada `status = 'running'`).
-  `run-evaluate.ts` meng-claim lock lewat insert ledger: `23505` → keluar dini
-  `{ skipped: true, runId: null }`; run crash di-reclaim bila `startedAt` lebih tua
-  dari `RUN_LOCK_STALE_MS` (30 menit). `cron.ts` melaporkan `outcome: "skipped"`.
-- **RF-06 — threshold POST idempotent:**
-  `tasks.ts` POST `/:id/thresholds` memakai `Idempotency-Key`
-  (`beginIdempotent`/`completeIdempotent`); offset yang sudah ada + key berbeda
-  → re-read existing → `200 { threshold }` (bukan `409`). Frontend
-  (`threshold-manager.tsx`, `actions/tasks.ts`) mengirim key dan me-regenerate
-  setelah sukses.
-- **RF-07 — batalkan kirim saat deadline/threshold diedit mid-run:**
-  live re-check per batch juga mengambil `tasks.deadline_updated_at` + versi
-  `reminder_thresholds`; bila berubah, delivery dihapus (`DELETE`) sebelum
-  `claimUserSendBudget` (kuota tak terpakai) dan run berikutnya mengevaluasi ulang.
+  (partial unique index `reminder_runs_single_active` on `status = 'running'`).
+  `run-evaluate.ts` claims the lock via the ledger insert: `23505` → early exit
+  `{ skipped: true, runId: null }`; a crashed run is reclaimed when `startedAt` is older
+  than `RUN_LOCK_STALE_MS` (30 minutes). `cron.ts` reports `outcome: "skipped"`.
+- **RF-06 — idempotent threshold POST:**
+  `tasks.ts` POST `/:id/thresholds` uses `Idempotency-Key`
+  (`beginIdempotent`/`completeIdempotent`); an existing offset + different key
+  → re-read existing → `200 { threshold }` (not `409`). The frontend
+  (`threshold-manager.tsx`, `actions/tasks.ts`) sends the key and regenerates it
+  after success.
+- **RF-07 — cancel sends when the deadline/threshold is edited mid-run:**
+  the per-batch live re-check also fetches `tasks.deadline_updated_at` + the
+  `reminder_thresholds` version; on change the delivery is deleted (`DELETE`) before
+  `claimUserSendBudget` (quota unspent) and the next run re-evaluates.
 - **RF-08 — poison `missing task/recipient` terminal:**
-  kedua cabang `!task || !to` di `run-evaluate.ts` memanggil
-  `markFailed(id, MAX_EMAIL_DELIVERY_RETRIES, …)` sehingga `retry_count = 3`
-  (evaluator berhenti menawarkan retry). Counter `emailsPoisoned` diteruskan ke
-  `isSystemicReminderFailure` dan dikecualikan dari keputusan blackout; tetap
-  dihitung di `emails_failed` ledger dan disertakan di log/Sentry extras.
+  both `!task || !to` branches in `run-evaluate.ts` call
+  `markFailed(id, MAX_EMAIL_DELIVERY_RETRIES, …)` so `retry_count = 3`
+  (the evaluator stops offering retries). The `emailsPoisoned` counter feeds
+  `isSystemicReminderFailure` and is excluded from the blackout decision; still
+  counted in the ledger `emails_failed` and included in log/Sentry extras.
 - **Schema:** `schema.ts` (+single-flight `uniqueIndex`), `schema-contract.ts`,
-  `schema.test.ts`, `schema-drift.test.ts` (jumlah migrasi 38→39, versi terakhir
+  `schema.test.ts`, `schema-drift.test.ts` (migration count 38→39, latest version
   `20260921050000`).
 
-| Item | Status | Cara verifikasi |
+| Item | Status | How to verify |
 |---|---|---|
-| Migrasi `20260921050000_reminder_run_single_flight.sql` diterapkan (`bun run db:migrate`, lalu `db:verify`) | ☐ | `supabase/verify-prod.sql`: nol pending; index `reminder_runs_single_active` ada (partial, unique) |
-| RF-04 lock bekerja: dua cron trigger bersamaan → satu run penuh, satu `outcome: "skipped"` tanpa kerja | ☐ | Trigger `/api/v1/cron/evaluate-reminders` dua kali paralel; log `[reminders] skipped, another run is active`; `reminder_runs` tidak punya dua baris `running` |
-| RF-04 reclaim: baris `running` yang macet >30 menit di-`error` oleh run berikutnya lalu lock diambil | ☐ | Sisipkan baris `running` dengan `started_at` mundur di staging; jalankan cron; assert baris lama `status='error'` + run baru sukses |
-| RF-06 replay: POST threshold dengan `Idempotency-Key` sama dua kali → satu baris + respons kedua identik (200) | ☐ | `curl` POST identik dengan header sama; cek `idempotency_keys` + jumlah baris `reminder_thresholds` |
-| RF-06 natural-key: POST offset yang sudah ada dengan key berbeda → `200 { threshold }` (bukan `409`) | ☐ | `curl` ulang offset existing tanpa/tanpa key baru; assert 200 dan id threshold existing |
-| RF-07 cancel: edit deadline/threshold di antara snapshot batch dan kirim → tidak ada email terkirim, baris delivery dihapus, kuota tidak terpakai | ☐ | Staging dengan send di-stub lambat; edit deadline mid-run; log `[reminders] skipped send, task edited mid-run`; run berikutnya mengirim dengan deadline baru |
-| RF-07 negatif: edit tak terkait (title/status) TIDAK membatalkan kirim | ☐ | Edit title mid-run; assert email tetap terkirim (body memakai snapshot beku RF-02) |
-| RF-08 terminal: delivery tanpa profil/email → `retry_count = 3` pada run pertama, run berikutnya tidak retry | ☐ | Staging: hapus/blank email profil (atau task yatim) untuk satu delivery; jalankan cron 5×; assert `retry_count = 3` dan tidak ada retry setelahnya |
-| RF-08 no false blackout: run yang hanya berisi poison TIDAK mengirim alert Sentry "blackout" | ☐ | Skenario di atas dengan poison sebagai satu-satunya work; assert tidak ada pesan Sentry dan log `emailsPoisoned >= 1` |
-| Rilis dari diff bersih berisi HANYA fix terverifikasi (RF-04 + RF-06 + RF-07 + RF-08), bukan seluruh working tree | ☐ | Lihat §6: pohon kerja bercampur feature work paralel |
+| Migration `20260921050000_reminder_run_single_flight.sql` applied (`bun run db:migrate`, then `db:verify`) | ☐ | `supabase/verify-prod.sql`: zero pending; index `reminder_runs_single_active` exists (partial, unique) |
+| RF-04 lock works: two concurrent cron triggers → one full run, one `outcome: "skipped"` with no work | ☐ | Trigger `/api/v1/cron/evaluate-reminders` twice in parallel; `[reminders] skipped, another run is active` log; `reminder_runs` has no two `running` rows |
+| RF-04 reclaim: a `running` row stuck >30 min is errored by the next run, then the lock is taken | ☐ | Insert a `running` row with backdated `started_at` on staging; run cron; assert the old row is `status='error'` + a new run succeeds |
+| RF-06 replay: POST threshold with the same `Idempotency-Key` twice → one row + identical second response (200) | ☐ | `curl` the identical POST with the same header; check `idempotency_keys` + `reminder_thresholds` row count |
+| RF-06 natural-key: POST an existing offset with a different key → `200 { threshold }` (not `409`) | ☐ | Re-`curl` the existing offset with a new/no key; assert 200 and the existing threshold id |
+| RF-07 cancel: editing the deadline/threshold between batch snapshot and send → no email sent, delivery row deleted, quota unspent | ☐ | Staging with stubbed-slow send; edit the deadline mid-run; `[reminders] skipped send, task edited mid-run` log; the next run sends with the new deadline |
+| RF-07 negative: an unrelated edit (title/status) does NOT cancel the send | ☐ | Edit the title mid-run; assert the email still sends (body uses the RF-02 frozen snapshot) |
+| RF-08 terminal: delivery without profile/email → `retry_count = 3` on the first run, no retry after | ☐ | Staging: blank/remove the profile email (or an orphaned task) for one delivery; run cron 5×; assert `retry_count = 3` with no further retries |
+| RF-08 no false blackout: a run holding only poison does NOT raise the Sentry "blackout" alert | ☐ | Scenario above with poison as the only work; assert no Sentry message and `emailsPoisoned >= 1` in the log |
+| Release from a clean diff holding ONLY verified fixes (RF-04 + RF-06 + RF-07 + RF-08), not the whole working tree | ☐ | See §6: the working tree mixes parallel feature work |
 
-### 10f. Verifikasi pasca-deploy — RF-09 archive threshold + RF-10 offset identity (2026-09-21)
+### 10f. Post-deploy verification — RF-09 threshold archive + RF-10 offset identity (2026-09-21)
 
-Migrasi wajib: `supabase/migrations/20260921060000_threshold_archive.sql` (kolom `reminder_thresholds.deleted_at`, partial unique `reminder_thresholds_task_days_before_active_key`, `enforce_threshold_quota` filter aktif, drop policy `thresholds_delete_own`, trigger `threshold_forbid_delete`).
+Required migration: `supabase/migrations/20260921060000_threshold_archive.sql` (`reminder_thresholds.deleted_at` column, partial unique `reminder_thresholds_task_days_before_active_key`, quota-enforcing `enforce_threshold_quota` active-only filter, drop `thresholds_delete_own` policy, `threshold_forbid_delete` trigger).
 
-- **RF-09 — hapus threshold = arsip:**
-  - `PUT /tasks/:id/thresholds` membuang offset → baris `reminder_thresholds` tetap ada dengan `deleted_at` terisi; delivery `sent/failed/pending` lama **tidak** ikut terhapus.
-  - `DELETE /tasks/:id/thresholds/:thresholdId` mengembalikan `200` dan mengarsipkan (bukan hard delete).
-  - Hard delete langsung (PostgREST/SQL) ditolak `THRESHOLD_HARD_DELETE_FORBIDDEN`; hapus task/user tetap boleh (cascade RI).
-- **RF-10 — identitas delivery per offset:**
-  - Offset yang pernah `sent` lalu dihapus dan ditambah ulang tidak mengirim email kedua.
-  - Delivery `pending` milik threshold terarsip tidak pernah dikirim (di-sweep sebagai stale).
+- **RF-09 — deleting a threshold = archiving:**
+  - `PUT /tasks/:id/thresholds` dropping an offset → the `reminder_thresholds` row stays with `deleted_at` set; old `sent/failed/pending` deliveries are **not** deleted with it.
+  - `DELETE /tasks/:id/thresholds/:thresholdId` returns `200` and archives (not hard-deletes).
+  - Direct hard deletes (PostgREST/SQL) are rejected with `THRESHOLD_HARD_DELETE_FORBIDDEN`; deleting a task/user still cascades (RI).
+- **RF-10 — per-offset delivery identity:**
+  - An offset that was `sent`, then deleted and re-added, does not send a second email.
+  - `pending` deliveries under an archived threshold are never sent (swept as stale).
 
-| Item | Status | Cara verifikasi |
+| Item | Status | How to verify |
 |---|---|---|
-| Migrasi `20260921060000` terpasang: `deleted_at` ada, partial unique aktif, policy lama hilang, trigger guard ada | ☐ | `bun run db:verify`; `select indexname from pg_indexes where tablename='reminder_thresholds'`; `select tgname from pg_trigger where tgrelid='reminder_thresholds'::regclass` |
-| PUT membuang offset → baris threshold terarsip, delivery lama utuh | ☐ | Staging: kirim H-1 (sent) → PUT tanpa H-1 → assert `deleted_at` terisi + baris `notification_deliveries` H-1 masih ada |
-| DELETE threshold mengembalikan 200 dan mengarsipkan | ☐ | `curl -X DELETE .../thresholds/<id>`; assert 200 dan `deleted_at not null` |
-| Hard delete langsung ditolak | ☐ | `delete from reminder_thresholds where id='<id>'` di SQL editor → error `THRESHOLD_HARD_DELETE_FORBIDDEN` |
-| Cascade task tetap jalan (guard tidak memblok RI) | ☐ | Hapus task di staging → baris threshold ikut terhapus tanpa error guard |
-| Re-add offset terkirim tidak kirim ulang | ☐ | Staging: kirim H-1 → hapus → tambah H-1 lagi → jalankan cron; assert tidak ada email kedua (`notification_deliveries` H-1 tetap satu baris `sent`) |
-| Quota menghitung threshold aktif saja | ☐ | Arsipkan satu threshold saat kuota penuh → tambah offset baru berhasil; assert `enforce_threshold_quota` menghitung `deleted_at is null` |
-| Rilis dari diff bersih berisi HANYA fix terverifikasi (RF-09 + RF-10), bukan seluruh working tree | ☐ | Lihat §6: pohon kerja bercampur feature work paralel |
+| Migration `20260921060000` installed: `deleted_at` present, partial unique active, old policy gone, guard trigger present | ☐ | `bun run db:verify`; `select indexname from pg_indexes where tablename='reminder_thresholds'`; `select tgname from pg_trigger where tgrelid='reminder_thresholds'::regclass` |
+| PUT dropping an offset → threshold row archived, old deliveries intact | ☐ | Staging: send H-1 (sent) → PUT without H-1 → assert `deleted_at` set + the H-1 `notification_deliveries` row still present |
+| DELETE threshold returns 200 and archives | ☐ | `curl -X DELETE .../thresholds/<id>`; assert 200 and `deleted_at not null` |
+| Direct hard delete rejected | ☐ | `delete from reminder_thresholds where id='<id>'` in the SQL editor → `THRESHOLD_HARD_DELETE_FORBIDDEN` error |
+| Task cascade still works (guard does not block RI) | ☐ | Delete a task on staging → its threshold rows go with it, no guard error |
+| Re-added sent offset does not resend | ☐ | Staging: send H-1 → delete → re-add H-1 → run cron; assert no second email (the H-1 `notification_deliveries` stays one `sent` row) |
+| Quota counts active thresholds only | ☐ | Archive one threshold at full quota → adding a new offset succeeds; assert `enforce_threshold_quota` counts `deleted_at is null` |
+| Release from a clean diff holding ONLY verified fixes (RF-09 + RF-10), not the whole working tree | ☐ | See §6: the working tree mixes parallel feature work |
 
-## 11. Pra-scale-out — cache authz single-node (P2-5, 2026-09-21)
+## 11. Pre-scale-out — single-node authz cache (P2-5, 2026-09-21)
 
-Keputusan: snapshot authz tetap `Map` in-memory TTL 30 dtk (`apps/api/src/lib/authorization/cache.ts`)
-untuk MVP satu replika (sesuai keputusan single replica di atas). Bukan masalah hari ini;
-menjadi masalah saat horizontal scale (snapshot tidak terbagi antar instance, refetch penuh per nav).
+Decision: the authz snapshot stays an in-memory `Map` with a 30s TTL (`apps/api/src/lib/authorization/cache.ts`)
+for the single-replica MVP (per the single-replica decision above). Not a problem today;
+it becomes one at horizontal scale (snapshots not shared across instances, full refetch per nav).
 
-| Item | Status | Cara verifikasi |
+| Item | Status | How to verify |
 |---|---|---|
-| SEBELUM scale horizontal: pindahkan snapshot authz ke Redis (`REDIS_URL` yang sama) atau terima hit DB dan buang map lokal | ☐ | Hit-rate cache authz; query authz per request di APM |
-| `revalidate`/`staleTime` Next hanya untuk bacaan yang benar-benar statis — bukan untuk list bergerbang-session | ☐ | Review saat menambah cache bacaan |
+| BEFORE horizontal scale: move the authz snapshot to Redis (same `REDIS_URL`) or accept DB hits and drop the local map | ☐ | Authz cache hit rate; per-request authz queries in APM |
+| Next `revalidate`/`staleTime` only for genuinely static reads — not for session-gated lists | ☐ | Review when adding read caching |
 
-## 12. Verifikasi pasca-deploy — perf plan 2026-09-26
+## 12. Post-deploy verification — perf plan 2026-09-26
 
-Rujukan: `docs/performance-audit-2026-09-26.md`. Baseline: `sh scripts/perf-probe.sh`
-sebelum perubahan (log di `scripts/perf-logs/`, gitignored).
+Reference: `docs/performance-audit-2026-09-26.md`. Baseline: `sh scripts/perf-probe.sh`
+before changes (logs in `scripts/perf-logs/`, gitignored).
 
-| Item | Status | Cara verifikasi |
+| Item | Status | How to verify |
 |---|---|---|
-| Railway region = US East, 1 replika (`railway status`) | ☑ (2026-09-26, CLI) | `region: US East`, `sfo (0) · US East (1)` |
-| Supabase project `us-east-1`: 41 migrasi applied, 0 pending | ☑ (2026-09-27) | 42/42 applied, `db:verify` + `verify-prod.sql` exit 0 (12 RLS, 17 policy, bucket private, quota triggers), `db:drift` hijau |
-| Upstash Redis region = US East | ☐ | `[perf]` pada 401: 181ms → ~5–15ms |
-| Vercel Build Command = rantai double-build (`DEPLOY-PROD.md` §3) | ☑ (2026-09-26, API) | Build log memuat `[csp-hashes] verify ok`; `/login` balas `sha256` (tanpa `nonce-`) + `s-maxage` |
-| ENV-API: 5 nilai Supabase baru + `REDIS_URL` baru tersinkron (`scripts/sync-prod-env.ts --apply`) | ☑ sebagian (2026-09-27) | Railway+GitHub via script; Vercel via `--only web --vercel-project`; API redeploy eksplisit (`redeploy --yes`) karena env change tak memicu redeploy |
-| ENV-WEB: `NEXT_PUBLIC_SUPABASE_*` baru + redeploy (di-inline saat build) | ☑ (2026-09-27) | Redeploy via empty commit `e13d1cb` (CLI deploy dari subdir gagal — rootDir); JWKS project baru 200 |
-| Re-probe pasca-semua-fase, angka masuk tabel audit §2 kolom "sesudah" | ☑ parsial (2026-09-27) | Audit §2b; sisa: re-probe final setelah Upstash pindah |
-| Sentry traces (0.1) aktif di ENV-API + ENV-WEB bila DSN diisi | ☐ | Span `GET /api/v1/bootstrap` terlihat di Sentry |
-| Rilis dari commit berisi HANYA perubahan terverifikasi plan ini | ☑ (2026-09-27) | `1343602`, `4aec301`, `f286be5`, `e13d1cb` — hanya plan + redeploy; tree bersih |
+| Railway region = US East, 1 replica (`railway status`) | ☑ (2026-09-26, CLI) | `region: US East`, `sfo (0) · US East (1)` |
+| Supabase project `us-east-1`: 41 migrations applied, 0 pending | ☑ (2026-09-27) | 42/42 applied, `db:verify` + `verify-prod.sql` exit 0 (12 RLS, 17 policies, private bucket, quota triggers), green `db:drift` |
+| Upstash Redis region = US East | ☐ | `[perf]` on 401: 181ms → ~5–15ms |
+| Vercel Build Command = double-build chain (`DEPLOY-PROD.md` §3) | ☑ (2026-09-26, API) | Build log contains `[csp-hashes] verify ok`; `/login` answers `sha256` (no `nonce-`) + `s-maxage` |
+| ENV-API: 5 new Supabase values + new `REDIS_URL` synced (`scripts/sync-prod-env.ts --apply`) | ☑ partial (2026-09-27) | Railway+GitHub via script; Vercel via `--only web --vercel-project`; explicit API redeploy (`redeploy --yes`) since env change does not trigger redeploy |
+| ENV-WEB: new `NEXT_PUBLIC_SUPABASE_*` + redeploy (inlined at build) | ☑ (2026-09-27) | Redeploy via empty commit `e13d1cb` (CLI deploy from subdir failed — rootDir); new-project JWKS 200 |
+| Re-probe after all phases, numbers into audit §2 "after" column | ☑ partial (2026-09-27) | Audit §2b; remaining: final re-probe after the Upstash move |
+| Sentry traces (0.1) on in ENV-API + ENV-WEB when DSN filled | ☐ | `GET /api/v1/bootstrap` span visible in Sentry |
+| Release from a commit holding ONLY this plan's verified changes | ☑ (2026-09-27) | `1343602`, `4aec301`, `f286be5`, `e13d1cb` — plan + redeploy only; clean tree |

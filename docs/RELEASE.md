@@ -1,79 +1,81 @@
 # Release Guide — Deadline Radar
 
-> Sumber kebenaran untuk cara merilis. Menutup issue #145 (package.json vs tag drift).
-> Status produksi: aplikasi live di https://dr.rapm.space — **bukan demo**.
+> Source of truth for how to release. Closes issue #145 (package.json vs tag drift).
+> Production status: the app is live at https://dr.rapm.space — **not a demo**.
 
-## 1. Aturan versi
+## 1. Version rules
 
-- SemVer, tag `vX.Y.Z` dengan target `main` (atau SHA spesifik di `main`).
-- `package.json` root **dan** semua workspace (`apps/*/package.json`,
-  `packages/*/package.json`) wajib bernilai sama dengan versi tag tanpa
-  prefix `v`. Contoh: tag `v1.1.0` ↔ `"version": "1.1.0"` di 7 file.
+- SemVer, tag `vX.Y.Z` targeting `main` (or a specific SHA on `main`).
+- The root `package.json` **and** every workspace (`apps/*/package.json`,
+  `packages/*/package.json`) must carry the same version as the tag without
+  the `v` prefix. Example: tag `v1.1.0` ↔ `"version": "1.1.0"` in all 7 files.
 - Guard:
   ```bash
-  bun run check:version                              # konsistensi workspace (jalan di CI feature)
-  bun run scripts/check-version-sync.ts --tag vX.Y.Z # wajib lolos sebelum tag di-push / rilis di-publish
+  bun run check:version                              # workspace consistency (runs in feature CI)
+  bun run scripts/check-version-sync.ts --tag vX.Y.Z # must pass before the tag is pushed / the release published
   ```
 
-## 2. Anatomi GitHub Release
+## 2. GitHub Release anatomy
 
-Setiap rilis terdiri dari 5 komponen:
+Every release consists of 5 components:
 
-1. **Tag versi** — marker ke satu commit spesifik di `main`. Format SemVer
-   (`v1.1.0`; pre-release `vX.Y.Z-beta.N`). Target: branch `main` atau SHA commit.
-2. **Judul rilis** — ringkas: versi + tema utama. Contoh:
-   `v1.1.0 - Pagination + Telemetry`. Jika dikosongkan, GitHub memakai nama tag.
-3. **Catatan rilis (Release notes / What's changed)** — Markdown: Added /
-   Fixed / Changed, PR dan issue terkait, link komparasi
-   `v1.0.0...v1.1.0`. Gunakan tombol **Generate release notes** lalu rapikan
-   mengikuti template §4.
-4. **Aset rilis** — aplikasi ini web (deploy via Vercel + Railway), tidak ada
-   biner custom. Cukup aset Source Code `.zip` / `.tar.gz` otomatis GitHub.
-5. **Status & publikasi** — rilis stabil: `Set as a pre-release` **tidak**
-   dicentang, `Set as the latest release` **dicentang**, lalu **Publish
-   release** (draft hanya untuk persiapan privat).
+1. **Version tag** — a marker pointing at one specific commit on `main`. SemVer
+   format (`v1.1.0`; pre-releases `vX.Y.Z-beta.N`). Target: the `main` branch
+   or a commit SHA.
+2. **Release title** — short: version + main theme. Example:
+   `v1.1.0 - Pagination + Telemetry`. If left empty, GitHub uses the tag name.
+3. **Release notes / What's changed** — Markdown: Added / Fixed / Changed,
+   related PRs and issues, comparison link `v1.0.0...v1.1.0`. Use the
+   **Generate release notes** button, then tidy up following the §4 template.
+4. **Release assets** — this app is web (deployed via Vercel + Railway), so
+   there are no custom binaries. The automatic GitHub Source Code `.zip` /
+   `.tar.gz` assets are enough.
+5. **Status & publishing** — stable release: `Set as a pre-release` left
+   **unchecked**, `Set as the latest release` **checked**, then **Publish
+   release** (drafts are for private preparation only).
 
-## 3. Checklist rilis (manual via web GitHub)
+## 3. Release checklist (manual via the GitHub web UI)
 
-1. Pastikan `main` hijau (ci-main) dan branch rilis sudah merge.
-2. `bun run check:version` lolos; bump versi bila perlu (satu commit
-   `chore(release): bump to X.Y.Z`).
-3. Buat tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
-4. Verifikasi: `bun run scripts/check-version-sync.ts --tag vX.Y.Z` lolos.
-5. GitHub → Releases → **Draft a new release** → pilih tag → isi judul +
-   notes (§4) → centang latest, bukan pre-release → **Publish release**.
-6. Update badge versi di `README.md` bila belum (follow-up PR bila perlu).
+1. Make sure `main` is green (ci-main) and the release branch is merged.
+2. `bun run check:version` passes; bump the version first if needed (single
+   `chore(release): bump to X.Y.Z` commit).
+3. Create the tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+4. Verify: `bun run scripts/check-version-sync.ts --tag vX.Y.Z` passes.
+5. GitHub → Releases → **Draft a new release** → pick the tag → fill in the
+   title + notes (§4) → check latest, not pre-release → **Publish release**.
+6. Update the version badge in `README.md` if not yet done (via follow-up PR
+   if needed).
 
-Otomatisasi penuh (workflow auto-create-release saat tag `v*` di-push)
-sengaja belum ditambahkan — PR ini tetap metadata-only dan kecil.
+Full automation (an auto-create-release workflow firing on pushed `v*` tags)
+is deliberately not added yet — this keeps the release PR metadata-only and small.
 
-## 4. v1.1.0 — What's changed (20 commit sejak v1.0.0)
+## 4. v1.1.0 — What's changed (20 commits since v1.0.0)
 
-**Tag:** `v1.1.0` · **Target:** `main` · **Judul:** `v1.1.0 - Pagination + Telemetry`
-**Komparasi:** `v1.0.0...v1.1.0` · **Status:** latest, bukan pre-release · **Aset:** source otomatis.
+**Tag:** `v1.1.0` · **Target:** `main` · **Title:** `v1.1.0 - Pagination + Telemetry`
+**Compare:** `v1.0.0...v1.1.0` · **Status:** latest, not a pre-release · **Assets:** automatic source.
 
 ### Added
 
-- Cursor pagination di task & notification lists — API cursor diteruskan ke web
-  (I-10, #156).
-- Per-attempt send telemetry + audit IP sadar `TRUST_PROXY` (I-13, #159).
-- Client identity diteruskan web → API untuk rate limit per-client (#169).
+- Cursor pagination in the task & notification lists — the API cursor is threaded
+  through to the web (I-10, #156).
+- Per-attempt send telemetry + `TRUST_PROXY`-aware audit IPs (I-13, #159).
+- Client identity forwarded web → API for per-client rate limiting (#169).
 
 ### Fixed / Hardened
 
-- Auth bridge: same-origin intent gate (#171); cookies hanya di-clear saat 401
-  refresh (#172); fail-closed ke peer bila semua entri XFF tepercaya (#174);
-  cap body bridge sebelum buffering (#175).
-- API: freeze identitas email sebelum panggil provider (#158); urutan
-  invalidasi vs populasi cache authz (#170); guard `JSON.parse` non-JSON (#154);
-  error PARSE Elysia → envelope 400 tanpa Sentry (#153); cap body independen
-  Content-Length (#152).
-- Idempotency: atomic completion + dedupe guard (#151); validasi body sebelum
-  klaim, lepas kunci saat 4xx (#150).
-- Scheduler/ops: guard scheduling di stuck-pending sweep (#149); self-heal TTL
-  kunci rate-limit (#148); storage-sweep exact + age-gated (#147); throttle
-  auth-abuse tahan timeout Redis + fallback memori (#146); cabut EXECUTE klien
-  di RPC `get_user_summary` (#176); isolasi file tes web dari patch konsol
-  Next (#157).
+- Auth bridge: same-origin intent gate (#171); cookies cleared only on 401
+  refresh (#172); fail-closed to peer when every XFF entry is trusted (#174);
+  bridge body cap applied before buffering (#175).
+- API: freeze the email identity before the provider call (#158); order authz
+  cache invalidation against population (#170); guard `JSON.parse` against
+  non-JSON (#154); Elysia PARSE errors → 400 envelope without Sentry (#153);
+  body cap independent of Content-Length (#152).
+- Idempotency: atomic completion + dedupe guard (#151); validate the body
+  before the claim, release the key on 4xx (#150).
+- Scheduler/ops: re-apply scheduling guards in the stuck-pending sweep (#149);
+  self-heal rate-limit key TTL (#148); exact, age-gated storage-sweep
+  referenced check (#147); auth-abuse throttle resilient to Redis timeouts +
+  memory fallback (#146); revoke client EXECUTE on the `get_user_summary`
+  RPC (#176); isolate web test files from Next's console patch (#157).
 
-Salin bagian ini sebagai isi Release notes saat publish v1.1.0 di web GitHub.
+Copy this section as the Release notes body when publishing v1.1.0 in the GitHub web UI.

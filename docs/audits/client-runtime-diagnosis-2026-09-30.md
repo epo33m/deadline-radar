@@ -1,3 +1,5 @@
+> **Archived — original language preserved (Indonesian). Exempt from the English-only docs rule.**
+
 # #58 — Client runtime does not attach: root cause
 
 **Date:** 2026-09-30

@@ -1,3 +1,5 @@
+> **Archived — original language preserved (Indonesian). Exempt from the English-only docs rule.**
+
 # Performance Audit — Deadline Radar
 
 **Tanggal:** 2026-09-20

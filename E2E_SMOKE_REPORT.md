@@ -1,3 +1,5 @@
+> **Archived — original language preserved (Indonesian). Exempt from the English-only docs rule.**
+
 # E2E Smoke Test Report — Deadline Radar (FINAL)
 
 ---

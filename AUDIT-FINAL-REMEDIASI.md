@@ -1,3 +1,5 @@
+> **Archived — original language preserved (Indonesian). Exempt from the English-only docs rule.**
+
 # AUDIT-FINAL-REMEDIASI.md
 
 **Tanggal audit:** 2026-09-22

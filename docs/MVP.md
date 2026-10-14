@@ -2,7 +2,7 @@
 
 > **Source of truth:** `product.md` (v1.1.0), `DOMAIN.md`, `ARCHITECTURE.md`, `DATA-MODEL.md`
 
-> **Status historis:** MVP dinyatakan done saat v1.0.0 (live di produksi). Dokumen ini dipertahankan sebagai cakupan MVP awal; rilis produksi lanjutan (v1.1.0+) dicatat di [RELEASE.md](RELEASE.md) dan GitHub Releases — bukan di sini.
+> **Historical status:** MVP was declared done with v1.0.0 (live in production). This document is preserved as the original MVP scope; follow-up production releases (v1.1.0+) are recorded in [RELEASE.md](RELEASE.md) and GitHub Releases — not here.
 
 ---
 

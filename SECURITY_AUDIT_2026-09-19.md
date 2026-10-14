@@ -1,3 +1,5 @@
+> **Archived — original language preserved (Indonesian). Exempt from the English-only docs rule.**
+
 # SECURITY THREAT-MODEL & AUDIT — Deadline Radar
 
 ```
