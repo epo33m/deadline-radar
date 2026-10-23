@@ -34,6 +34,19 @@
   --radius: 0.6875rem;
 }
 
+/* Markdown code highlighting (rehype-highlight / lowlight classes). */
+.hljs { color: #1d1d1f; }
+.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-section, .hljs-link { color: #ad3da4; font-weight: 600; }
+.hljs-string, .hljs-attr, .hljs-template-variable, .hljs-quote { color: #c41a16; }
+.hljs-number, .hljs-regexp, .hljs-meta { color: #1c00cf; }
+.hljs-title, .hljs-name, .hljs-function, .hljs-built_in { color: #3e6cc4; }
+.hljs-variable, .hljs-params { color: #1d1d1f; }
+.hljs-comment, .hljs-code { color: #6e7781; font-style: italic; }
+.hljs-tag, .hljs-attribute { color: #0b7285; }
+.hljs-symbol, .hljs-bullet { color: #c41a16; }
+.hljs-addition { color: #22863a; }
+.hljs-deletion { color: #cb2431; }
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { DESCRIPTION_MAX_LENGTH } from "./limits";
+
 export const taskStatusSchema = z.enum(["todo", "in_progress", "done"]);
 
 /**
@@ -16,10 +18,10 @@ const optionalTrimmedNullable = z
     if (value == null) return null;
     const trimmed = value.trim();
     if (trimmed.length === 0) return null;
-    if (trimmed.length > 5000) {
+    if (trimmed.length > DESCRIPTION_MAX_LENGTH) {
       ctx.addIssue({
         code: "custom",
-        message: "Task description must be 5000 characters or less",
+        message: `Task description must be ${DESCRIPTION_MAX_LENGTH} characters or less`,
       });
       return z.NEVER;
     }
@@ -57,10 +59,10 @@ const patchTrimmedNullable = z
     if (value === null) return null;
     const trimmed = value.trim();
     if (trimmed.length === 0) return null;
-    if (trimmed.length > 5000) {
+    if (trimmed.length > DESCRIPTION_MAX_LENGTH) {
       ctx.addIssue({
         code: "custom",
-        message: "Task description must be 5000 characters or less",
+        message: `Task description must be ${DESCRIPTION_MAX_LENGTH} characters or less`,
       });
       return z.NEVER;
     }

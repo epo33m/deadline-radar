@@ -24,6 +24,7 @@ type NotificationDeliveryRow = {
   readAt: Date | null;
   createdAt: Date;
   taskTitle: string;
+  description: string;
 };
 
 let deliveriesStore: NotificationDeliveryRow[] = [];
@@ -92,6 +93,7 @@ describe("GET /api/v1/notifications — M-4 snapshot", () => {
         readAt: null,
         createdAt: now,
         taskTitle: "Project Submission",
+description: "**should not leak**",
       },
     ];
 
@@ -108,5 +110,7 @@ describe("GET /api/v1/notifications — M-4 snapshot", () => {
     expect(body.notifications).toHaveLength(1);
     expect(body.notifications[0].daysBefore).toBe(3);
     expect(body.notifications[0].taskTitle).toBe("Project Submission");
+    expect(Object.prototype.hasOwnProperty.call(body.notifications[0], "description")).toBe(false);
+    expect(JSON.stringify(body)).not.toContain("should not leak");
   });
 });
