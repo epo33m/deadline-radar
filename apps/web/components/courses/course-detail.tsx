@@ -18,12 +18,12 @@ import {
 } from "lucide-react";
 import {
   useActionState,
-  useEffect,
   useMemo,
   useState,
   useTransition,
   type ReactNode,
 } from "react";
+import { stripMarkdown } from "@deadline-radar/domain";
 import type { TimeFormat } from "@deadline-radar/validation";
 import { useNow } from "@/lib/use-now";
 
@@ -32,6 +32,7 @@ import {
   type CourseActionState,
 } from "@/app/actions/courses";
 import { CourseForm } from "@/components/courses/course-form";
+import { MarkdownPreview } from "@/components/markdown/markdown";
 import { AddTaskForm } from "@/components/tasks/task-form";
 import { Button } from "@/components/ui/button";
 import { LearnSecondaryNav } from "@/components/learn/learn-secondary-nav";
@@ -589,7 +590,9 @@ function MobileCourseDescriptionRow({
   description: string | null;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const MAX_CHARS = 300;
+  // Strip before slicing: a raw cut can leave half a markdown token in view.
+  const plain = stripMarkdown(description);
+  const previewText = plain.trim() || (description ?? "").replace(/\\s+/g, " ").trim();
   const SHOW_MORE_THRESHOLD = 15;
   const labelClassName =
     "shrink-0 text-[15px] font-medium leading-relaxed text-ink-muted-48 sm:text-[17px]";
@@ -606,10 +609,6 @@ function MobileCourseDescriptionRow({
   }
 
   if (expanded) {
-    const visible =
-      description.length > MAX_CHARS
-        ? `${description.slice(0, MAX_CHARS).trimEnd()}\u2026`
-        : description;
     return (
       <li className="py-1 sm:py-1">
         <div className="flex items-center justify-between gap-4">
@@ -622,30 +621,28 @@ function MobileCourseDescriptionRow({
             See less
           </button>
         </div>
-        <p className="mt-0.5 whitespace-pre-wrap break-words font-semibold text-ink">
-          {visible}
-        </p>
+        <MarkdownPreview className="mt-0.5">{description}</MarkdownPreview>
       </li>
     );
   }
 
-  if (description.length <= SHOW_MORE_THRESHOLD) {
+  if (previewText.length <= SHOW_MORE_THRESHOLD) {
     return (
       <li className="flex min-h-8 items-center justify-between gap-4 py-1 sm:py-1">
         <p className={labelClassName}>Description</p>
-        <p className="min-w-0 truncate font-semibold text-ink">{description}</p>
+        <p className="min-w-0 truncate font-semibold text-ink">{previewText}</p>
       </li>
     );
   }
 
-  const words = description.trim().split(/\s+/);
+  const words = previewText.trim().split(/\s+/);
 
   if (words.length <= 3) {
     return (
       <li className="flex min-h-8 items-center justify-between gap-4 py-1 sm:py-1">
         <p className={labelClassName}>Description</p>
         <p className="min-w-0 truncate font-semibold text-ink">
-          {description.trim()}
+          {previewText.trim()}
         </p>
       </li>
     );
@@ -763,9 +760,7 @@ function CourseAbout({
             Description
           </p>
           {course.description?.trim() ? (
-            <p className="-mt-1 whitespace-pre-wrap font-semibold text-ink">
-              {course.description}
-            </p>
+            <MarkdownPreview className="-mt-1">{course.description}</MarkdownPreview>
           ) : (
             <p className="-mt-1 font-semibold italic text-ink">None</p>
           )}

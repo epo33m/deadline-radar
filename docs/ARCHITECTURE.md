@@ -192,6 +192,18 @@ Codes include: `VALIDATION_ERROR`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CO
 - Progressive delay on repeated failed logins (per email+IP); no permanent lockout.
 - Client errors use the nested v1 error envelope; auth messages stay generic. Provider details go to server logs only.
 
+### Markdown rendering
+- Task and course descriptions render through `react-markdown` + `remark-gfm` into React elements — never `dangerouslySetInnerHTML`.
+- Raw HTML in a description is not rendered (no `rehype-raw`). URLs pass a scheme allow-list (`http`, `https`, `mailto`, in-app `/` and `#`); protocol-relative (`//`), `vbscript`, and control characters are rejected; external links get `rel="noopener noreferrer"`. Images render for same-origin, `blob:`, and `data:image/*` only; external images render as alt text, matching the CSP `img-src 'self' blob: data:` policy. Author headings are demoted so the page outline keeps its section level and receive a per-instance id for in-description anchors. Headings are styled explicitly (body is normal weight, headings semibold). GFM task lists render as disabled checkboxes with an accessible state label. Fenced code blocks are highlighted and keyboard-scrollable.
+- Email reminders and in-app notifications carry the task title only, never the description. Guard tests in `apps/api/src/lib/email-resilience.test.ts` and `apps/api/src/routes/notifications.snapshot.test.ts` lock that shape (no `description` key, no Markdown markers in the body).
+- One-line previews (mobile description rows) strip Markdown first via `stripMarkdown` in `packages/domain`, so a truncated preview never shows half syntax. When stripping yields an empty string (syntax-only input), the raw text is used as a fallback.
+
+### Adding a new Markdown surface
+
+- Render with `MarkdownPreview`; preview rows use `stripMarkdown`.
+- Ensure Markdown never leaks into email or in-app notifications (title only).
+- Add a test covering the new surface.
+
 ### Observability & headers
 - Every request gets a `requestId` (UUID; client-provided non-UUID ids are replaced). Echoed as `X-Request-Id` and included on error bodies. Propagated into auth audit rows.
 - `auth_audit_events` table + structured `[auth-audit]` logs (no passwords/tokens/secrets).

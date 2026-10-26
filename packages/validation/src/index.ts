@@ -56,6 +56,7 @@ export {
   MAX_ATTACHMENT_BYTES,
   ALLOWED_ATTACHMENT_MIME,
 } from "./attachment";
+export { DESCRIPTION_MAX_LENGTH } from "./limits";
 export { markNotificationReadSchema } from "./notification";
 export {
   CONFIRM_NEXT_ALLOW_LIST,
