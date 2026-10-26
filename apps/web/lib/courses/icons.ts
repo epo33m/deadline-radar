@@ -29,15 +29,6 @@ export const SLUG_CANONICAL_MAP: Readonly<Record<string, string>> = {
   "grid2x2": "grid-2-2",
 } as const;
 
-/** Reverse map: canonical ⇢ stored alias(es). */
-const SLUG_ALIASES: Readonly<Record<string, string[]>> = (() => {
-  const aliases: Record<string, string[]> = {};
-  for (const [stored, canonical] of Object.entries(SLUG_CANONICAL_MAP)) {
-    (aliases[canonical] ??= []).push(stored);
-  }
-  return aliases;
-})();
-
 export type CourseIconSuggestion = {
   slug: string;
   label: string;
@@ -173,7 +164,6 @@ export function getCourseIcon(
     !warnedUnknownIcons.has(slug)
   ) {
     warnedUnknownIcons.add(slug);
-    // eslint-disable-next-line no-console
     console.warn(
       `[deadline-radar] Unknown course icon slug "${slug}": valid format, but not found in lucide-react. UI will render None.`,
     );

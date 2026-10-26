@@ -1,7 +1,6 @@
 import { createElement } from "react";
 
 import { getCourseIcon } from "@/lib/courses/icons";
-import { cn } from "@/lib/utils";
 
 type CourseIconViewProps = {
   slug: string | null | undefined;

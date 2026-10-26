@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, ChevronsUpDown, Search, X } from "lucide-react";
+import { ChevronDown, Search, X } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -58,7 +58,7 @@ function matchRanges(text: string, tokens: string[]): [number, number][] {
   const lower = text.toLowerCase();
   const ranges: [number, number][] = [];
   for (const token of tokens) {
-    let index = lower.indexOf(token.toLowerCase());
+    const index = lower.indexOf(token.toLowerCase());
     if (index !== -1) ranges.push([index, index + token.length]);
   }
   return mergeRanges(ranges);

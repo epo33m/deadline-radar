@@ -52,10 +52,10 @@ function MenuHarness({
           placeholder="Search"
           aria-label="Search"
         />
-        <button type="button" role="option">
+        <button type="button" role="option" aria-selected={false}>
           Option A
         </button>
-        <button type="button" role="option">
+        <button type="button" role="option" aria-selected={false}>
           Option B
         </button>
       </PortalMenu>
@@ -66,7 +66,6 @@ function MenuHarness({
 describe("PortalMenu arrow navigation", () => {
   test("ArrowDown cycles among options excluding the search field", async () => {
     const view = render(<MenuHarness arrowNav={true} />);
-    const search = await view.findByRole("searchbox");
     const options = await view.findAllByRole("option");
 
     act(() => {
@@ -135,7 +134,6 @@ describe("PortalMenu arrow navigation", () => {
   test("arrow keys do not move focus while the search field is focused", async () => {
     const view = render(<MenuHarness arrowNav={true} />);
     const search = await view.findByRole("searchbox");
-    const options = await view.findAllByRole("option");
 
     act(() => {
       search.focus();
