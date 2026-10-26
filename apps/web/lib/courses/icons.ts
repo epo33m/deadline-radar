@@ -14,26 +14,47 @@ const ICON_SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 export type CourseIconSuggestion = {
   slug: string;
   label: string;
+  /**
+   * Extra search terms for the picker. Labels are matched too, so this is for
+   * synonyms that the Lucide slug does not contain (e.g. "Lab" → flask-conical).
+   */
+  keywords?: readonly string[];
 };
 
 /** Default suggestions shown before searching the full Lucide set. */
 export const SUGGESTED_COURSE_ICONS: readonly CourseIconSuggestion[] = [
-  { slug: "book-open", label: "Book" },
-  { slug: "graduation-cap", label: "Graduation" },
-  { slug: "library", label: "Library" },
-  { slug: "flask-conical", label: "Lab" },
-  { slug: "calculator", label: "Math" },
-  { slug: "globe", label: "Globe" },
-  { slug: "code-xml", label: "Code" },
-  { slug: "cpu", label: "Chip" },
-  { slug: "atom", label: "Atom" },
-  { slug: "palette", label: "Art" },
-  { slug: "music", label: "Music" },
-  { slug: "dumbbell", label: "Sport" },
-  { slug: "briefcase", label: "Work" },
-  { slug: "heart-pulse", label: "Health" },
-  { slug: "languages", label: "Language" },
-  { slug: "pen-line", label: "Writing" },
+  { slug: "book-open", label: "Book", keywords: ["Reading", "Study"] },
+  {
+    slug: "graduation-cap",
+    label: "Graduation",
+    keywords: ["Degree", "School", "University"],
+  },
+  { slug: "library", label: "Library", keywords: ["Books", "Shelf"] },
+  {
+    slug: "flask-conical",
+    label: "Lab",
+    keywords: ["Laboratory", "Science", "Chemistry"],
+  },
+  { slug: "calculator", label: "Math", keywords: ["Mathematics", "Calculate"] },
+  { slug: "globe", label: "Globe", keywords: ["World", "Earth", "Geography"] },
+  {
+    slug: "code-xml",
+    label: "Code",
+    keywords: ["Programming", "Developer", "Software"],
+  },
+  { slug: "cpu", label: "Chip", keywords: ["Processor", "Hardware", "Computer"] },
+  { slug: "atom", label: "Atom", keywords: ["Physics", "Science"] },
+  { slug: "palette", label: "Art", keywords: ["Design", "Paint", "Color"] },
+  { slug: "music", label: "Music", keywords: ["Audio", "Song", "Sound"] },
+  { slug: "dumbbell", label: "Sport", keywords: ["Gym", "Fitness", "Workout"] },
+  { slug: "briefcase", label: "Work", keywords: ["Business", "Job", "Office"] },
+  {
+    slug: "heart-pulse",
+    label: "Health",
+    keywords: ["Medical", "Medicine", "Heartbeat"],
+  },
+  { slug: "languages", label: "Language", keywords: ["Translate", "Speech"] },
+  { slug: "pen-line", label: "Writing", keywords: ["Write", "Edit", "Note"] },
 ];
 
 export const NO_COURSE_ICON = {

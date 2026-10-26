@@ -258,14 +258,17 @@ export function PortalMenu({
 
       if (!arrowNav || !menuRef.current) return;
 
-      const items = getFocusableElements(menuRef.current);
+      const searchEl = searchRefRef.current?.current;
+      const searchFocused = Boolean(searchEl) && document.activeElement === searchEl;
+      const focusable = getFocusableElements(menuRef.current);
+      // A search field owns its arrow/Home/End keys, so keep it out of the cycle.
+      const items = searchEl
+        ? focusable.filter((item) => item !== searchEl)
+        : focusable;
       if (items.length === 0) return;
 
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-        const searchEl = searchRefRef.current?.current;
-        if (searchEl && document.activeElement === searchEl) {
-          return;
-        }
+        if (searchFocused) return;
         const currentIndex = items.findIndex(
           (item) => item === document.activeElement,
         );
@@ -279,6 +282,8 @@ export function PortalMenu({
       }
 
       if (event.key === "Home" || event.key === "End") {
+        // Home/End move the caret while the search field is focused.
+        if (searchFocused) return;
         event.preventDefault();
         if (event.key === "Home") {
           items[0]?.focus();

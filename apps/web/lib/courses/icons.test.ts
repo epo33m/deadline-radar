@@ -60,6 +60,16 @@ describe("course icons", () => {
     }
   });
 
+  test("suggestion keywords are trimmed, non-empty synonyms", () => {
+    for (const suggestion of SUGGESTED_COURSE_ICONS) {
+      for (const keyword of suggestion.keywords ?? []) {
+        expect(keyword).toBe(keyword.trim());
+        expect(keyword.length).toBeGreaterThan(0);
+        expect(keyword).not.toBe(suggestion.label);
+      }
+    }
+  });
+
   test("full Lucide set is searchable", () => {
     const slugs = getAllCourseIconSlugs();
     expect(slugs.length).toBeGreaterThan(1000);
