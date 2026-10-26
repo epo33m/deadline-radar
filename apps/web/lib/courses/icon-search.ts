@@ -101,6 +101,13 @@ function getIndex(): IconSearchEntry[] {
   return cachedIndex;
 }
 
+/** Ensure the search index is built (lazily on first search). Call this when
+ * the menu opens or during idle so the first keystroke isn't delayed by the
+ * index build (~1.791 entries). */
+export function ensureIndex(): void {
+  getIndex();
+}
+
 /** Ordered-character match used for light fuzzy hits; returns skipped chars. */
 function subsequenceGaps(haystack: string, needle: string): number | null {
   let cursor = 0;
@@ -184,7 +191,18 @@ function scoreEntry(
   normalizedQuery: string,
   compactQuery: string,
 ): number {
-  let score = entry.curated ? CURATED_BOOST : 0;
+  // Curated boost applies only to phrase or prefix matches, never to
+  // substring or fuzzy matches (so a curated icon can't outrank an exact
+  // non-curated match on a loose query such as "open").
+  const phraseMatch = entry.phrases.includes(normalizedQuery);
+  const prefixMatch =
+    tokens.length > 0 &&
+    tokens.every((token) =>
+      entry.terms.some((term) => term.startsWith(token)),
+    );
+  const boostApplies = phraseMatch || prefixMatch;
+
+  let score = entry.curated && boostApplies ? CURATED_BOOST : 0;
 
   if (entry.compactSlug === compactQuery) score += 1600;
   if (entry.phrases.includes(normalizedQuery)) score += 1400;

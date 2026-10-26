@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
 import { searchCourseIcons } from "./icon-search";
-import { SUGGESTED_COURSE_ICONS } from "./icons";
+import {
+  SUGGESTED_COURSE_ICONS,
+  getAllCourseIconSlugs,
+} from "./icons";
 
 function slugs(query: string, limit = 5): string[] {
   return searchCourseIcons(query, { limit }).results.map((result) => result.slug);
@@ -83,6 +86,13 @@ describe("course icon search", () => {
           suggestion.slug,
         );
       }
+    }
+  });
+
+  test("every catalog slug is its own top search result", () => {
+    for (const slug of getAllCourseIconSlugs()) {
+      const result = searchCourseIcons(slug, { limit: 1 });
+      expect(result.results[0]?.slug, `top result for "${slug}"`).toBe(slug);
     }
   });
 });

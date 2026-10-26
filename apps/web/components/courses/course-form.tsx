@@ -153,7 +153,6 @@ export function CourseForm({
                 id={iconId}
                 value={icon}
                 onChange={setIcon}
-                compact
               />
             </DialogFormRow>
           </ul>

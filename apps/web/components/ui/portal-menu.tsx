@@ -276,7 +276,13 @@ export function PortalMenu({
         if (event.key === "ArrowDown") {
           items[(currentIndex + 1 + items.length) % items.length]?.focus();
         } else {
-          items[(currentIndex - 1 + items.length) % items.length]?.focus();
+          // ArrowUp from the first option returns focus to the search field
+          // (combobox pattern) instead of wrapping to the last option.
+          if (currentIndex <= 0 && searchEl) {
+            searchEl.focus();
+          } else {
+            items[(currentIndex - 1 + items.length) % items.length]?.focus();
+          }
         }
         return;
       }
