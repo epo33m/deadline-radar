@@ -61,17 +61,19 @@ Data isolation: each user can only view/edit their own courses & tasks (Supabase
 
 ### 5.2 Course Management
 - User creates their own list of courses (separate CRUD, not free-text tags).
-- Basic fields: course name, code/abbreviation (optional), label color (optional, to differentiate in Summary/calendar).
+- Basic fields: course name, code/abbreviation (optional), label color (optional, to differentiate in Summary/calendar), description (optional, Markdown).
 - Tasks are later assigned to one of these courses.
 
 ### 5.3 Task & Deadline Management
 - Task CRUD with fields:
   - Task title
   - Course (relation to Course)
-  - Description/notes (optional)
+  - Description/notes (optional, Markdown)
   - Deadline (date + time)
   - Status: **To Do / In Progress / Done**
 - Attachment: user can add a file or external link related to the task (see 5.6).
+
+**Markdown in descriptions.** Task and course descriptions are stored as plain text (≤5000 characters) and rendered as Markdown in the detail views. Supported: headings, lists, blockquotes, bold/italic/strikethrough, inline code, fenced code, links, and GFM tables/task lists. Not supported: raw HTML (escaped, never rendered) and images (alt text is shown instead; remote pixels are blocked by CSP). Single-line fields — task title, course name/code, attachment notes and URL — stay plain text. Email reminders and in-app notifications never carry descriptions: both use the task title only, so no Markdown syntax can leak into them.
 
 ### 5.4 Reminder System (Email + In-App)
 - **Automatic tiered** reminders: the closer the deadline, the more frequent the reminders.

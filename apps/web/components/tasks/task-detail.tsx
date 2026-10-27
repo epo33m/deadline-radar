@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Check, PanelLeft, Pencil, Trash2, X } from "lucide-react";
 import { useActionState, useState } from "react";
+import { stripMarkdown } from "@deadline-radar/domain";
 import type { TimeFormat } from "@deadline-radar/validation";
 
 import {
@@ -10,6 +11,7 @@ import {
   softDeleteTask,
   type TaskActionState,
 } from "@/app/actions/tasks";
+import { MarkdownPreview } from "@/components/markdown/markdown";
 import { AttachmentManager } from "@/components/tasks/attachment-manager";
 import { TaskForm } from "@/components/tasks/task-form";
 import { Button } from "@/components/ui/button";
@@ -162,7 +164,6 @@ function TaskSidebarNav({
   );
 }
 
-const MOBILE_DESCRIPTION_MAX_CHARS = 300;
 const MOBILE_DESCRIPTION_SHOW_MORE_THRESHOLD = 15;
 
 function MobileDescriptionRow({
@@ -171,6 +172,10 @@ function MobileDescriptionRow({
   description: string | null;
 }) {
   const [expanded, setExpanded] = useState(false);
+  // Previews are stripped first: slicing raw markdown can cut through `**` or a
+  // link destination and show syntax fragments to the reader.
+  const plain = stripMarkdown(description);
+  const previewText = plain.trim() || (description ?? "").replace(/\\s+/g, " ").trim();
 
   const labelClassName =
     "shrink-0 text-[15px] font-medium leading-relaxed text-ink-muted-48 sm:text-[17px]";
@@ -187,10 +192,6 @@ function MobileDescriptionRow({
   }
 
   if (expanded) {
-    const visible =
-      description.length > MOBILE_DESCRIPTION_MAX_CHARS
-        ? `${description.slice(0, MOBILE_DESCRIPTION_MAX_CHARS).trimEnd()}…`
-        : description;
     return (
       <li className="py-1 sm:py-1">
         <div className="flex items-center justify-between gap-4">
@@ -203,30 +204,28 @@ function MobileDescriptionRow({
             See less
           </button>
         </div>
-        <p className="mt-0.5 whitespace-pre-wrap break-words font-semibold text-ink">
-          {visible}
-        </p>
+        <MarkdownPreview className="mt-0.5">{description}</MarkdownPreview>
       </li>
     );
   }
 
-  if (description.length <= MOBILE_DESCRIPTION_SHOW_MORE_THRESHOLD) {
+  if (previewText.length <= MOBILE_DESCRIPTION_SHOW_MORE_THRESHOLD) {
     return (
       <li className="flex min-h-8 items-center justify-between gap-4 py-1 sm:py-1">
         <p className={labelClassName}>Description</p>
-        <p className="min-w-0 truncate font-semibold text-ink">{description}</p>
+        <p className="min-w-0 truncate font-semibold text-ink">{previewText}</p>
       </li>
     );
   }
 
-  const words = description.trim().split(/\s+/);
+  const words = previewText.trim().split(/\s+/);
 
   if (words.length <= 3) {
     return (
       <li className="flex min-h-8 items-center justify-between gap-4 py-1 sm:py-1">
         <p className={labelClassName}>Description</p>
         <p className="min-w-0 truncate font-semibold text-ink">
-          {description.trim()}
+          {previewText.trim()}
         </p>
       </li>
     );
@@ -380,9 +379,7 @@ export function TaskDetailPanel({
                     Description
                   </p>
                   {task.description ? (
-                    <p className="-mt-1 whitespace-pre-wrap font-semibold text-ink">
-                      {task.description}
-                    </p>
+                    <MarkdownPreview className="-mt-1">{task.description}</MarkdownPreview>
                   ) : (
                     <p className="-mt-1 font-semibold italic text-ink">None</p>
                   )}

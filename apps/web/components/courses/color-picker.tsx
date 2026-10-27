@@ -3,7 +3,7 @@
 import { ChevronDown, ChevronsUpDown } from "lucide-react";
 import { useId, useRef, useState } from "react";
 
-import { FieldInfoButton } from "@/components/courses/field-info-button";
+import { FieldInfoButton } from "@/components/ui/field-info-button";
 import { PortalMenu } from "@/components/ui/portal-menu";
 import {
   COURSE_COLOR_GROUPS,

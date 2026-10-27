@@ -419,6 +419,30 @@ describe("RF-11 — late labeling", () => {
   });
 });
 
+describe("markdown guard — descriptions never reach the reminder email", () => {
+  const base = {
+    to: "user@example.com",
+    taskTitle: "Task",
+    daysBefore: 1,
+    deadlineIso: "2026-09-11T15:59:00.000Z",
+    timeZone: "UTC",
+    deliveryId: "dlv-1",
+  };
+
+  test("the email payload has no description field to leak", () => {
+    expect("description" in base).toBe(false);
+    const body = buildReminderEmailBody(base);
+    expect(Object.keys(body).sort()).toEqual(["from", "subject", "text", "to"]);
+  });
+
+  test("the body carries no markdown syntax", () => {
+    const body = buildReminderEmailBody(base);
+    for (const marker of ["**", "__", "](", "# ", "- ", "> ", "```"]) {
+      expect(body.text).not.toContain(marker);
+    }
+  });
+});
+
 describe("F-07 — deadline rendered in the recipient timezone", () => {
   test("Makassar profile sees local day/time with GMT+8, not UTC", () => {
     // Deadline Friday 2026-09-11 23:59 Asia/Makassar = 15:59 UTC.

@@ -21,6 +21,7 @@ export {
   type EvaluateRemindersOptions,
 } from "./evaluate";
 export { urgencyLabel } from "./urgency";
+export { stripMarkdown } from "./plain-text";
 export {
   summarizeDeadlineBuckets,
   THIS_WEEK_DAYS,

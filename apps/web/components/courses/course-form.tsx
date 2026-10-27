@@ -22,6 +22,8 @@ import {
   formCardClassName,
   formSectionGapClassName,
 } from "@/components/ui/dialog-form";
+import { DescriptionField } from "@/components/ui/description-field";
+import { FieldInfoButton } from "@/components/ui/field-info-button";
 import { Input } from "@/components/ui/input";
 import { LoadingDialog } from "@/components/ui/loading-dialog";
 import { normalizeCourseColorForStorage } from "@/lib/courses/colors";
@@ -125,17 +127,17 @@ export function CourseForm({
               />
             </li>
 
-            <li className="py-1.5">
-              <textarea
+            <li className="relative py-1.5">
+              <DescriptionField
                 id={descriptionId}
                 name="description"
                 value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                placeholder="Description"
-                rows={3}
-                aria-invalid={Boolean(state.fieldErrors?.description)}
-                className="w-full rounded-none border-0 bg-transparent px-0 py-1 font-sans text-[15px] font-normal leading-relaxed tracking-[-0.2px] text-ink shadow-none outline-none placeholder:text-ink-muted-48 focus-visible:border-0 focus-visible:ring-0 focus-visible:outline-none aria-invalid:text-destructive"
+                onChange={setDescription}
+                error={Boolean(state.fieldErrors?.description)}
               />
+              <span className="absolute top-2 right-0">
+                <FieldInfoButton info="Markdown works here: headings, lists, tables, links, and code." />
+              </span>
             </li>
           </ul>
 

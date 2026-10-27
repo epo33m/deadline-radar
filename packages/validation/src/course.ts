@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { DESCRIPTION_MAX_LENGTH } from "./limits";
+
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 const ICON_SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const MAX_ICON_LENGTH = 64;
@@ -28,10 +30,10 @@ const optionalDescription = z
     if (value === undefined || value === null) return null;
     const trimmed = value.trim();
     if (trimmed.length === 0) return null;
-    if (trimmed.length > 5000) {
+    if (trimmed.length > DESCRIPTION_MAX_LENGTH) {
       ctx.addIssue({
         code: "custom",
-        message: "Course description must be 5000 characters or less",
+        message: `Course description must be ${DESCRIPTION_MAX_LENGTH} characters or less`,
       });
       return z.NEVER;
     }
@@ -106,10 +108,10 @@ const patchDescription = z
     if (value === null) return null;
     const trimmed = value.trim();
     if (trimmed.length === 0) return null;
-    if (trimmed.length > 5000) {
+    if (trimmed.length > DESCRIPTION_MAX_LENGTH) {
       ctx.addIssue({
         code: "custom",
-        message: "Course description must be 5000 characters or less",
+        message: `Course description must be ${DESCRIPTION_MAX_LENGTH} characters or less`,
       });
       return z.NEVER;
     }
