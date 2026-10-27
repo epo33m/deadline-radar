@@ -546,18 +546,11 @@ function CourseSidebarNav({
                               : "text-ink-muted-80 hover:bg-muted/60 hover:text-ink",
                           )}
                         >
-                          {isChildLoading ? (
-                            <Loader2
-                              className="size-4 shrink-0 animate-spin text-primary"
-                              aria-hidden="true"
-                            />
-                          ) : (
-                            <ChildIcon
-                              className="size-4 shrink-0"
-                              strokeWidth={2}
-                              aria-hidden="true"
-                            />
-                          )}
+                          <ChildIcon
+                            className="size-4 shrink-0"
+                            strokeWidth={2}
+                            aria-hidden="true"
+                          />
                           <span className="flex-1">{child.label}</span>
                         </Link>
                       </li>

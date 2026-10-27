@@ -143,17 +143,20 @@ function AddAttachmentForm({ taskId, onSuccess, onCancel }: AddFormProps) {
                   </ul>
                 </li>
               ) : null}
-              <li className="pt-1 pb-0">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={pending}
-                  className="h-11 w-full justify-start border-0 bg-transparent px-0 shadow-none"
-                >
-                  Add file...
-                </Button>
-              </li>
+              {/* Temporarily hidden: file upload entry point */}
+              {false ? (
+                <li className="pt-1 pb-0">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={pending}
+                    className="h-11 w-full justify-start border-0 bg-transparent px-0 shadow-none"
+                  >
+                    Add file...
+                  </Button>
+                </li>
+              ) : null}
             </ul>
             <input
               ref={fileInputRef}
@@ -343,16 +346,6 @@ function FileOpenButton({
   );
 }
 
-function attachmentTitle(attachment: Attachment): string {
-  if (attachment.notes?.trim()) return attachment.notes;
-  if (attachment.type === "link" && attachment.url) return attachment.url;
-  if (attachment.storage_path) {
-    const segment = attachment.storage_path.split("/").filter(Boolean).at(-1);
-    if (segment) return segment;
-  }
-  return attachment.type === "link" ? "Link" : "File";
-}
-
 function AttachmentRow({
   taskId,
   attachment,
@@ -374,14 +367,33 @@ function AttachmentRow({
       />
       <li className="border-b border-hairline py-3 last:border-b-0">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="truncate font-medium">{attachmentTitle(attachment)}</p>
-            <p className="text-sm text-ink-muted-48">
-              {attachment.type === "link" ? "Link" : "File"}
-              {attachment.type === "link" && attachment.url
-                ? ` · ${attachment.url}`
-                : null}
+          <div className="min-w-0 flex-1 space-y-1">
+            <p className="truncate font-medium">
+              {attachment.type === "file"
+                ? attachment.storage_path
+                  ? attachment.storage_path.split("/").filter(Boolean).at(-1) ??
+                    "File"
+                  : "File"
+                : "Link"}
             </p>
+            <p className="text-sm text-ink-muted-48">
+              {attachment.type === "link"
+                ? attachment.url
+                  ? "Link"
+                  : "Note"
+                : "File"}
+            </p>
+            {attachment.notes?.trim() ? (
+              <p className="text-sm text-ink">
+                <span className="font-medium text-ink-muted-48">Notes: </span>
+                {attachment.notes}
+              </p>
+            ) : null}
+            {attachment.type === "link" && attachment.url ? (
+              <p className="truncate text-sm text-ink-muted-48">
+                {attachment.url}
+              </p>
+            ) : null}
           </div>
           {attachment.type === "link" &&
           attachment.url &&
