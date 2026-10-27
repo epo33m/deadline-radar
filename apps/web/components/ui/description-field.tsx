@@ -8,7 +8,7 @@ export function DescriptionField({
   name,
   value,
   onChange,
-  placeholder = "Description",
+  placeholder = "Notes",
   rows = 3,
   error,
   className,
