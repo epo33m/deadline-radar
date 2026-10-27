@@ -143,17 +143,20 @@ function AddAttachmentForm({ taskId, onSuccess, onCancel }: AddFormProps) {
                   </ul>
                 </li>
               ) : null}
-              <li className="pt-1 pb-0">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={pending}
-                  className="h-11 w-full justify-start border-0 bg-transparent px-0 shadow-none"
-                >
-                  Add file...
-                </Button>
-              </li>
+              {/* Temporarily hidden: file upload entry point */}
+              {false ? (
+                <li className="pt-1 pb-0">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={pending}
+                    className="h-11 w-full justify-start border-0 bg-transparent px-0 shadow-none"
+                  >
+                    Add file...
+                  </Button>
+                </li>
+              ) : null}
             </ul>
             <input
               ref={fileInputRef}
