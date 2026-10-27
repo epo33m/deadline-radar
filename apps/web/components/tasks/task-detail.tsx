@@ -430,7 +430,7 @@ export function TaskDetailPanel({
                       Deadline
                     </p>
                     <p className="-mt-1 truncate font-semibold text-ink">
-                      {formatRelativeDeadline(task.deadline, timeZone, now)}
+                      {isDone ? "Completed" : formatRelativeDeadline(task.deadline, timeZone, now)}
                     </p>
                   </div>
                   <div className="min-w-0">
@@ -459,7 +459,7 @@ export function TaskDetailPanel({
                       Deadline
                     </p>
                     <p className="min-w-0 truncate font-semibold text-ink">
-                      {formatRelativeDeadline(task.deadline, timeZone, now)}
+                      {isDone ? "Completed" : formatRelativeDeadline(task.deadline, timeZone, now)}
                     </p>
                   </li>
                   <li className="flex min-h-8 items-center justify-between gap-4 py-1 sm:py-1">
