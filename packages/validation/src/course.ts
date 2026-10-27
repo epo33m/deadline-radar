@@ -61,6 +61,9 @@ const optionalHexColor = z
  * Optional Lucide icon slug (kebab-case, e.g. 'book-open').
  * Format-only check: unknown-but-well-formed slugs pass and render
  * as None on the frontend, keeping validation decoupled from lucide-react.
+ * Existence is surfaced as a development warning in the UI layer
+ * (apps/web/lib/courses/icons.ts `getCourseIcon`), not as a schema error,
+ * so validation stays independent of lucide-react.
  */
 const optionalIconSlug = z
   .union([z.string(), z.null()])
