@@ -126,6 +126,9 @@ export async function addAttachment(
   );
   const urlRaw = formData.get("url");
   const hasUrl = typeof urlRaw === "string" && urlRaw.trim() !== "";
+  const notesRaw = formData.get("notes");
+  const hasNotes =
+    typeof notesRaw === "string" && notesRaw.trim() !== "";
 
   if (hasFile && hasUrl) {
     return { error: "Isi URL atau file saja, jangan keduanya." };
@@ -133,10 +136,10 @@ export async function addAttachment(
   if (hasFile) {
     return addFileAttachment(prev, formData);
   }
-  if (hasUrl) {
+  if (hasUrl || hasNotes) {
     return addLinkAttachment(prev, formData);
   }
-  return { error: "URL atau file wajib diisi." };
+  return { error: "URL, notes, atau file wajib diisi." };
 }
 
 export async function removeAttachment(

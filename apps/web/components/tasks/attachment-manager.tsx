@@ -377,7 +377,11 @@ function AttachmentRow({
                 : "Link"}
             </p>
             <p className="text-sm text-ink-muted-48">
-              {attachment.type === "link" ? "Link" : "File"}
+              {attachment.type === "link"
+                ? attachment.url
+                  ? "Link"
+                  : "Note"
+                : "File"}
             </p>
             {attachment.notes?.trim() ? (
               <p className="text-sm text-ink">

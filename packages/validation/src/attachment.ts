@@ -43,28 +43,36 @@ function emptyToUndefined(value: unknown): unknown {
 export const linkAttachmentRequestSchema = z
   .object({
     task_id: z.uuid("Task is required"),
-    url: absoluteUrlSchema,
+    url: z.preprocess(emptyToUndefined, absoluteUrlSchema.optional()),
     notes: z.preprocess(emptyToUndefined, attachmentNotesSchema.optional()),
   })
   .strict()
+  .refine((value) => Boolean(value.url) || Boolean(value.notes), {
+    message: "URL or notes is required",
+    path: ["url"],
+  })
   .transform((value) => ({
     type: "link" as const,
     task_id: value.task_id,
-    url: value.url,
+    url: value.url ?? null,
     notes: value.notes ?? null,
     storage_path: null as null,
   }));
 
 export const linkAttachmentSchema = z
   .object({
-    url: absoluteUrlSchema,
+    url: z.preprocess(emptyToUndefined, absoluteUrlSchema.optional()),
     notes: z.preprocess(emptyToUndefined, attachmentNotesSchema.optional()),
     storage_path: z.preprocess(emptyToUndefined, z.undefined()).optional(),
   })
   .strict()
+  .refine((value) => Boolean(value.url) || Boolean(value.notes), {
+    message: "URL or notes is required",
+    path: ["url"],
+  })
   .transform((value) => ({
     type: "link" as const,
-    url: value.url,
+    url: value.url ?? null,
     notes: value.notes ?? null,
     storage_path: null,
   }));

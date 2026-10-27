@@ -161,7 +161,7 @@ describe("finding #10 — openapi coverage", () => {
       schemaOf("post", "/api/v1/auth/reset-password")?.required,
     ).toEqual(expect.arrayContaining(["password", "confirmPassword"]));
     expect(schemaOf("post", "/api/v1/attachments/link")?.required).toEqual(
-      expect.arrayContaining(["task_id", "url"]),
+      expect.arrayContaining(["task_id"]),
     );
     // List/filter/sort parameters actually implemented.
     const listParams = parametersOf(op(spec, "get", "/api/v1/tasks/")).map(
